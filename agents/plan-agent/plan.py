@@ -777,6 +777,26 @@ def queue_plan_tick(task, plan_file, kind=""):
                       path=paths.tick_queue_path(), plan=plan_file, kind=kind)
 
 
+def queue_handovers(text, path=None):
+    """Asks the board to hand over every task tagged to an agent with no handover.
+
+    pick.unhanded() finds them. Each gets one request on the tick queue, and the
+    board runs handOver() on it when it next loads, laying out the sub-tasks the
+    drawer's Delegate to would. A task already waiting on a request is not asked
+    for twice. Returns the titles asked for, for the log.
+    """
+    path = path or paths.tick_queue_path()
+    waiting = {e.get("handover") for e in tick_queue.read(path) if e.get("handover")}
+    asked = []
+    for task, agent in pick.unhanded(todo.parse_doc(text)):
+        if task.stable_id.lower() in waiting:
+            continue
+        tick_queue.append_handover(task.stable_id, agent, "Plan agent",
+                                   note="tagged [to:: %s] with no handover" % agent, path=path)
+        asked.append(task.title)
+    return asked
+
+
 def write_index(day, written, skipped, stopped):
     lines = ["---",
              "title: Plans for %s" % day.strftime("%A %-d %B %Y"),
