@@ -730,58 +730,59 @@ function sideSection(label, key, body, count){
    The card is filled in by loadTaskProject() once the panel is up — what the
    project is and when it was last touched are read off disk, and neither is
    worth holding the drawer open for. */
+/* The mount point for DrawerProjectSection (kanban/ui/DrawerProjectSection.tsx).
+   renderProjectSection(), below, draws into it. */
 function projectSection(t){
+  return sideSection('Project', 'project', '<div id="f-project-mount"></div>');
+}
+
+/* The React root behind #f-project-mount, and the task/read-only pair its
+   later, async render (loadTaskProject's fetch) needs to redraw against —
+   openDrawer() may have moved to another task by the time that resolves,
+   the same race loadTaskProject already guarded against by id. */
+let projectMountEl = null;
+let projectDrawTask = null;
+let projectDrawRO = false;
+
+/* Renders DrawerProjectSection for the task openDrawer() currently has open.
+   Called once with no meta when the panel goes up, then again once
+   loadTaskProject's read comes back — the same two-pass draw the old
+   innerHTML/textContent pokes did. */
+function renderProjectSection(meta){
+  if (!projectMountEl) return;
+  const t = projectDrawTask;
   const proj = taskProject(t);
   // state.demo is the static copy (Vercel, or the board before its helper is
   // up): no server to make a folder or open one, so no buttons that would
   // fail. A backup preview can still open a folder, but not change the task.
   const live = !state.demo;
-  const canEdit = live && !state.locked;
-  if (!proj) return sideSection('Project', 'project',
-    emptyState('No folder yet. Name one in Description as `data/projects/<folder>`, or a path of your own.') +
-    (canEdit
-      ? '<div class="pactions">' +
-          '<button type="button" class="btn small" id="f-projstart">Start a project</button>' +
-          '<button type="button" class="btn outline small" id="f-projpick">Use an existing folder</button>' +
-        '</div>' +
-        '<div class="ppick hidden" id="f-projpicker"></div>'
-      : ''));
-  const where = isProjectPath(proj) ? proj + '/' : 'data/projects/' + proj + '/';
-  return sideSection('Project', 'project',
-    '<div class="pcard" id="taskProjCard">' +
-      '<button type="button" class="pcbody" data-project="' + esc(proj) + '">' +
-        '<span class="pctitle">' + esc(isProjectPath(proj) ? proj.split('/').pop() : proj) + '</span>' +
-        '<code class="pcpath">' + esc(where) + '</code>' +
-        '<span class="pcblurb" id="taskProjBlurb"></span>' +
-        '<span class="pcmeta" id="taskProjWhen"></span>' +
-      '</button>' +
-    '</div>' +
-    (live
-      ? '<div class="pactions"><button type="button" class="btn outline small" id="f-projopen" ' +
-          'data-ref="' + esc(proj) + '">Open folder</button></div>'
-      : ''));
+  const canEdit = live && !projectDrawRO;
+  BoardUI.mountFlushed(projectMountEl, BoardUI.h(BoardUI.DrawerProjectSection, {
+    project: proj || '',
+    title: proj ? (isProjectPath(proj) ? proj.split('/').pop() : proj) : '',
+    where: proj ? (isProjectPath(proj) ? proj + '/' : 'data/projects/' + proj + '/') : '',
+    live, canEdit,
+    meta: meta || undefined,
+    emptyHTML: emptyState('No folder yet. Name one in Description as `data/projects/<folder>`, or a path of your own.'),
+    onStartProject: () => startProject(t),
+    onPickFolder: () => drawProjectPicker(t),
+    onOpenFolder: () => openProjectFolder(proj),
+  }));
 }
 
-/* The buttons projectSection() draws, wired once the drawer is up. Start a
-   project and Use an existing folder both end the same way: the server has
-   the folder, and setTaskProject() writes the note in memory for autosave. */
-function bindProjectSection(t){
-  const openBtn = $('#f-projopen');
-  if (openBtn) openBtn.onclick = () => openProjectFolder(openBtn.dataset.ref);
-  const startBtn = $('#f-projstart');
-  if (startBtn) startBtn.onclick = async () => {
-    const name = prompt('Name the folder for this project. It is made under data/projects/.', t.title);
-    if (name == null) return;
-    try {
-      const got = await postJSON('/project/start', { name, title: t.title });
-      if (setTaskProject(t, got.name)) { refreshView(); openDrawer(t.id); }
-      showToast('Started data/projects/' + got.name);
-    } catch (err) {
-      showToast('Could not start the project: ' + (err.message || err), 'bad');
-    }
-  };
-  const pickBtn = $('#f-projpick');
-  if (pickBtn) pickBtn.onclick = () => drawProjectPicker(t);
+/* Start a project and Use an existing folder both end the same way: the
+   server has the folder, and setTaskProject() writes the note in memory for
+   autosave. */
+async function startProject(t){
+  const name = prompt('Name the folder for this project. It is made under data/projects/.', t.title);
+  if (name == null) return;
+  try {
+    const got = await postJSON('/project/start', { name, title: t.title });
+    if (setTaskProject(t, got.name)) { refreshView(); openDrawer(t.id); }
+    showToast('Started data/projects/' + got.name);
+  } catch (err) {
+    showToast('Could not start the project: ' + (err.message || err), 'bad');
+  }
 }
 
 async function openProjectFolder(ref){
@@ -852,16 +853,14 @@ async function loadTaskProject(name, taskId){
   // The panel may have moved to another task, or to a project, while this was
   // in flight — every openDrawer() on a task with a project starts one.
   if (state.openTask !== taskId) return;
-  const blurb = $('#taskProjBlurb');
-  const when = $('#taskProjWhen');
-  if (blurb && meta.blurb) blurb.innerHTML = mdInline(meta.blurb);
-  if (when) {
-    const bits = [];
-    if (meta.file_count) bits.push(meta.file_count + ' file' + (meta.file_count === 1 ? '' : 's'));
-    const edited = cvWhen(meta.modified);
-    if (edited) bits.push('edited ' + edited);
-    when.textContent = bits.join(' · ');
-  }
+  const bits = [];
+  if (meta.file_count) bits.push(meta.file_count + ' file' + (meta.file_count === 1 ? '' : 's'));
+  const edited = cvWhen(meta.modified);
+  if (edited) bits.push('edited ' + edited);
+  renderProjectSection({
+    blurbHTML: meta.blurb ? mdInline(meta.blurb) : '',
+    whenText: bits.join(' · '),
+  });
 }
 
 function dependenciesSection(t){
@@ -1490,8 +1489,12 @@ function openDrawer(id, focusTitle){
   // The card in the Project section is drawn with the folder name it already
   // had; what the folder holds is a read off disk, and the panel does not wait
   // for it.
+  if (projectMountEl) BoardUI.unmount(projectMountEl);
+  projectMountEl = $('#f-project-mount');
+  projectDrawTask = t;
+  projectDrawRO = ro;
+  renderProjectSection();
   if (proj) loadTaskProject(proj, t.id);
-  bindProjectSection(t);
   bindDependencySection(t);
   wireSubRows(t);
 
