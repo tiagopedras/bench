@@ -1858,17 +1858,29 @@ if os.path.isdir(AI_CHAT_DIR):
 # recorded against the one just left.
 _ai_chat_cache = {}
 
+# Permission-rule path patterns, relative to the chat's cwd (~/Code for
+# twinkl, to-dos itself for a list with no claude.json).
+CHAT_WRITE_DENIES = ["**/data/*/todo.md"]
+
 
 def ai_chat_for(name):
     if not Engine or not name:
         return None
     inst = _ai_chat_cache.get(name)
     if inst is None:
-        engine = Engine(
+        paths = dict(
             default_cwd=ROOT,
             config_path=os.path.join(dataset_dir(name), "claude.json"),
             sessions_path=os.path.join(dataset_dir(name), "sessions.json"),
         )
+        # A chat switched to "Can write" may edit inside its cwd, but never a
+        # list: every change to todo.md goes through the board, from a
+        # pa-changes block. An engine older than write mode takes no
+        # write_denies and has no write mode to guard either.
+        try:
+            engine = Engine(write_denies=CHAT_WRITE_DENIES, **paths)
+        except TypeError:
+            engine = Engine(**paths)
         inst = ChatEndpoints(engine)
         _ai_chat_cache[name] = inst
     return inst
