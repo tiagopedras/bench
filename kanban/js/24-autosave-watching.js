@@ -20,7 +20,7 @@ let conflictShown = false;
    helper is down, which is the shape every caller here already copes with. */
 async function diskVersion(){
   try {
-    const res = await fetch(FILE_URL, { method:'HEAD', cache:'no-store' });
+    const res = await fetchList('HEAD');
     if (!res.ok) return { stamp:null, hash:null };
     return { stamp: res.headers.get('Last-Modified') || null,
              hash:  res.headers.get('X-Todo-Hash') || null };
@@ -68,7 +68,7 @@ async function watchTick(){
 
   if (!hasOwnChanges()) {
     try {
-      const res = await fetch(FILE_URL + '?t=' + Date.now(), { cache:'no-store' });
+      const res = await fetchList();
       if (!res.ok) return;
       const text = await res.text();
       if (text === state.originalText) { state.diskStamp = stamp; state.diskHash = hash; return; }
@@ -91,7 +91,7 @@ async function watchTick(){
   conflictShown = true;
   let diskText = null;
   try {
-    const res = await fetch(FILE_URL + '?t=' + Date.now(), { cache:'no-store' });
+    const res = await fetchList();
     if (res.ok) diskText = await res.text();
   } catch (err) { /* offerReload copes with null */ }
   state.diskStamp = stamp;                         // asked once per outside change

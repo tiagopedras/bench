@@ -58,7 +58,7 @@ async function loadDatasets(){
     // No /datasets.json — an older server, or none at all. One list, no
     // picker, exactly as the board behaved before this existed.
     state.datasets = false;
-    setDataMenuLabel('');
+    setDataMenuLabel(listFolder ? listFolder.name : '');
     $('#datasetMenu').classList.add('hidden');
   }
 }
@@ -252,11 +252,275 @@ async function loadDemo(){
     markClean('');
     renderView();
     applyPendingTask();
+    syncFolderButton();
+    reopenRememberedFolder();
     return true;
   } catch (err) {
     return false;
   }
 }
+
+/* ---- A folder on this computer ------------------------------------------
+   The hosted copy (Vercel) serves static files and nothing else, so on its own
+   it can only ever show demo.md. In Chrome and Edge the page can instead be
+   pointed at a list folder on the person's own disk through the File System
+   Access API, and read and write todo.md there itself with no helper running.
+   Where the browser has no showDirectoryPicker the demo stays exactly as it
+   was: read-only, with nothing new on the lock bar.
+
+   Only reached from the demo. The local board served by kanban/server.py
+   never gets here, because loadFile() reads /data/todo.md first and a real
+   list always wins, so nothing below changes how the local board behaves.
+
+   The folder is one list, the same shape as data/<dataset>/: todo.md at its
+   root, and backups/ beside it. What the page does with it:
+     - reads and writes todo.md, with the same change-on-disk check the server
+       makes (a hash of what this tab last read, compared before every write);
+     - writes one backup of the file as it found it into backups/ before the
+       first save of each visit, named the way the server names its own;
+     - keeps a crash copy of unsaved work in localStorage, dropped after every
+       good save and offered back the next time the folder is opened.
+   Everything else the board asks the server for stays unanswered, exactly as
+   on the demo: /plans.json, /reports.json, /backups.json, /projects.json,
+   /schedule.json and /queue.json are plain file reads and could be answered
+   from the folder in a later pass; the terminal, the planning agent, the
+   companion and the Claude chat need a process and never can be.
+
+   The page's code is fetched from a public URL on every visit, so a real list
+   opened here is only as safe as that copy of the code. The dialog before the
+   picker says so. */
+
+let listFolder = null;          // FileSystemDirectoryHandle while a folder is open
+let folderBackedUp = false;     // one backup per visit, before the first save
+let rememberedFolder = null;    // a handle from last visit, waiting for a click
+
+function folderSupported(){ return typeof window.showDirectoryPicker === 'function'; }
+
+/* Handles survive a reload only in IndexedDB — localStorage holds strings. */
+function folderDB(){
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('todo-board-folder', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('handles');
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function folderStore(mode, fn){
+  try {
+    const db = await folderDB();
+    return await new Promise(resolve => {
+      const tx = db.transaction('handles', mode);
+      const req = fn(tx.objectStore('handles'));
+      tx.oncomplete = () => resolve(req && req.result);
+      tx.onerror = () => resolve(null);
+    });
+  } catch (err) { return null; }
+}
+const rememberFolder = h => folderStore('readwrite', s => s.put(h, 'list'));
+const forgetFolder = () => folderStore('readwrite', s => s.delete('list'));
+const recallFolder = () => folderStore('readonly', s => s.get('list'));
+
+/* Stands in for the server's X-Todo-Hash. Only ever compared with itself, so
+   it does not have to match the server's digest, only to change when the
+   bytes do. FNV-1a, 32 bits. */
+function textHash(text){
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, '0') + ':' + text.length;
+}
+
+async function folderRead(){
+  const file = await (await listFolder.getFileHandle('todo.md')).getFile();
+  const text = await file.text();
+  return { text, stamp: new Date(file.lastModified).toUTCString(), hash: textHash(text) };
+}
+
+/* Every read of the list goes through here, so loadFile, reload and the
+   watcher do not need to know which of the two places it came from. With no
+   folder open it is the same fetch they always made. In folder mode the
+   answer is shaped like the server's, headers and all. */
+async function fetchList(method){
+  if (!listFolder) {
+    return method === 'HEAD'
+      ? fetch(FILE_URL, { method:'HEAD', cache:'no-store' })
+      : fetch(FILE_URL + '?t=' + Date.now(), { cache:'no-store' });
+  }
+  try {
+    const v = await folderRead();
+    return new Response(method === 'HEAD' ? null : v.text,
+      { headers: { 'Last-Modified': v.stamp, 'X-Todo-Hash': v.hash } });
+  } catch (err) {
+    return new Response(null, { status: 404 });
+  }
+}
+
+const crashKey = () => 'todo-board-crash:' + (listFolder ? listFolder.name : '');
+function keepCrashCopy(text){ try { localStorage.setItem(crashKey(), text); } catch (err) {} }
+function dropCrashCopy(){ try { localStorage.removeItem(crashKey()); } catch (err) {} }
+
+function backupStamp(){
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + '-' +
+    p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+}
+async function folderBackup(text){
+  const dir = await listFolder.getDirectoryHandle('backups', { create:true });
+  const name = 'todo-backup-' + backupStamp() + '.md';
+  const w = await (await dir.getFileHandle(name, { create:true })).createWritable();
+  await w.write(text);
+  await w.close();
+  return name;
+}
+
+/* saveFile() hands over here when a folder is open. Same order as the
+   server's do_PUT: refuse a write built on a version that has moved, back up,
+   then write. */
+async function saveToFolder(auto){
+  const text = serializeDoc(state.doc);
+  keepCrashCopy(text);
+  try {
+    const disk = await folderRead();
+    if (state.diskHash && disk.hash !== state.diskHash) {
+      state.diskStamp = disk.stamp;
+      state.diskHash = disk.hash;
+      markDirty();
+      autoStatus('not saved — todo.md changed on disk since this tab read it');
+      await reload();
+      return;
+    }
+    let backup = '';
+    if (!folderBackedUp) { backup = await folderBackup(disk.text); folderBackedUp = true; }
+    const w = await (await listFolder.getFileHandle('todo.md')).createWritable();
+    await w.write(text);
+    await w.close();
+    dropCrashCopy();
+    state.originalText = text;
+    lastSaveAt = Date.now();
+    markClean((auto ? 'auto-saved' : 'saved ' + new Date().toLocaleTimeString()) +
+      (backup ? ' · backup: backups/' + backup : '') + ' · ' + listFolder.name + '/todo.md', auto);
+    await rememberStamp();
+  } catch (err) {
+    markDirty();
+    if (auto) {
+      autoStatus('auto-save failed at ' + new Date().toLocaleTimeString() + ' — your changes are still here');
+      $('#status').classList.add('dirty');
+      return;
+    }
+    alert('Could not save todo.md in ' + listFolder.name + ': ' + (err.message || err) +
+          '\n\nNothing was written. Your changes are also kept in this browser and are offered back ' +
+          'the next time you open this folder. Use “Download copy” if you need them out now.');
+  }
+}
+
+/* The lock bar's button. Shown on the demo only, and only where the browser
+   can open a folder at all. */
+function syncFolderButton(){
+  const btn = $('#openFolder');
+  if (!btn) return;
+  btn.classList.toggle('hidden', !(state.demo && folderSupported()));
+  btn.textContent = rememberedFolder ? 'Reopen ' + rememberedFolder.name : 'Open a folder…';
+  /* In folder mode the Data menu is open for the first time on this page, and
+     three of its items only talk to the helper. Off rather than failing. */
+  ['#closeFolder'].forEach(id => $(id) && $(id).classList.toggle('hidden', !listFolder));
+  ['#backupsBtn', '#refCardsBtn', '#runAgentBtn'].forEach(id => $(id) && $(id).classList.toggle('hidden', !!listFolder));
+}
+
+/* Last visit's folder. Opened straight away if the browser still grants it;
+   otherwise the button offers it by name, because asking again needs a click. */
+async function reopenRememberedFolder(){
+  if (!folderSupported() || listFolder) return;
+  const h = await recallFolder();
+  if (!h) return;
+  rememberedFolder = h;
+  syncFolderButton();
+  try {
+    if (await h.queryPermission({ mode:'readwrite' }) === 'granted') await openFolder(h);
+  } catch (err) { /* stays on the button */ }
+}
+
+function askForFolder(){
+  if (rememberedFolder) {
+    const h = rememberedFolder;
+    h.requestPermission({ mode:'readwrite' })
+      .then(p => p === 'granted' ? openFolder(h) : null)
+      .catch(err => alert('Could not open ' + h.name + '.\n\n' + (err.message || err)));
+    return;
+  }
+  showModal('Open a list folder', 'On this computer, in this browser',
+    '<div class="repdoc">' +
+      '<p>Pick the folder that holds your <code>todo.md</code>. The board reads and saves it ' +
+      'there, and keeps a copy of the file as it found it in <code>backups/</code> before ' +
+      'the first save.</p>' +
+      '<p>Nothing is uploaded: the list stays on this computer. This page’s code is ' +
+      'fetched from <strong>' + esc(location.host) + '</strong> each time you open it, so the ' +
+      'list is only as safe as that copy of the code.</p>' +
+      '<p class="qwhy">Plans, reports, agents and chat need the board helper on your own ' +
+      'machine, so they stay off here.</p>' +
+    '</div>',
+    [{ label:'Choose folder', primary:true, run: async () => {
+        let h;
+        try { h = await window.showDirectoryPicker({ id:'todo-list', mode:'readwrite' }); }
+        catch (err) { return; }   // cancelled
+        openFolder(h);
+      } },
+     { label:'Cancel' }], {});
+}
+
+async function openFolder(handle){
+  try {
+    await (await handle.getFileHandle('todo.md')).getFile();
+  } catch (err) {
+    alert('There is no todo.md in ' + handle.name + '.\n\nPick the folder that holds the list itself.');
+    return;
+  }
+  listFolder = handle;
+  folderBackedUp = false;
+  rememberedFolder = null;
+  rememberFolder(handle);
+  closeDrawer();
+  await loadFile();
+  if (!listFolder) return;   // loadFile could not read it and fell back
+  setDataMenuLabel(handle.name);
+  syncFolderButton();
+  offerCrashCopy();
+}
+
+async function closeFolder(){
+  if (state.dirty) {
+    alert('You have unsaved changes on this list.\n\nSave or discard them first, then close the folder.');
+    return;
+  }
+  listFolder = null;
+  // Awaited, or the demo would find the handle still stored and reopen it.
+  await forgetFolder();
+  setDataMenuLabel('');
+  loadDemo();
+}
+
+/* Changes that never reached the file last time, because the tab or the
+   browser closed first. Only offered when they differ from what is on disk. */
+function offerCrashCopy(){
+  let copy = null;
+  try { copy = localStorage.getItem(crashKey()); } catch (err) {}
+  if (!copy || copy === state.originalText) { dropCrashCopy(); return; }
+  showModal('Unsaved changes from last time', esc(listFolder.name + '/todo.md'),
+    changesHTML('Not saved last time', describeChanges(state.originalText, copy),
+      'Nothing found that differs from the file.'),
+    [{ label:'Put them back', primary:true, run: () => {
+        const disk = state.originalText;
+        load(copy, 'todo.md');
+        state.originalText = disk;   // the file is still the old version
+        markDirty();
+      } },
+     { label:'Download them', run: () => downloadText(copy, 'todo-unsaved.md') },
+     { label:'Throw them away', danger:true, run: () => dropCrashCopy() }]);
+}
+
+if ($('#openFolder')) $('#openFolder').onclick = askForFolder;
+if ($('#closeFolder')) $('#closeFolder').onclick = closeFolder;
 
 /* auto: this save was the timer's idea, not his, so a failure must not throw a
    dialog in front of whatever he is doing. It shows in the status line instead,
@@ -265,6 +529,8 @@ async function saveFile(auto, forceBackup){
   // The one guard that actually matters: state.doc can hold an old backup while
   // locked, and this must never let that overwrite the live todo.md.
   if (state.locked || !state.doc || !state.dirty) return;
+  // A folder opened on the hosted page: written by the page itself.
+  if (listFolder) return saveToFolder(auto);
   const text = serializeDoc(state.doc);
   try {
     /* The stamp this tab last agreed with, so the server can refuse a write

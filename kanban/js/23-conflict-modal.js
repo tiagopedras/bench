@@ -54,7 +54,7 @@ async function reload(){
   // what he would be throwing away before he throws it away.
   let diskText = null;
   try {
-    const res = await fetch(FILE_URL + '?t=' + Date.now(), { cache:'no-store' });
+    const res = await fetchList();
     if (res.ok) diskText = await res.text();
   } catch (err) { /* handled below by the null check */ }
   offerReload(diskText, true);
