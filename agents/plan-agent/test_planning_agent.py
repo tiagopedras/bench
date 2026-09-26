@@ -278,6 +278,56 @@ def test_sub_tasks():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+UNHANDED_DOC = SUB_DOC + """- [ ] **Tagged for the Implement agent by hand** [to:: Implement agent] `id:cd56ef`
+- [ ] **Tagged with no id yet** [to:: Plan agent]
+- [ ] **His own task** [to:: Tiago] `id:gh78ij`
+
+### Done
+
+- [x] **Tagged and finished** [to:: Plan agent] `id:kl90mn`
+"""
+
+
+def test_unhanded():
+    """A tag with no handover behind it is handed over by the board, at the Plan
+    agent's request (handover-tag-exception, 26 Sep 2026)."""
+    got = [(t.stable_id, a) for t, a in pick.unhanded(todo.parse_doc(UNHANDED_DOC))]
+    check("a tag with no handover sub-tasks is found, for either agent, and nothing else",
+          got, [("qr90st", "Plan agent"), ("uv12wx", "Plan agent"), ("cd56ef", "Implement agent")])
+    plan_, _ = pick.select(UNHANDED_DOC, day=dt.date(2026, 9, 22), use_ledger=False)
+    check("and none of them is planned before the board has laid the handover out",
+          titles(plan_), ["Handed over the new way"])
+
+    tmp = tempfile.mkdtemp()
+    try:
+        q = os.path.join(tmp, "tick-queue.json")
+        asked = plan.queue_handovers(UNHANDED_DOC, path=q)
+        check("one request each, by title for the log", asked,
+              ["Handed over the old way", "An ordinary step for an agent",
+               "Tagged for the Implement agent by hand"])
+        check("each names the task by id and the agent in its tag, and asks as the Plan agent",
+              [(e["handover"], e["to"], e["by"], "sub" in e) for e in tick_queue.read(q)],
+              [("qr90st", "Plan agent", "Plan agent", False),
+               ("uv12wx", "Plan agent", "Plan agent", False),
+               ("cd56ef", "Implement agent", "Plan agent", False)])
+        check("a task already waiting on a request is not asked for twice",
+              (plan.queue_handovers(UNHANDED_DOC, path=q), len(tick_queue.read(q))), ([], 3))
+
+        # What the board does with it, written back the way handOver() writes it.
+        done = UNHANDED_DOC.replace(
+            "- [ ] **Handed over the old way** [impact:: high] [effort:: M] [to:: Plan agent] `id:qr90st`",
+            "- [ ] **Handed over the old way** [impact:: high] [effort:: M] [to:: Plan agent] `id:qr90st`\n"
+            "  - [ ] Plan [to:: Plan agent] `#qr90st-plan` `id:ff0001`\n"
+            "  - [ ] Review the plan [to:: Tiago] `#qr90st-plan-review` `blocked-by:qr90st-plan` `id:ff0002`")
+        plan_, _ = pick.select(done, day=dt.date(2026, 9, 23), use_ledger=False)
+        check("once the board has handed it over, the next run plans it",
+              titles(plan_), ["Handed over the new way", "Handed over the old way"])
+        check("and it is no longer asked for",
+              "qr90st" in [t.stable_id for t, _ in pick.unhanded(todo.parse_doc(done))], False)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 # --- the rules the queue falls back on ---------------------------------------
 
 RULES_DOC = """# List
@@ -1603,6 +1653,7 @@ def main():
     test_per_dataset_schedule()
     test_pick()
     test_sub_tasks()
+    test_unhanded()
     test_rules()
     test_folding()
     test_plan_type()

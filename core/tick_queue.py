@@ -24,6 +24,17 @@ only. For a pre-approved type the board also ticks Review the plan, with the
 note "pre-approved type". That is the board's decision, made from its own list:
 the agent only says what kind of plan it wrote.
 
+The other kind of request asks for a handover rather than a tick:
+
+    {"id": "7c1d0e4a", "handover": "ab12cd", "to": "Plan agent", "by": "Plan agent",
+     "at": "2026-09-26T02:00:03", "note": "tagged with no handover"}
+
+`handover` is the task's own id. The Plan agent leaves one for a task carrying
+`[to::]` an agent with none of the sub-tasks a handover lays out (pick.unhanded()),
+and the board runs handOver() on it, as Delegate to would. It is applied only
+while the task's `[to::]` still names that agent, and does nothing to a task
+that has since been handed over.
+
 The file is appended to and removed from under a lock, and the board removes
 only the ids it dealt with rather than rewriting the list, so a request that
 lands while the board is draining is not written over.
@@ -110,6 +121,24 @@ def append(sub, by, note="", path=None, now=None, plan="", kind=""):
         entry["plan"] = str(plan)
     if kind:
         entry["type"] = str(kind).strip().lower()
+    with _Locked(path):
+        items = read(path)
+        items.append(entry)
+        _write(path, items)
+    return entry
+
+
+def append_handover(task_id, to, by, note="", path=None, now=None):
+    """Asks the board to hand task `task_id` over to `to`, on behalf of `by`."""
+    path = path or queue_path()
+    entry = {
+        "id": uuid.uuid4().hex[:8],
+        "handover": str(task_id).strip().lower(),
+        "to": str(to).strip(),
+        "by": str(by).strip(),
+        "at": (now or dt.datetime.now()).replace(microsecond=0).isoformat(),
+        "note": note,
+    }
     with _Locked(path):
         items = read(path)
         items.append(entry)

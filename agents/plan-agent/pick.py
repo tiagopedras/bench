@@ -75,7 +75,8 @@ def plannable(task, slugs=None):
     `[to:: Plan agent]` on a task with no such sub-tasks is not planned. It was
     until 22 Sep 2026, when the Plans view went: a plan is read from the review
     behind it on the card, so a plan written for a task that was never handed over
-    would have nowhere to be read. Handing it over again is what brings it back.
+    would have nowhere to be read. Handing it over again is what brings it back,
+    and since 26 Sep 2026 the runner asks the board to do that (unhanded() below).
     `sub_id` is empty for a sub-task with no id written on its line, which cannot
     be ticked by name.
     """
@@ -88,6 +89,46 @@ def plannable(task, slugs=None):
                 and not todo.is_blocked(s, slugs)):
             return True, s.stable_id
     return False, ""
+
+
+def handed_over(task):
+    """Whether the task carries the sub-tasks a handover lays out.
+
+    The same test handOver() makes on the board before it lays them out: a
+    sub-task assigned to an agent whose slug is the task's id and `-plan` or
+    `-implement`. Ticked, waiting or open makes no difference, since any of them
+    means a handover happened.
+    """
+    if not task.stable_id:
+        return False
+    made = re.compile(re.escape(task.stable_id) + r"-(plan|implement)")
+    return any(todo.agent_of(s["task"].to) and made.fullmatch(s["task"].slug or "")
+               for s in todo.split_body(task)[1])
+
+
+def unhanded(tasks):
+    """(task, agent) for every open task tagged to an agent with no handover behind it.
+
+    The exception to plannable() above, since 26 Sep 2026. A `[to:: Plan agent]`
+    or `[to:: Implement agent]` written straight into the file, which the pa
+    skill allows, used to sit there looking delegated with nobody working it.
+    Now the runner asks the board to lay the handover out, through the tick
+    queue (plan.queue_handovers()), and the board does it with handOver(), the
+    same function the drawer's Delegate to calls. This agent still never writes
+    todo.md. The task is planned the first run after the board has done it.
+
+    A task with no `id:` is left out: the board gives every task one when it
+    loads, so it has one by the next run, and a request needs it to name the
+    task.
+    """
+    out = []
+    for t in tasks:
+        agent = todo.agent_of(t.to)
+        if t.done or not t.stable_id or agent not in (todo.PLAN_AGENT, todo.IMPLEMENT_AGENT):
+            continue
+        if not handed_over(t):
+            out.append((t, agent))
+    return out
 
 # The three reasons a task delegated to the Plan agent starts its life on Plans in Backlog
 # rather than in tonight's queue. They read on the card, so each one says what

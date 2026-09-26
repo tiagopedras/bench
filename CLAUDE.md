@@ -69,7 +69,8 @@ symbol needed at first use) and keep it free of `window`, `document` and
 Plan sub-task assigned to it, and writes a plan for each into
 `data/<dataset>/plans/`. It proposes and never executes. A task reaches it by
 being handed over on the board (see below); `[to:: Plan agent]` on a task
-nobody handed over is not planned. Read
+nobody handed over is not planned until the board hands it over, which the
+agent asks for after each run (`pick.unhanded()`). Read
 [agents/plan-agent/README.md](agents/plan-agent/README.md) before changing any
 of it, particularly the schedule and its floor — the whole of what keeps it out
 of the working day.
