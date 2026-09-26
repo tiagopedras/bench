@@ -60,6 +60,7 @@ function updateLockUI(){
   $('#lockBarLabel').textContent = !state.locked ? ''
     : 'Viewing ' + state.lockedLabel + ' — nothing here can be edited or saved.';
   $('#dataMenu').classList.toggle('hidden', state.locked);
+  syncFolderButton();
   if (state.locked) $('#datasetMenu').classList.add('hidden');
   else if (state.datasets) $('#datasetMenu').classList.remove('hidden');
   syncLockBarHeight();

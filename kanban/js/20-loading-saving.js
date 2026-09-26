@@ -116,7 +116,7 @@ function showErr(msg){
    files around it. */
 async function loadFile(){
   try {
-    const res = await fetch(FILE_URL + '?t=' + Date.now(), { cache:'no-store' });
+    const res = await fetchList();
     if (!res.ok) throw new Error('the server answered ' + res.status);
     load(await res.text(), 'todo.md');
     state.diskStamp = res.headers.get('Last-Modified') || null;
@@ -130,6 +130,15 @@ async function loadFile(){
     drainAttachQueue();
     drainTickQueue();
   } catch (err) {
+    /* A folder opened on the hosted page that can no longer be read — moved,
+       renamed, or its permission withdrawn. Forgotten, so the demo below does
+       not try to reopen it straight away. See 21-datasets.js. */
+    if (listFolder) {
+      listFolder = null;
+      forgetFolder();
+      setDataMenuLabel('');
+      showToast('Could not read todo.md in that folder any more.', 'bad');
+    }
     if (await loadDemo()) return;
     showErr('<strong>Could not read todo.md.</strong><br>Close this tab and start the board by ' +
             'double-clicking <strong>run.command</strong> in the to-dos folder. ' +

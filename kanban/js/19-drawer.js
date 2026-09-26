@@ -735,7 +735,8 @@ function projectSection(t){
   // state.demo is the static copy (Vercel, or the board before its helper is
   // up): no server to make a folder or open one, so no buttons that would
   // fail. A backup preview can still open a folder, but not change the task.
-  const live = !state.demo;
+  // A folder opened on the hosted page has no server either. See 21-datasets.js.
+  const live = !state.demo && !listFolder;
   const canEdit = live && !state.locked;
   if (!proj) return sideSection('Project', 'project',
     emptyState('No folder yet. Name one in Description as `data/projects/<folder>`, or a path of your own.') +
@@ -2052,7 +2053,7 @@ function openProjectDrawer(name){
         ? '<code class="projpath">' + esc(name) + '/</code>'
         : '<a class="projpath" href="' + esc(projectUrl(name)) + '" target="_blank" rel="noopener">' +
             'data/projects/' + esc(name) + '/</a>') +
-      (state.demo ? '' : '<div class="pactions"><button type="button" class="btn outline small" ' +
+      (state.demo || listFolder ? '' : '<div class="pactions"><button type="button" class="btn outline small" ' +
         'id="projOpenFolder">Open folder</button></div>') +
       '<div class="projfiles" id="projFiles"><span class="help">Reading the folder…</span></div>' +
     '</div>' +
