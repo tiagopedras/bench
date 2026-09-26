@@ -85,6 +85,9 @@ export type { AgentsAppProps } from '@tiagopedras/agents-engine/react'
 /* showModal()'s sheet, on Tenon's Modal since 25 Sep 2026. */
 export { BoardModal, mountBoardModal, unmountBoardModal } from './BoardModal'
 export type { BoardModalProps, BoardModalButton } from './BoardModal'
+/* The drawer's Project field, on React since 26 Sep 2026. */
+export { DrawerProjectSection } from './DrawerProjectSection'
+export type { DrawerProjectSectionProps, DrawerProjectSectionMeta } from './DrawerProjectSection'
 export { RefCards } from './RefCards'
 export type {
   RefCardsProps, Usage, UsageState, ScheduleJob, ScheduleState, RunResults,
