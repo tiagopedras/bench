@@ -121,6 +121,10 @@
 <main id="main">
   <div class="headline hidden" id="headline"></div>
   <div class="board hidden" id="board"></div>
+  <!-- Move to column, Move to bucket, Delete — for whatever shift- or cmd/ctrl-
+       clicking a card has put in state.selectedIds. Hidden until that holds
+       something; built by renderBulkBar() in 19-drawer.js. -->
+  <div class="bulkbar hidden" id="bulkBar"></div>
   <div id="lists" class="hidden"></div>
   <section class="start" id="start">
     <h2 id="startTitle">Loading todo.md…</h2>

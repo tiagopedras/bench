@@ -424,9 +424,15 @@ function cardModel(t, opts){
     opts.tier === WAIT_COL ? ' waiting' :
     opts.tier === BACKLOG_TIER ? ' backlog' : '';
 
+  /* Held for a bulk action, board or not — see state.selectedIds (02-state.js)
+     and renderBulkBar() (19-drawer.js). Read here rather than passed in opts
+     so every caller of cardModel() gets the same mark on the same task for
+     free, the matrix's hover preview included. */
+  const selected = !!(state.selectedIds && state.selectedIds.has(t.id));
+
   return {
     id: t.id,
-    cls: statusClass.trim() + (t.headline ? ' onething' : ''),
+    cls: statusClass.trim() + (t.headline ? ' onething' : '') + (selected ? ' selected' : ''),
     title: t.title,
     chips, when, progress
   };

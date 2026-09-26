@@ -376,6 +376,26 @@
     background:color-mix(in srgb, var(--tenon-background-accent) 10%, var(--tenon-background-default)); color:var(--tenon-text-accent);
   }
 
+  /* ---------- bulk card editing ----------
+     Move to column, Move to bucket, Delete — for whatever shift- or cmd/ctrl-
+     clicking a card has put in state.selectedIds. Sits below the board rather
+     than above it like .headline: it answers for cards already picked out
+     down there, not for one thing pinned above everything. Built and shown by
+     renderBulkBar() (19-drawer.js), which toggles .hidden itself. */
+  .bulkbar{
+    display:flex; align-items:center; gap:10px; margin:12px 0 0; padding:9px 14px;
+    border:1px solid color-mix(in srgb, var(--tenon-stroke-accent) 40%, transparent); border-radius:var(--tenon-radius-lg);
+    background:color-mix(in srgb, var(--tenon-background-accent) 8%, var(--tenon-background-raised)); box-shadow:var(--tenon-elevation-overlay);
+  }
+  .bulkcount{font-weight:650; color:var(--tenon-text-accent)}
+  /* The look a card wears while it's held for one of the actions above —
+     outlined rather than tinted like .onething, so the two marks read as
+     different kinds of thing: one says what this card is, the other says
+     what you're about to do to it. Drawn from cardModel()'s own `selected`
+     class (09-columns.js), so it shows wherever that card renders, the
+     matrix's hover preview included. */
+  .tenon-card.selected{outline:2px solid var(--tenon-stroke-accent); outline-offset:1px}
+
   /* ---------- projects ----------
      A project is a folder, not a task, so it gets a chip rather than a card. */
   /* The chip is Tenon's outlined `Pill`, and so is the theme chip beside it

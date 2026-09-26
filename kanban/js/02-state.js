@@ -90,6 +90,14 @@ const state = {
      sessions. */
   agentFilter: false,
   matrixHideWaiting: false,
+  /* Ids held for a bulk action — Move to column, Move to bucket, Delete — via
+     the bar the board shows once this holds anything (renderBulkBar(),
+     19-drawer.js). Toggled by shift- or cmd/ctrl-click on a card (TaskCard.tsx,
+     onOpen's multi flag) and drawn as the .selected look cardModel() puts on
+     the same task everywhere it renders, board included. In memory only, same
+     as bucketFilter above: a card lands here for the length of one action, not
+     across a reload. */
+  selectedIds: new Set(),
   /* Width of the timeline's frozen title column. Remembered the same way the
      drawer's own width is — a drag he does once should not repeat itself. */
   tlLabelWidth: (+localStorage.getItem('todo-board-tl-label')) || 200,

@@ -2430,8 +2430,14 @@ $('#del').onclick = () => {
 $('#undo').onclick = undo;
 document.addEventListener('keydown', e => {
   /* The sub-task panel sits over the task drawer, so Escape takes off only
-     the top one. */
-  if (e.key === 'Escape') { if (subPanelOpen()) closeSubPanel(); else closeDrawer(); }
+     the top one. A selection with nothing else open is the next thing Escape
+     can mean, ahead of falling through to closeDrawer() with no drawer to
+     close. */
+  if (e.key === 'Escape') {
+    if (subPanelOpen()) closeSubPanel();
+    else if (!state.openTask && !state.openProject && state.selectedIds.size) clearSelection();
+    else closeDrawer();
+  }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveFile(); }
   // Not while a field has focus — cmd/ctrl+Z there means "undo my last few
   // keystrokes", which the browser already does natively on that one field.
@@ -2441,4 +2447,156 @@ document.addEventListener('keydown', e => {
     if (tag !== 'INPUT' && tag !== 'TEXTAREA') { e.preventDefault(); undo(); }
   }
 });
+
+/* =========================================================================
+   Bulk card editing — state.selectedIds (02-state.js) is a Set of task ids,
+   toggled by shift- or cmd/ctrl-click on a card (TaskCard.tsx's onOpen, wired
+   in 18-timeline.js's renderBoard(); cardModel(), 09-columns.js, draws the
+   same task's `selected` class wherever it renders). Everything here acts on
+   the whole set at once — each action below is one markDirty() regardless of
+   how many cards it touches, so undo (05-undo.js) puts every one of them
+   back in a single step, not one step per card.
+   ========================================================================= */
+
+function toggleCardSelect(id){
+  if (state.locked) return;
+  if (state.selectedIds.has(id)) state.selectedIds.delete(id);
+  else state.selectedIds.add(id);
+  renderBoard();
+  renderBulkBar();
+}
+
+function clearSelection(){
+  if (!state.selectedIds.size) return;
+  state.selectedIds.clear();
+  renderBoard();
+  renderBulkBar();
+}
+
+/* Every selected id resolved to where it actually is, dropping any that have
+   gone since — closed by a save elsewhere, say. locate() is the one place
+   that answers "where", so a bulk action never has to walk the buckets
+   itself to find out. */
+function selectedLocations(){
+  return [...state.selectedIds].map(id => locate(id)).filter(Boolean);
+}
+
+/* The bar itself: a count and the three actions, drawn fresh from state.doc
+   each time rather than diffed, since it is at most one row and only ever
+   redrawn on a selection change or a view switch. Hidden by its own check on
+   state.view — see renderView() (18-timeline.js) — rather than cleared by
+   leaving the board, so the pick is still there if he switches back to it. */
+function renderBulkBar(){
+  const bar = $('#bulkBar');
+  if (!bar) return;
+  const n = state.selectedIds.size;
+  const show = n > 0 && state.view === 'board' && !state.locked;
+  bar.classList.toggle('hidden', !show);
+  if (!show) return;
+  bar.innerHTML =
+    '<span class="bulkcount">' + n + ' card' + (n === 1 ? '' : 's') + ' selected</span>' +
+    '<span class="spacer"></span>' +
+    '<button class="btn small" id="bulkColBtn">Move to column</button>' +
+    '<button class="btn small" id="bulkBucketBtn">Move to bucket</button>' +
+    '<button class="btn small danger" id="bulkDelBtn">Delete</button>' +
+    '<button class="btn small ghost" id="bulkClearBtn">Clear</button>';
+  $('#bulkColBtn').onclick = openBulkColumnPicker;
+  $('#bulkBucketBtn').onclick = openBulkBucketPicker;
+  $('#bulkDelBtn').onclick = bulkDeleteSelected;
+  $('#bulkClearBtn').onclick = clearSelection;
+}
+
+/* Same sheet shape as confirmDeleteHeading (08-buckets.js): a <select> read as
+   it changes, since showModal takes the sheet down before Move runs and the
+   select is gone by then. Every column is offered, Done included — a bulk
+   move is a plain relocation, not a tick, so it carries none of moveCardTo()'s
+   (04-tier-two-the-one-thing.js) guard against landing on or leaving Done. */
+function openBulkColumnPicker(){
+  const locs = selectedLocations();
+  if (!locs.length) return;
+  const options = tierOrder().concat([DONE_COL]);
+  let dest = options[0];
+  showModal('Move ' + locs.length + ' card' + (locs.length === 1 ? '' : 's') + ' to a column',
+    'Each keeps its bucket and lands at the top of the column you pick, whatever column it is in now.',
+    '<label class="field"><span>Column</span><select id="bulkColDest">' +
+      options.map((name, i) => '<option value="' + i + '">' + esc(tierLabel(name)) + '</option>').join('') +
+    '</select></label>',
+    [{ label: 'Cancel' }, { label: 'Move', primary: true, run: () => bulkMoveToColumn(dest) }]);
+  const sel = modalEl.querySelector('#bulkColDest');
+  sel.onchange = () => { dest = options[+sel.value]; };
+}
+
+function openBulkBucketPicker(){
+  const locs = selectedLocations();
+  if (!locs.length || state.doc.buckets.length < 2) return;
+  const options = state.doc.buckets;
+  let dest = options[0];
+  showModal('Move ' + locs.length + ' card' + (locs.length === 1 ? '' : 's') + ' to a bucket',
+    'Each keeps its column, its text and its tags, and lands in the bucket you pick here.',
+    '<label class="field"><span>Bucket</span><select id="bulkBucketDest">' +
+      options.map((b, i) => '<option value="' + i + '">' + esc(b.name) + '</option>').join('') +
+    '</select></label>',
+    [{ label: 'Cancel' }, { label: 'Move', primary: true, run: () => bulkMoveToBucket(dest) }]);
+  const sel = modalEl.querySelector('#bulkBucketDest');
+  sel.onchange = () => { dest = options[+sel.value]; };
+}
+
+/* The bucket menu's own move (setBucketMenu's [data-bucket] handler, above)
+   looped once per selected task: splice out of where it is, ensureTier() the
+   same column name in the new bucket, push it in. */
+function bulkMoveToColumn(tierName){
+  if (state.locked) return;
+  let moved = 0;
+  state.selectedIds.forEach(id => {
+    const loc = locate(id);
+    if (!loc || loc.tier.name === tierName) return;
+    loc.tier.tasks.splice(loc.index, 1);
+    ensureTier(loc.bucket, tierName).tasks.unshift(loc.task);
+    moved++;
+  });
+  state.selectedIds.clear();
+  if (moved) markDirty();
+  refreshView();
+  renderBulkBar();
+}
+
+function bulkMoveToBucket(bucket){
+  if (state.locked) return;
+  let moved = 0;
+  state.selectedIds.forEach(id => {
+    const loc = locate(id);
+    if (!loc || loc.bucket === bucket) return;
+    const target = ensureTier(bucket, loc.tier.name);
+    loc.tier.tasks.splice(loc.index, 1);
+    target.tasks.push(loc.task);
+    moved++;
+  });
+  state.selectedIds.clear();
+  if (moved) markDirty();
+  refreshView();
+  renderBulkBar();
+}
+
+/* One confirm(), naming the count and the first few titles, same as the
+   drawer's own #del above — never one confirm() per card. Re-reads each
+   task's index at delete time rather than trusting loc.index, since an
+   earlier splice in this same pass can have shifted it. */
+function bulkDeleteSelected(){
+  if (state.locked) return;
+  const locs = selectedLocations();
+  if (!locs.length) return;
+  const names = locs.slice(0, 3).map(l => '"' + l.task.title + '"').join(', ');
+  const more = locs.length > 3 ? ' and ' + (locs.length - 3) + ' more' : '';
+  if (!confirm('Delete ' + locs.length + ' task' + (locs.length === 1 ? '' : 's') + ' — ' + names + more +
+    '? This removes them from todo.md when you save.')) return;
+  if (state.openTask && state.selectedIds.has(state.openTask)) closeDrawer();
+  locs.forEach(loc => {
+    const i = loc.tier.tasks.indexOf(loc.task);
+    if (i > -1) loc.tier.tasks.splice(i, 1);
+  });
+  state.selectedIds.clear();
+  markDirty();
+  refreshView();
+  renderBulkBar();
+}
 
