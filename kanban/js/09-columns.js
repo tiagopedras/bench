@@ -336,8 +336,9 @@ function cardModel(t, opts){
      string, for the matrix's hover preview, and TaskCard (kanban/ui/TaskCard.tsx)
      for the board. Deciding which chips a task earns lives here once, so the two
      cannot disagree about it. A chip is { cls, text, title?, project? } for one
-     still drawn as the board's own `.tag` classes, or { tone, text, title? } for
-     one drawn as Tenon's `Tag` — see DUE_TONE below for why due has three. */
+     drawn as Tenon's `Tag` ({ tone, text, title? }), as Tenon's outlined `Pill`
+     ({ pill, cls?, text, title?, project? }) for what a task belongs to or
+     waits for, or, for your move alone, the board's own `.tag` class. */
   const chips = [];
   /* The card sitting in its own column is the same task as the one pinned in
      the headline bar, and used to give no sign of that — open two tabs and
@@ -354,15 +355,14 @@ function cardModel(t, opts){
     title: 'A sub-task on this card is waiting on you' });
   /* First, because it says which piece of work this belongs to, and that frames
      everything after it. Clicking it opens the project rather than the card —
-     see the capture-phase handler on [data-project]. Kept as the board's own
-     chip: it is a button with a hover state and its own icon, which `Tag` does
-     not draw. */
+     see the capture-phase handler on [data-project]. An outlined `Pill`, with
+     `proj` adding the hover and the icon a way into something else wants. */
   const proj = taskProject(t);
-  if (proj) chips.push({ cls: 'tag proj', text: proj, project: proj, title: 'Everything on ' + proj });
+  if (proj) chips.push({ pill: 'neutral', cls: 'proj', text: proj, project: proj, title: 'Everything on ' + proj });
   /* The bucket's own sub-organisation — `[theme:: ]`, values declared per
      bucket (see state.bucketThemes in 02-state.js). Beside the project chip:
      both answer "what does this belong to", one level up and one level down. */
-  if (t.theme) chips.push({ cls: 'tag theme', text: t.theme, title: 'Theme: ' + t.theme });
+  if (t.theme) chips.push({ pill: 'neutral', text: t.theme, title: 'Theme: ' + t.theme });
   // Says it once, on the card, rather than leaving a gap that reads as "low".
   if (unscored(t) && !t.done) chips.push({ tone: 'warning', text: 'needs scoring' });
   /* A cancellation is a tick plus a tag (CONVENTIONS.md, Cancelling a task), so
@@ -380,9 +380,9 @@ function cardModel(t, opts){
     title: t.impact + ' impact' });
   if (t.effort) chips.push({ tone: 'neutral', text: t.effort });
   const si = startInfo(t.start);
-  /* Kept as the board's own chip: the dashed border says "gate", not "warning",
-     which is the one thing none of Tenon's tones draw. */
-  if (si) chips.push({ cls: 'tag startdate', text: si.label + ' · ' + si.note });
+  /* An outlined `Pill`, dashed by `startdate`: the dash says "gate", not
+     "warning", which none of Tenon's tones draw. */
+  if (si) chips.push({ pill: 'neutral', cls: 'startdate', text: si.label + ' · ' + si.note });
   /* An agent gets a face here too. TaskCard already wraps avatarHTML in its
      own <span class="avatar">, so this passes the bare <svg> — agentOf() is
      the one place that decides "agent or not" (core/avatar.js), and it's

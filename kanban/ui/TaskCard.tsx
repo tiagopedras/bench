@@ -13,17 +13,21 @@
  * over it.
  */
 import type { DragEvent, KeyboardEvent } from 'react'
-import { Card, Tag } from '@tiagopedras/tenon'
-import type { TagTone } from '@tiagopedras/tenon'
+import { Card, Pill, Tag } from '@tiagopedras/tenon'
+import type { PillTone, TagTone } from '@tiagopedras/tenon'
 import { InlineMd } from './InlineMd'
 
 export interface Chip {
   /** One of Tenon's `Tag` tones — draws a Tenon `Tag`. Set instead of `cls`. */
   tone?: TagTone
-  /** The board's own `.tag` classes, for the handful of chips no tone fits:
-   *  your move (solid, no filled tone matches it), the project chip (a button
-   *  with its own hover state) and the start-date gate (a dashed border).
-   *  Set instead of `tone`. */
+  /** Tenon's `Pill`, the outlined chip, in this tone — for the chips that
+   *  say what a task belongs to or waits for rather than a fact about it:
+   *  the project, the theme and the start date. Set instead of `tone`. */
+  pill?: PillTone
+  /** With `pill`, one extra class the board styles on top (the project
+   *  chip's hover, the start date's dashed border). Alone, the board's own
+   *  `.tag` classes, now only for your move: it is solid, and neither `Tag`
+   *  nor `Pill` has a filled tone. */
   cls?: string
   text: string
   title?: string
@@ -71,6 +75,9 @@ function ChipSpan({ c }: { c: Chip }) {
     ? <span className="avatar" dangerouslySetInnerHTML={{ __html: c.avatarHTML }} />
     : null
   if (c.tone) return <Tag tone={c.tone} title={c.title}>{avatar}{c.text}</Tag>
+  if (c.pill) return (
+    <Pill tone={c.pill} className={c.cls} data-project={c.project} title={c.title}>{avatar}{c.text}</Pill>
+  )
   return (
     <span className={c.cls} data-project={c.project} title={c.title}>{avatar}{c.text}</span>
   )
