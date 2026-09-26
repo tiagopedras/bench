@@ -168,6 +168,7 @@ def should_stop(target, run):
 
 def after(target, run):
     _use(target["id"])
+    _queue_handovers()
     night = _night.pop(target["id"], None)
     skipped = [(l["title"], l["why"]) for l in run["left"]]
     skipped += [(d["title"], "the run failed") for d in run["did"] if d["outcome"] == "failed"]
@@ -191,6 +192,24 @@ def after(target, run):
     plan.log("done: %d written%s, $%.2f spent%s" % (
         len(written), (" (%d folded)" % folded) if folded else "", run["cost"], " (cut short)" if stopped else ""))
     plan.announce(written, skipped, stopped)
+
+
+def _queue_handovers():
+    """A task tagged to an agent with no handover behind it, handed over by the board.
+
+    After every real run, scheduled or Run now, never a dry one. See
+    pick.unhanded() and plan.queue_handovers(). A failure here is logged and
+    never stops the night's own bookkeeping.
+    """
+    try:
+        with open(paths.todo_path(), encoding="utf-8") as fh:
+            asked = plan.queue_handovers(fh.read())
+    except Exception as exc:  # noqa: BLE001
+        plan.log("handover requests failed: %s: %s" % (type(exc).__name__, exc))
+        return
+    if asked:
+        plan.log("asked the board to hand over %d tagged task%s: %s" % (
+            len(asked), "" if len(asked) == 1 else "s", "; ".join(asked)))
 
 
 def notify(target, run, text):

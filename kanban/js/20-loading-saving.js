@@ -147,6 +147,39 @@ async function loadFile(){
   }
 }
 
+/* A plan written by a run that does not go through this tab reaches the list as
+   a tick in tick-queue.json, and nothing but a drain turns that into the review's
+   `Plan:` line. So the queue is drained again whenever the tab comes back into
+   view, which is when he would next look at a card, and not on a timer of its
+   own. */
+function drainOnReturn(){
+  if (document.visibilityState === 'hidden') return;
+  drainTickQueue();
+}
+window.addEventListener('focus', drainOnReturn);
+document.addEventListener('visibilitychange', drainOnReturn);
+
+/* A run started from this tab (Run the Plan agent now) is watched until it
+   finishes, then the queue is drained once. The check rides the file watcher's
+   existing tick (watchTick() in 24-autosave-watching.js) rather than a timer of
+   its own, and asks nothing while no run from here is going. The lock can take
+   a moment to appear, so "not live" only counts as finished once the run has
+   been seen live, or after a minute of never seeing it. */
+let runStartedHere = null;
+function watchRunStartedHere(){
+  runStartedHere = { since: Date.now(), seenLive: false };
+}
+async function checkRunStartedHere(){
+  const run = runStartedHere;
+  if (!run) return;
+  let live;
+  try { live = !!(await getJSON('/planning-agent.json')).live; } catch (err) { return; }
+  if (live) { run.seenLive = true; return; }
+  if (!run.seenLive && Date.now() - run.since < 60 * 1000) return;
+  if (runStartedHere === run) runStartedHere = null;
+  drainTickQueue();
+}
+
 /* Read the Jira boards, if there are any. Absent is the ordinary case: the file
    is gitignored, so a fresh clone has none and the buttons simply do not show.
    It falls back to a committed example the same way the list falls back to

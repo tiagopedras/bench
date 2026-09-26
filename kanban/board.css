@@ -378,17 +378,12 @@
 
   /* ---------- projects ----------
      A project is a folder, not a task, so it gets a chip rather than a card. */
-  .tag.proj{
-    background:transparent; border:1px solid var(--tenon-stroke-default); color:var(--tenon-text-subtle);
-    font-weight:550; cursor:pointer;
-  }
-  .tag.proj:hover{border-color:var(--tenon-stroke-accent); color:var(--tenon-text-accent)}
-  .tag.proj::before{content:'▣ '; opacity:.6}
-  /* A bucket's own sub-organisation (`[theme:: ]`). Outlined like .tag.proj
-     rather than filled — one more way to see the task, not a status on it. */
-  .tag.theme{
-    background:transparent; border:1px solid var(--tenon-stroke-default); color:var(--tenon-text-subtle);
-  }
+  /* The chip is Tenon's outlined `Pill`, and so is the theme chip beside it
+     (cardModel(), kanban/js/09-columns.js). This adds only what makes it a way
+     in rather than a label: the pointer, the accent on hover and the icon. */
+  .tenon-pill.proj{cursor:pointer}
+  .tenon-pill.proj:hover{border-color:var(--tenon-stroke-accent); color:var(--tenon-text-accent)}
+  .tenon-pill.proj::before{content:'▣'; opacity:.6}
   /* The project the task's work lives in, in the drawer's second column. Built
      on the same shell as a conversation card next to it — see the shared rule
      down in the conversation-cards section — because they are the same kind of thing in
@@ -2233,12 +2228,13 @@
   /* Urgent and due read as "look at this now", so they sit apart from the rest
      of the meta row, pinned to the right rather than wrapping in with it. */
   .meta-when{display:flex; gap:5px; margin-left:auto; align-items:center}
-  /* The board's own chip, for the handful cardModel() keeps off Tenon's `Tag`
-     because no tone fits: your move (solid, no filled tone), the project chip
-     (a button with a hover state) and the start date below (a dashed gate).
-     Everything else a chip can say is a `Tag` tone now — see cardModel() in
-     kanban/js/09-columns.js. The solid/outline colour axis this used to carry
-     (`.tag--outline`, `.tag--blue` and the rest) went with them, 25 Sep 2026. */
+  /* The board's own chip. On a card it is only your move now (solid, and no
+     Tenon tone is filled); the project, theme and start date are Tenon's
+     `Pill` and everything else a `Tag` tone — see cardModel() in
+     kanban/js/09-columns.js. The drawer, the timeline, Backups and Projects
+     still draw it, which is what the rules below it are for. The solid/outline
+     colour axis this used to carry (`.tag--outline`, `.tag--blue` and the
+     rest) went, 25 Sep 2026. */
   .tag{font-size: var(--tenon-typography-size-sm); font-weight:600; padding:2px 6px; border-radius:var(--tenon-radius-default); background:var(--tenon-background-neutral); color:var(--tenon-text-subtle)}
   /* The two bracket forms that turn up inside prose rather than on a task
      line — a `[key:: value]` tag and a `[placeholder]` — picked out by
@@ -2276,6 +2272,8 @@
   .tag.startdate{
     background:transparent; border:1px dashed var(--tenon-stroke-default); color:var(--tenon-text-faint); font-weight:550;
   }
+  /* The same gate on a card, where the chip is Tenon's outlined `Pill`. */
+  .tenon-pill.startdate{border-style:dashed; color:var(--tenon-text-faint)}
   /* Still what 19-drawer.js and 18-timeline.js draw a due-date chip as — they
      are not React yet, so they still write the class literally rather than
      asking cardModel() for a tone. The board's own two cards ask for the

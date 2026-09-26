@@ -360,6 +360,30 @@ const pinCheck = await evalJS(`(() => {
 check(`the pinned cards (${Object.keys(CARD_PARITY).length} of them) match what the board actually draws`,
   pinCheck.length === 0, pinCheck.slice(0, 3).join('\n'))
 
+/* The project, theme and start-date chips are Tenon's outlined `Pill`, and
+   your move is the one chip still drawn as the board's own `.tag`. Gamma is
+   dressed up in state only and put back, so nothing is saved. */
+const pillCheck = await evalJS(`(() => {
+  const t = state.doc.buckets.flatMap(b => b.tiers.flatMap(x => x.tasks)).find(x => x.id === 'bd0003');
+  const saved = { theme: t.theme, start: t.start, body: t.body };
+  const soon = new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10);
+  t.theme = 'Tokens'; t.start = soon; t.body = [...t.body, '  - Project: data/projects/demo'];
+  renderView();
+  const c = document.querySelector('#board .tenon-card[data-id="bd0003"]');
+  const out = {
+    proj: c.querySelector('.tenon-pill.tenon-pill--neutral.proj[data-project="demo"]')?.textContent,
+    theme: c.querySelector('.tenon-pill.tenon-pill--neutral[title="Theme: Tokens"]')?.textContent,
+    start: !!c.querySelector('.tenon-pill.tenon-pill--neutral.startdate'),
+    tags: c.querySelectorAll('.tag').length,
+  };
+  Object.assign(t, saved);
+  renderView();
+  return out;
+})()`)
+check('project, theme and start date are outlined Tenon Pills, and none is a .tag',
+  pillCheck.proj === 'demo' && pillCheck.theme === 'Tokens' && pillCheck.start && pillCheck.tags === 0,
+  JSON.stringify(pillCheck))
+
 /* ---- defaultAddBucket() reads the bucket filter ---- */
 
 /* A second bucket, added to state directly rather than through the fixture,

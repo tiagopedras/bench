@@ -749,72 +749,62 @@ def check_tag_hygiene(lines, tasks):
 def check_handover_hygiene(lines, text):
     """`[to:: Plan agent]` or `[to:: Implement agent]` with no handover behind it.
 
-    pick.plannable() (agents/plan-agent/pick.py) is explicit that the tag alone
-    is not a handover: what makes a task the Plan agent's, or the Implement
-    agent's, is the `<id>-plan`/`<id>-implement` sub-task handOver() (the
-    board's 04-tier-two-the-one-thing.js) writes alongside the tag. A task
-    carrying the tag with neither sub-task present is silently skipped by the
-    overnight run rather than reported — the right behaviour for the planner,
-    since it has nothing to act on, but nothing on the file's own side used to
-    say so. `pa`'s own SKILL.md documents writing the tag directly as an
-    option, which is exactly how a task ends up looking delegated with nobody
-    ever having handed it over.
+    The tag alone is not a handover: what makes a task the Plan agent's, or the
+    Implement agent's, is the `<id>-plan`/`<id>-implement` sub-task handOver()
+    (the board's 04-tier-two-the-one-thing.js) writes alongside the tag. `pa`'s
+    own SKILL.md documents writing the tag directly as an option, which is how a
+    task ends up looking delegated with nobody having handed it over.
+
+    Since 26 Sep 2026 that gap closes itself: after each run the Plan agent asks
+    the board to hand every such task over (pick.unhanded(), queued through
+    core/tick_queue.py), and the board does it with handOver() on its next load.
+    So this still reports the gap, since the file is not yet what it will be,
+    but says what will happen rather than asking him to do it. The test is
+    pick.unhanded()'s own, reused rather than re-derived: two readers of "is
+    this actually handed over" that can disagree is worse than either being
+    wrong on its own.
 
     Works from a fresh todo.parse_doc() of the whole file rather than this
     script's own dict-based tasks, since that shape has no id: or bracket-form
-    to: parsing — the bracket tags are what the board has written since the
-    one-board migration, and check_tag_hygiene()'s tasks predate that split.
-
-    Ticked or blocked sub-tasks are not the gap this checks: any sub-task
-    matching the naming pattern at all — done, waiting, whatever state — means
-    a real handover happened once, which is a different question from whether
-    the Plan agent has something to do about it tonight.
+    to: parsing.
     """
     findings = []
     doc_tasks = todo.parse_doc(text)
-    for task in doc_tasks:
-        agent = todo.agent_of(task.to)
-        if agent not in (todo.PLAN_AGENT, todo.IMPLEMENT_AGENT):
-            continue
-        # Task carries no line of its own past this point — todo.py's Task
-        # does not track one — so it is recovered from the id: tag, which is
-        # unique, or failing that from the title, the same fallback the
-        # "file" location already means for a check with nothing to point at.
-        line_no = None
+
+    def line_of(task):
+        # todo.py's Task carries no line number, so it is recovered from the
+        # id: tag, which is unique, or failing that from the title.
         needle = f"id:{task.stable_id}" if task.stable_id else None
         for i, line in enumerate(lines, start=1):
             if (needle and needle in line) or (not needle and task.title and task.title in line):
-                line_no = i
-                break
-        if not task.stable_id:
-            findings.append(
-                Finding(
-                    line_no,
-                    "CHECK",
-                    f"\"{task.title}\" carries [to:: {agent}] but has no id: tag, so it "
-                    f"cannot carry a handover sub-task either — nobody has actually "
-                    f"picked this up.",
-                )
-            )
+                return i
+        return None
+
+    for task in doc_tasks:
+        agent = todo.agent_of(task.to)
+        if task.done or task.stable_id or agent not in (todo.PLAN_AGENT, todo.IMPLEMENT_AGENT):
             continue
-        kind = "plan" if agent == todo.PLAN_AGENT else "implement"
-        pattern = re.compile(re.escape(task.stable_id) + r"-" + kind + r"$")
-        _, steps = todo.split_body(task)
-        made = any(
-            pattern.fullmatch(s["task"].slug or "") and todo.agent_of(s["task"].to) == agent
-            for s in steps
-        )
-        if not made:
-            findings.append(
-                Finding(
-                    line_no,
-                    "CHECK",
-                    f"\"{task.title}\" carries [to:: {agent}] but has no "
-                    f"`{task.stable_id}-{kind}` sub-task — the tag alone is not a "
-                    f"handover. Hand it over from the board, or drop the tag if it "
-                    f"was written by hand in error.",
-                )
+        findings.append(
+            Finding(
+                line_of(task),
+                "CHECK",
+                f"\"{task.title}\" carries [to:: {agent}] but has no id: tag yet, so it "
+                f"has no handover either. The board gives it an id when it next loads, "
+                f"and the Plan agent asks for the handover on its run after that.",
             )
+        )
+    for task, agent in pick.unhanded(doc_tasks):
+        kind = "plan" if agent == todo.PLAN_AGENT else "implement"
+        findings.append(
+            Finding(
+                line_of(task),
+                "CHECK",
+                f"\"{task.title}\" carries [to:: {agent}] but has no "
+                f"`{task.stable_id}-{kind}` sub-task yet. The Plan agent asks the board "
+                f"to hand it over after its next run; hand it over from the board now "
+                f"to have it sooner, or drop the tag if it was written in error.",
+            )
+        )
     return findings
 
 

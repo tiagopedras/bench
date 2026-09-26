@@ -55,6 +55,7 @@ async function autosaveTick(){
    reloading is free, so it happens quietly and says so afterwards rather than
    asking first. Only his own unsaved work turns it into a question. */
 async function watchTick(){
+  checkRunStartedHere();                           // no-op unless this tab started a run
   if (state.locked || !state.doc || modalEl || conflictShown) return;
   const { stamp, hash } = await diskVersion();
   if (!stamp) return;                              // helper stopped; saveFile reports that

@@ -87,6 +87,9 @@ try {
       '',
       '### Backlog', '',
       '- [ ] **Delta** [impact:: low] [effort:: S]',
+      '- [ ] **Zeta** [impact:: low] [effort:: S] [to:: Plan agent] \`id:zt0001\`',
+      '- [ ] **Eta** [impact:: low] [effort:: S] [to:: Implement agent] \`id:et0001\`',
+      '- [ ] **Theta** [impact:: low] [effort:: S] [to:: Plan agent] \`id:th0001\`',
       ''
     ].join('\\n'), 'demo.md', {});
     state.locked = false;
@@ -205,6 +208,70 @@ try {
     (() => { const t = __task('Delta'); const im = subSteps(t).find(s => s.clean === 'Implement'); return !blockedMessage(allItems(), im.blockedBy); })()`) === true)
   check('a deck plan still waits for his review', await evalJS(`
     subSteps(__task('Epsilon')).find(s => s.clean === 'Review the plan').done`) === false)
+
+  /* ---- a tag with no handover, handed over at the Plan agent's request ---- */
+
+  await evalJS(`(() => {
+    window.__queue = [
+      { id: 'h1', handover: 'zt0001', to: 'Plan agent', by: 'Plan agent' },
+      { id: 'h2', handover: 'et0001', to: 'Implement agent', by: 'Plan agent' },
+      { id: 'h3', handover: 'th0001', to: 'Implement agent', by: 'Plan agent' },
+      { id: 'h4', handover: 'zz9999', to: 'Plan agent', by: 'Plan agent' },
+    ];
+    window.__cleared = [];
+    const was = window.fetch;
+    window.fetch = (u, o) => {
+      if (String(u).startsWith('/tick-queue.json') && o && o.method === 'POST') window.__cleared.push(o.body);
+      return was(u, o);
+    };
+  })()`)
+  await evalJS(`drainTickQueue()`)
+  await new Promise(r => setTimeout(r, 300))
+  check('a task tagged to the Plan agent with no handover gets the four sub-tasks', await evalJS(`
+    (() => { const t = __task('Zeta'); return subSteps(t).map(s => s.slug.replace(t.stableId, 'ID')).join(','); })()`) === 'ID-plan,ID-plan-review,ID-implement,ID-work-review')
+  check('and moves to Doing, as handing it over from the drawer would', await evalJS(`__tier('Zeta')`) === 'Doing')
+  check('one tagged to the Implement agent gets the last two', await evalJS(`
+    (() => { const t = __task('Eta'); return subSteps(t).map(s => s.slug.replace(t.stableId, 'ID')).join(','); })()`) === 'ID-implement,ID-work-review')
+  check('a request for an agent the tag no longer names does nothing', await evalJS(`subSteps(__task('Theta')).length`) === 0)
+  check('what was dealt with is cleared, and a task not in this list waits', await evalJS(`window.__cleared[0]`) === '{"done":["h1","h2","h3"]}',
+    await evalJS(`String(window.__cleared[0])`))
+  await evalJS(`drainTickQueue()`)
+  await new Promise(r => setTimeout(r, 300))
+  check('asking again does not lay the sub-tasks out twice', await evalJS(`subSteps(__task('Zeta')).length`) === 4)
+
+  /* ---- a plan with no Plan: line yet, and draining again without a reload ---- */
+
+  await evalJS(`(() => {
+    const t = __task('Epsilon');
+    const rv = subSteps(t).find(s => s.clean === 'Review the plan');
+    setStepNoteText(t, rv.line, '');
+    lastSaveAt = Date.now() + 10 * 60 * 1000;   // hold autosave off; the fetch stub would only log it
+    window.__queueGets = 0;
+    const was = window.fetch;
+    window.fetch = (u, o) => {
+      const m = (o && o.method) || 'GET';
+      if (String(u).startsWith('/tick-queue.json') && m === 'GET') window.__queueGets++;
+      if (String(u).startsWith('/plans.json')) return Promise.resolve(new Response(JSON.stringify({ plans: [
+        { name: 'someone-else.md', about: 'task:zz9999' },
+        { name: 'epsilon.md', about: 'task:' + t.stableId },
+      ] }), { status: 200 }));
+      return was(u, o);
+    };
+    window.__queue = [];
+    openDrawer(rv.stableId);
+  })()`)
+  await new Promise(r => setTimeout(r, 300))
+  check('a review with no Plan: line finds its plan through /plans.json', await evalJS(`!!document.querySelector('#f-readplan')`))
+  check('the button sits with the others, before Talk it through', await evalJS(`document.querySelector('#f-readplan')?.nextElementSibling?.id`) === 'f-chatrev')
+  await evalJS(`closeDrawer()`)
+
+  await evalJS(`window.__queueGets = 0; window.dispatchEvent(new Event('focus'))`)
+  await new Promise(r => setTimeout(r, 300))
+  check('the tab coming back into focus drains the queue again', await evalJS(`window.__queueGets`) === 1)
+  await evalJS(`window.__queueGets = 0; drainTickQueue(); drainTickQueue()`)
+  await new Promise(r => setTimeout(r, 300))
+  check('two drains at once read the queue once', await evalJS(`window.__queueGets`) === 1)
+
   await evalJS(`state.locked = true`)
 
   check('nothing reached todo.md', await evalJS(`window.__blocked.every(b => b.startsWith('POST /tick-queue.json'))`), await evalJS(`window.__blocked.join(' | ')`))

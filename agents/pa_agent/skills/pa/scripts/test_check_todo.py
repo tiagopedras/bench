@@ -143,7 +143,37 @@ def test_a_live_slug_reusing_an_archived_one_is_flagged():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+HANDOVER = """# To-do
+
+## 1. Design System
+
+### Doing
+
+- [ ] **Handed over** [to:: Plan agent] `id:ab12cd`
+  - [ ] Plan [to:: Plan agent] `#ab12cd-plan` `id:aa0001`
+- [ ] **Tagged by hand** [to:: Plan agent] `id:ef34gh`
+- [ ] **Tagged for the Implement agent** [to:: Implement agent] `id:ij56kl`
+- [ ] **Tagged with no id** [to:: Plan agent]
+- [x] **Tagged and done** [to:: Plan agent] `id:mn78op`
+"""
+
+
+def test_a_tag_with_no_handover_says_the_plan_agent_will_hand_it_over():
+    found = check_todo.check_handover_hygiene(HANDOVER.splitlines(), HANDOVER)
+    got = sorted((f.line_no, f.severity) for f in found)
+    check("each tag with no handover is a CHECK on its own line, and nothing else",
+          got, [(9, "CHECK"), (10, "CHECK"), (11, "CHECK")])
+    text = {f.line_no: f.message for f in found}
+    check("a tag with an id says the Plan agent will ask for the handover",
+          "The Plan agent asks the board to hand it over" in text.get(9, ""), True)
+    check("naming the sub-task the Implement agent's handover makes",
+          "`ij56kl-implement`" in text.get(10, ""), True)
+    check("a tag with no id says the board gives it one first",
+          "The board gives it an id" in text.get(11, ""), True)
+
+
 def main():
+    test_a_tag_with_no_handover_says_the_plan_agent_will_hand_it_over()
     test_blocked_by_an_archived_slug_is_not_dangling()
     test_missing_archive_reads_as_empty_not_an_error()
     test_a_live_slug_reusing_an_archived_one_is_flagged()

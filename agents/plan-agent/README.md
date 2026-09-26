@@ -157,6 +157,16 @@ was sent back. The mark of a handover is the slug it makes, the task's id and
 22 Sep 2026: its plan would have nowhere to be read, and `[ai:: full]`, which used to
 be the tag, is gone from the format.
 
+Since 26 Sep 2026 such a task is handed over for him instead of sitting there
+looking delegated. After every real run, `pick.unhanded()` finds each open task
+tagged `[to:: Plan agent]` or `[to:: Implement agent]` with none of the handover's
+sub-tasks, and `plan.queue_handovers()` leaves a `handover` request for it on the
+tick queue. The board runs `handOver()` on it when it next loads, exactly as the
+drawer's Delegate to would, so the card gets its sub-tasks and moves to Doing if it
+was in To do or Backlog. The agent still never writes `todo.md`, and the task is
+planned on the first run after the board has done it. `check_todo.py` reports the
+gap until then.
+
 `due:` is deliberately not consulted. A deadline says when something must be
 finished, not whether it is worth thinking about tonight.
 

@@ -265,8 +265,8 @@ function refChips(it){
      every other tag on the card: the deadline is the next occurrence. */
   if (it.repeat) chips.push({ tone: 'neutral', text: it.repeat.label, title: 'Recurring ' + it.repeat.label });
   const si = startInfo(it.start);
-  // Kept as the board's own chip — see cardModel()'s startdate comment.
-  if (si) chips.push({ cls: 'tag startdate', text: si.label + ' · ' + si.note });
+  // A dashed `Pill` — see cardModel()'s startdate comment.
+  if (si) chips.push({ pill: 'neutral', cls: 'startdate', text: si.label + ' · ' + si.note });
   const di = dueInfo(it.due, it.tier === WAIT_COL);
   if (di) chips.push({ tone: DUE_TONE[di.cls] || 'neutral', text: di.label + (di.note ? ' · ' + di.note : '') });
   if (it.urgent) chips.push({ tone: 'urgent', text: 'urgent' });
@@ -826,6 +826,11 @@ function makeChatWin(newFor, o){
     pinned: !!(o && o.pinned),
     ownerLabel: chatOwnerLabel,
     readOnlyHelp: '',
+    // "Can write" in the head, drawn only while the list's claude.json has
+    // "work": true. The server holds a writing run to its cwd and refuses
+    // every data/*/todo.md, so the list still only changes through the board.
+    writeSwitch: true,
+    writeNote: chatWriteNote,
     onSessionsChanged,
     onSend: p => {
       if (p.key === PA_KEY) { paWaiting = { ask: p.ask || '' }; paBeforeSend(); }
@@ -843,6 +848,14 @@ function makeChatWin(newFor, o){
   inst.loadStatus();
   chatWins.set(++chatWinSeq, { inst, newFor, pinned: !!(o && o.pinned) });
   return inst;
+}
+
+function chatWriteNote(on){
+  return on
+    ? '(Writing is now switched on for this conversation: you can create and edit files inside the working directory, and nothing outside it. ' +
+      'Anything said earlier about not being able to write no longer holds. The lists\' todo.md files stay refused: ' +
+      'for a change to the list, end your reply with a fenced pa-changes block as before, and the board applies it.)'
+    : '(Writing is now switched off again for this conversation: you can read, but not create or edit files.)';
 }
 
 function openChatWin(ownerId, ownerKey, sessionId, seed, o){
@@ -1325,7 +1338,41 @@ async function drainAttachQueue(){
    in core/plan_types.py. */
 const PRE_APPROVED_TYPES = ['write-up', 'draft'];
 
+/* The other request on the queue: hand a task over. The Plan agent leaves one
+   for a task carrying `[to::]` an agent with none of the sub-tasks a handover
+   lays out (pick.unhanded() in agents/plan-agent/pick.py), which is how a tag
+   written straight into the file becomes a real handover rather than a card that
+   looks delegated with nobody working it. It is done by handOver(), the same
+   function the drawer's Delegate to calls, so the card gets exactly what it would
+   have got from him. Applied only while the task's `[to::]` still names that
+   agent: a tag taken off or changed since is his later word. handOver() itself
+   does nothing to a task already handed over. Returns 'wait' while the task is
+   not in this list, 'handed' when the sub-tasks were laid out, or 'cleared'. */
+function drainHandover(it){
+  const want = String(it.handover || '').trim().toLowerCase();
+  let t = null;
+  for (const b of state.doc.buckets)
+    for (const tier of b.tiers)
+      for (const x of tier.tasks) if (!t && x.stableId === want) t = x;
+  if (!t) return 'wait';
+  const who = agentOf(it.to);
+  if (t.done || !who || agentOf(t.to) !== who) return 'cleared';
+  return handOver(t, who) ? 'handed' : 'cleared';
+}
+
+/* Drained on load, when the tab comes back into focus, and once when a run this
+   tab started finishes (20-loading-saving.js), so a plan written by a run the
+   board did not start still gets its `Plan:` line without a reload. One drain at
+   a time: two overlapping would both read the queue before either had posted
+   what it dealt with, and tick the same sub-task twice. */
+let tickDraining = false;
 async function drainTickQueue(){
+  if (tickDraining) return;
+  tickDraining = true;
+  try { await drainTickQueueOnce(); } finally { tickDraining = false; }
+}
+
+async function drainTickQueueOnce(){
   if (state.locked || !state.doc) return;
   let items;
   try {
@@ -1334,9 +1381,16 @@ async function drainTickQueue(){
   if (!Array.isArray(items) || !items.length) return;
 
   const dealt = [];
-  let ticked = 0, refused = 0, moved = 0, approved = 0;
+  let ticked = 0, refused = 0, moved = 0, approved = 0, handed = 0;
   for (const it of items) {
     if (!it || !it.id) continue;
+    if (it.handover) {
+      const r = drainHandover(it);
+      if (r === 'wait') continue;
+      dealt.push(it.id);
+      if (r === 'handed') handed++;
+      continue;
+    }
     const found = locateSub(String(it.sub || '').trim().toLowerCase());
     if (!found) continue;
     const { loc, step } = found;
@@ -1385,7 +1439,7 @@ async function drainTickQueue(){
     }
   }
   if (!dealt.length) return;
-  if (ticked) { markDirty(); refreshView(); }
+  if (ticked || handed) { markDirty(); refreshView(); }
   await postJSON('/tick-queue.json', { done: dealt }).catch(() => {});
   if (ticked || refused) {
     $('#status').textContent = (ticked
@@ -1394,6 +1448,11 @@ async function drainTickQueue(){
         (approved ? ', ' + approved + ' plan' + (approved === 1 ? '' : 's') + ' approved as a pre-approved type' : '') +
         ' — save to apply'
       : '') + (refused ? (ticked ? '; ' : '') + refused + ' request' + (refused === 1 ? '' : 's') + ' refused' : '');
+  }
+  if (handed) {
+    const was = ticked || refused ? $('#status').textContent + '; ' : '';
+    $('#status').textContent = was + 'handed over ' + handed + ' task' + (handed === 1 ? '' : 's') +
+      ' tagged to an agent with no handover — save to apply';
   }
 }
 
