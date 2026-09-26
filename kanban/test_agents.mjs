@@ -10,7 +10,8 @@
  * stubbed for the drawing checks; the last check asks the real route on the
  * test server, which runs the two agents' read-only `state` commands.
  *
- * SHOT=/path.png saves a screenshot of the list view.
+ * SHOT=/path.png saves a screenshot of the list view, SHOT_SETUP one of the
+ * tab before any agent is set up.
  */
 
 import { spawn } from 'node:child_process'
@@ -100,9 +101,41 @@ await evalJS(`(() => {
 })()`)
 check('the tab is locked', await evalJS(`state.locked === true`))
 
-/* ---- the tab ---- */
+/* ---- before any agent is set up ----
+   The _test list's buckets have no planner of their own and no brief anyone
+   wrote, and the fixture delegates nothing, so the list counts as having no
+   agent: the tab offers setup and the cards, and the rest of the board leaves
+   the agents out. */
+await wait(800)
+check('a list with no agent counts as not set up', await evalJS(`state.agentsSetup === false && agentsSetUp() === false`))
 check('Agents is one of the view tabs', await evalJS(`viewDefs().some(d => d.id === 'agents')`))
 await evalJS(`state.view = 'agents'; renderView()`)
+await wait(400)
+check('the tab offers setup instead of the hour tracks', await evalJS(`!!document.querySelector('#lists .agentsetup [data-agent-setup]') && !document.querySelector('#lists .agents-ui')`))
+if (process.env.SHOT_SETUP) {
+  const shot = await send('Page.captureScreenshot', { format: 'png' })
+  writeFileSync(process.env.SHOT_SETUP, Buffer.from(shot.result.data, 'base64'))
+}
+check('and still shows the cards', await evalJS(`document.querySelectorAll('#agentsCards .agentcard').length === 3`))
+check('Delegate to offers no agents', await evalJS(`!delegateSelectHTML('', '').includes('Plan agent')`))
+check('but keeps one a task already names', await evalJS(`delegateSelectHTML('Plan agent', '').includes('Implement agent')`))
+await evalJS(`state.view = 'overview'; renderView()`)
+await wait(400)
+check('Overview leaves out Delegate to Claude', await evalJS(`!document.querySelector('#lists').textContent.includes('Delegate to Claude')`))
+check('a delegated task counts as set up', await evalJS(`(() => {
+  const t = state.doc.buckets[0].tiers.find(ti => ti.tasks.length).tasks[0];
+  t.to = 'Plan agent'; const on = agentsSetUp(); t.to = ''; return on && !agentsSetUp();
+})()`))
+check('a brief carrying only the template counts as unwritten', await evalJS(`(() => {
+  const tpl = '# <Bucket name>\\n\\n<One line>\\n\\n## The processes I run in this bucket\\n\\nOne per heading.\\n';
+  const scaffolded = tpl.replace('<Bucket name>', 'Tasks').replace('<One line>', 'Things I do');
+  const written = scaffolded.replace('One per heading.', 'Weekly invoices, sent every Friday.');
+  const b = text => ({ exists: true, filled: true, text, template: tpl });
+  return !briefWritten(b(scaffolded)) && briefWritten(b(written));
+})()`))
+
+/* ---- once one is ---- */
+await evalJS(`state.agentsSetup = true; state.view = 'agents'; renderView()`)
 await wait(1200)
 check('it mounts the shared component', await evalJS(`!!document.querySelector('#lists #agentsRoot .agents-ui.agents-root.embedded')`))
 check('titled Agents', await evalJS(`document.querySelector('#agentsRoot h1')?.textContent === 'Agents'`))

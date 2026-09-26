@@ -708,7 +708,8 @@ function renderSections(viewId){
       bigRocks: Object.assign(bigRocksSection(items), { open: overviewOpen('ov:Big rocks') }),
       thisWeek: Object.assign(weekSection(items), { open: overviewOpen('ov:This week') }),
       quickWins: Object.assign(quickSection(items), { open: overviewOpen('ov:Quick wins') }),
-      delegate: Object.assign(delegateSection(items), { open: overviewOpen('ov:Delegate to Claude') }),
+      // Left out until the list has an agent set up — see agentsSetUp().
+      delegate: agentsSetUp() ? Object.assign(delegateSection(items), { open: overviewOpen('ov:Delegate to Claude') }) : null,
       // The only section with nothing to count — it is standing prose, not a
       // list of anything — so it is left out entirely rather than drawn empty.
       context: ctx ? Object.assign(ctx, { open: overviewOpen('ov:Context') }) : null,

@@ -25,6 +25,61 @@
 
 let agentsRoot = null;
 
+/* ---- Is there an agent on this list yet? ----
+
+   Someone who only uses the PA to keep their list has no use for the agent
+   half of the board, so until the list has an agent set up the board leaves
+   it out: no agents under Delegate to, no Delegate to Claude on Overview, and
+   this tab shows the cards and the way to set one up instead of the hour
+   tracks. The agent filter chip already hides itself while nothing is
+   delegated.
+
+   A list counts as set up when any of these holds:
+     - a bucket has a planner of its own on disk (`fallback` false in
+       /bucket-brief.json), which is how the lists this board was built on
+       came to have agents before any of this existed;
+     - a bucket's brief has a section the person wrote, rather than the
+       template's own prose — a new list's wizard scaffolds every brief with a
+       one-line summary and no marker, so `filled` alone would count every
+       new list as set up;
+     - a task, or one of its sub-tasks, is already delegated to an agent.
+   Until the briefs have answered, or where there is no server to ask (the
+   demo build), it counts as set up, so nothing is hidden on a guess. */
+function agentsSetUp(){
+  if (state.agentsSetup !== false) return true;
+  return listHasAgentWork();
+}
+
+function listHasAgentWork(){
+  if (!state.doc) return false;
+  return state.doc.buckets.some(b => b.tiers.some(ti => ti.tasks.some(t => delegatedToAgent(t))));
+}
+
+/* A brief with at least one section that is neither empty nor the template's
+   own text for it. */
+function briefWritten(brief){
+  if (!brief || !brief.exists || !brief.filled) return false;
+  const mine = parseBriefText(brief.text).sections;
+  const tpl = parseBriefText(brief.template || '').sections;
+  return BRIEF_SECTIONS.some(n => {
+    const v = (mine[n] || '').trim();
+    return !!v && v !== (tpl[n] || '').trim();
+  });
+}
+
+let agentsSetupAsk = 0;
+async function checkAgentsSetup(){
+  if (!state.doc) return;
+  const ask = ++agentsSetupAsk;
+  const answers = await Promise.all(state.doc.buckets.map(b =>
+    getJSON('/bucket-brief.json?bucket=' + encodeURIComponent(b.name)).catch(() => null)));
+  if (ask !== agentsSetupAsk) return;
+  const got = answers.filter(Boolean);
+  const was = agentsSetUp();
+  state.agentsSetup = got.length ? got.some(a => !a.fallback || briefWritten(a)) : null;
+  if (agentsSetUp() !== was && state.doc) refreshView();
+}
+
 /* One card per agent. `highlight` names the card to mark, which is how the
    setup wizard ends on the agent it has just set up. */
 function agentCardsHTML(highlight){
@@ -45,6 +100,14 @@ function agentCardsHTML(highlight){
 function renderAgentsView(){
   const lists = $('#lists');
   if (!lists) return;
+  if (!agentsSetUp()) {
+    /* Nothing to schedule yet, so the hour tracks wait until there is. */
+    leaveAgentsView();
+    lists.innerHTML = '<div class="agentsview">' + agentSetupIntroHTML() +
+      '<div id="agentsCards">' + agentCardsHTML() + '</div></div>';
+    wireAgentSetupButtons(lists);
+    return;
+  }
   let host = lists.querySelector('#agentsRoot');
   if (!host) {
     leaveAgentsView();
@@ -53,7 +116,10 @@ function renderAgentsView(){
     host = lists.querySelector('#agentsRoot');
     agentsRoot = host;
   }
-  lists.querySelector('#agentsCards').innerHTML = agentCardsHTML();
+  lists.querySelector('#agentsCards').innerHTML = agentCardsHTML() +
+    '<p class="agentsetup-more"><button type="button" class="btn small" data-agent-setup>' +
+    'Set up an agent for another bucket</button></p>';
+  wireAgentSetupButtons(lists);
   BoardUI.mount(host, BoardUI.h(BoardUI.AgentsApp, {
     base: '/agents-api',
     title: 'Agents',
@@ -62,6 +128,28 @@ function renderAgentsView(){
     storagePrefix: 'board-agents.',
     embedded: true,
   }));
+}
+
+/* What the tab says on a list with no agent yet. */
+function agentSetupIntroHTML(){
+  return '<section class="agentsetup">' +
+    '<h1>Agents</h1>' +
+    '<p>No agent is set up on this list yet. An agent can plan a task for you ' +
+    'overnight, then carry out the plan once you approve it. Setting one up is ' +
+    'four questions about one of your buckets.</p>' +
+    '<button type="button" class="btn primary" data-agent-setup>Set up an agent</button>' +
+    '</section>';
+}
+
+function wireAgentSetupButtons(root){
+  root.querySelectorAll('[data-agent-setup]').forEach(btn => {
+    btn.onclick = () => openAgentSetup();
+  });
+}
+
+/* Until the setup wizard lands, the way in is the bucket's own brief. */
+function openAgentSetup(){
+  openBucketEditor();
 }
 
 /* Called by renderView() for every view but this one. */

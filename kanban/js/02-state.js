@@ -89,6 +89,11 @@ const state = {
      narrowing for right now, not a preference worth remembering across
      sessions. */
   agentFilter: false,
+  /* Whether this list has an agent set up: a bucket with a planner of its own
+     on disk, or a brief with something the person wrote in it. null until
+     /bucket-brief.json has answered, and read only through agentsSetUp()
+     (27-agents.js), which also counts any task already delegated to an agent. */
+  agentsSetup: null,
   matrixHideWaiting: false,
   /* Width of the timeline's frozen title column. Remembered the same way the
      drawer's own width is — a drag he does once should not repeat itself. */

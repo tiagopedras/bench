@@ -86,7 +86,10 @@ export interface OverviewViewProps {
   bigRocks: SectionBody & { open: boolean }
   thisWeek: SectionBody & { open: boolean }
   quickWins: SectionBody & { open: boolean }
-  delegate: SectionBody & { open: boolean }
+  /** null until the list has an agent set up (agentsSetUp() in
+   *  27-agents.js): there is nobody to delegate to yet, so the column would
+   *  only ever say so. */
+  delegate: (SectionBody & { open: boolean }) | null
   /** null when todo.md's own Context section is empty — dropped rather than
    *  drawn blank, the one section here with nothing to count. */
   context: (SectionBody & { open: boolean }) | null
@@ -123,7 +126,8 @@ export function OverviewView(props: OverviewViewProps) {
      long read rather than the glance. */
   const tracks: { css: string; min: number }[] = []
   if (reports) tracks.push(FINISHED_TRACK)
-  tracks.push(REF_TRACK, REF_TRACK, REF_TRACK, REF_TRACK)
+  tracks.push(REF_TRACK, REF_TRACK, REF_TRACK)
+  if (delegate) tracks.push(REF_TRACK)
   if (context) tracks.push(CTX_TRACK)
   if (reports) tracks.push(WRITTEN_TRACK)
   const gridStyle: CSSProperties = {
@@ -140,12 +144,14 @@ export function OverviewView(props: OverviewViewProps) {
         <Section title="This week" hint={<>Everything tagged <code>week</code>, soonest first.</>}
           body={thisWeek} collapsible collapseKey="ov:This week" open={thisWeek.open} />
         <Section title="Quick wins"
-          hint={<>Yours to do: meeting agendas, <code>effort:S</code> and written messages. Anything delegated
-            to the Implement agent sits in Delegate instead.</>}
+          hint={<>Yours to do: meeting agendas, <code>effort:S</code> and written messages.{delegate ? <> Anything delegated
+            to the Implement agent sits in Delegate instead.</> : null}</>}
           body={quickWins} collapsible collapseKey="ov:Quick wins" open={quickWins.open} />
-        <Section title="Delegate to Claude"
-          hint={<>Everything delegated to the Implement agent, worth doing first at the top.</>}
-          body={delegate} collapsible collapseKey="ov:Delegate to Claude" open={delegate.open} />
+        {delegate ? (
+          <Section title="Delegate to Claude"
+            hint={<>Everything delegated to the Implement agent, worth doing first at the top.</>}
+            body={delegate} collapsible collapseKey="ov:Delegate to Claude" open={delegate.open} />
+        ) : null}
         {context ? (
           <Section title="Context" hint="Standing facts, not tasks. Edit these in todo.md."
             body={context} collapsible collapseKey="ov:Context" open={context.open} />

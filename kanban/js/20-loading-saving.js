@@ -40,6 +40,7 @@ function load(text, name, opts){
   state.bucketFilter.forEach(name => { if (!doc.buckets.some(b => b.name === name)) state.bucketFilter.delete(name); });
   markClean('');
   state.migratedOnly = false;
+  checkAgentsSetup();
   renderView();
   if (renamed) { markDirty(); $('#status').textContent = 'renamed “Parked” to “Backlog” — save to apply'; }
   if (minted) { markDirty(); $('#status').textContent = 'gave ' + minted + ' task' + (minted === 1 ? '' : 's') +
