@@ -67,6 +67,7 @@ function confirmNightAgentRun(){
 async function startNightAgentRun(){
   try {
     await postJSON('/planning_agent/run');
+    watchRunStartedHere();
     showToast('The agent is running.', 'good');
   } catch (err) {
     showToast('Could not start it: ' + (err.message || err), 'bad');

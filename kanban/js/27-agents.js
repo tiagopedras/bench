@@ -43,4 +43,7 @@ function leaveAgentsView(){
   if (!agentsRoot) return;
   BoardUI.unmount(agentsRoot);
   agentsRoot = null;
+  // A run started from here reports done on this page, not on the board, so
+  // anything it queued is picked up on the way back to the cards.
+  drainTickQueue();
 }

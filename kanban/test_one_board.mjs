@@ -239,6 +239,39 @@ try {
   await new Promise(r => setTimeout(r, 300))
   check('asking again does not lay the sub-tasks out twice', await evalJS(`subSteps(__task('Zeta')).length`) === 4)
 
+  /* ---- a plan with no Plan: line yet, and draining again without a reload ---- */
+
+  await evalJS(`(() => {
+    const t = __task('Epsilon');
+    const rv = subSteps(t).find(s => s.clean === 'Review the plan');
+    setStepNoteText(t, rv.line, '');
+    lastSaveAt = Date.now() + 10 * 60 * 1000;   // hold autosave off; the fetch stub would only log it
+    window.__queueGets = 0;
+    const was = window.fetch;
+    window.fetch = (u, o) => {
+      const m = (o && o.method) || 'GET';
+      if (String(u).startsWith('/tick-queue.json') && m === 'GET') window.__queueGets++;
+      if (String(u).startsWith('/plans.json')) return Promise.resolve(new Response(JSON.stringify({ plans: [
+        { name: 'someone-else.md', about: 'task:zz9999' },
+        { name: 'epsilon.md', about: 'task:' + t.stableId },
+      ] }), { status: 200 }));
+      return was(u, o);
+    };
+    window.__queue = [];
+    openDrawer(rv.stableId);
+  })()`)
+  await new Promise(r => setTimeout(r, 300))
+  check('a review with no Plan: line finds its plan through /plans.json', await evalJS(`!!document.querySelector('#f-readplan')`))
+  check('the button sits with the others, before Talk it through', await evalJS(`document.querySelector('#f-readplan')?.nextElementSibling?.id`) === 'f-chatrev')
+  await evalJS(`closeDrawer()`)
+
+  await evalJS(`window.__queueGets = 0; window.dispatchEvent(new Event('focus'))`)
+  await new Promise(r => setTimeout(r, 300))
+  check('the tab coming back into focus drains the queue again', await evalJS(`window.__queueGets`) === 1)
+  await evalJS(`window.__queueGets = 0; drainTickQueue(); drainTickQueue()`)
+  await new Promise(r => setTimeout(r, 300))
+  check('two drains at once read the queue once', await evalJS(`window.__queueGets`) === 1)
+
   await evalJS(`state.locked = true`)
 
   check('nothing reached todo.md', await evalJS(`window.__blocked.every(b => b.startsWith('POST /tick-queue.json'))`), await evalJS(`window.__blocked.join(' | ')`))

@@ -1806,6 +1806,18 @@ async function openPlanReader(rel, title){
   if (mid) mid.innerHTML = '<div class="planmain">' + html + '</div>';
 }
 
+/* The plan written for a task, found by the task's id in /plans.json rather
+   than through the review's `Plan:` note. Newest first, so the first match is
+   the one to read. Empty when there is none or the server cannot say. */
+async function planForTask(stableId){
+  try {
+    const res = await fetch('/plans.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) return '';
+    const hit = ((await res.json()).plans || []).find(p => p.about === 'task:' + stableId);
+    return hit && /^[\w.-]+\.md$/.test(hit.name || '') ? hit.name : '';
+  } catch (err) { return ''; }
+}
+
 function openSubtaskDrawer(found){
   const { loc, step } = found;
   const t = loc.task, line = step.line, subId = step.stableId;
@@ -1847,7 +1859,7 @@ function openSubtaskDrawer(found){
      talk it through, and either approve it, which ticks this, or send it back,
      which unticks the sub-task before it with what was wrong. */
   const kind = /-plan-review$/.test(f.slug) ? 'plan' : (/-work-review$/.test(f.slug) ? 'work' : '');
-  const planRel = kind === 'plan' ? ((stepNoteText(t, line).match(/^-\s*Plan:\s*`?plans\/([^\s`]+\.md)/mi) || [])[1] || '') : '';
+  let planRel = kind === 'plan' ? ((stepNoteText(t, line).match(/^-\s*Plan:\s*`?plans\/([^\s`]+\.md)/mi) || [])[1] || '') : '';
   const waiting = (f.blockedBy || []).some(sl => { const b = itemBySlug(allItems(), sl); return !b || !b.done; });
   const reviewHTML = !kind ? '' :
     '<div class="field"><span>' + (kind === 'plan' ? 'The plan' : 'The work') + '</span>' +
@@ -1914,6 +1926,23 @@ function openSubtaskDrawer(found){
   if (kind) {
     const readBtn = $('#f-readplan');
     if (readBtn) readBtn.onclick = () => openPlanReader(planRel, t.title);
+    /* No `Plan:` line yet: a run started from the Agents tab or overnight
+       writes its plan before the board has drained the tick that would have
+       written the line. The plan's own frontmatter names its task, so ask
+       /plans.json and add the button if one is there. */
+    if (kind === 'plan' && !planRel && t.stableId) {
+      planForTask(t.stableId).then(rel => {
+        if (!rel || state.openTask !== subId || $('#f-readplan')) return;
+        const chat = $('#f-chatrev');
+        if (!chat) return;
+        planRel = rel;
+        const btn = document.createElement('button');
+        btn.type = 'button'; btn.className = 'btn small'; btn.id = 'f-readplan';
+        btn.textContent = 'Read the plan';
+        btn.onclick = () => openPlanReader(planRel, t.title);
+        chat.parentNode.insertBefore(btn, chat);
+      });
+    }
     $('#f-chatrev').onclick = () => askFromPrompt(t.id, kind === 'plan'
       ? 'Here is the plan for "' + t.title + '". ' + (planRel ? 'It is in plans/' + planRel + '. ' : '') +
         'Go through it with me before I decide.\n\n'
