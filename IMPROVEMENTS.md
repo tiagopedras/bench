@@ -690,8 +690,8 @@ they settled is written up in the README rather than left here:
   Tests: `scripts/test-board.sh test_board.mjs`.
   Open: which avatar generator? Default: DiceBear's `shapes`, vendored, since the board loads classic scripts. Do people get avatars too? Default: no, agents only.
 
-- **A chat's mode is fixed when the window opens, so a chat that needs to
-  write has to be told it cannot.** The board never passes `mode` to
+- ~~**A chat's mode is fixed when the window opens, so a chat that needs to
+  write has to be told it cannot.**~~ **Done, 27 Sep 2026.** Board chats get a Can write switch in the header when the list's `claude.json` has `"work": true`: `engine.py` gains a `write` mode (Edit and Write held to the chat's folder, `write_denies` refusing `**/data/*/todo.md`), `controller.ts` gains `setWrite()`. ai_chat_engine `cb62a5e`. The board never passes `mode` to
   `AIChat.create()` (`kanban/js/10-reference-sections.js:756`), so the
   controller's `defaultMode` (`PACKAGES/ai_chat_engine/src/controller.ts:129`)
   is always `ask` and every conversation is stamped with it at open (`:224`).
@@ -720,13 +720,13 @@ they settled is written up in the README rather than left here:
   Tests: `scripts/test-board.sh test_chats.mjs`, `node /Users/tiagopedras/Code/PACKAGES/ai_chat_engine/test/chat.test.mjs`.
   Open: none — blocked on `pa-queue-chat` rather than open on its own terms.
 
-- **"Who he is" tells the PA what his job is but not how he works, so prioritisation has nothing of his own to weigh against.** `PA.md:12-21` gives one paragraph — design manager, four kinds of work in parallel, the list as memory across sessions — and the two tiers under "How he prioritises" (`:55-96`) score everything against impact and effort alone, reading tags off the task rather than anything about him. Nothing in `PA.md` says how he actually works: what he pushes through versus defers, how he treats a slipping date, what he'd rather do himself versus hand off. Written down, that section would sit beside "Who he is" and feed the same two tiers every `pa-*` skill already reads, rather than becoming a rule any one skill has to apply on its own.
+- ~~**"Who he is" tells the PA what his job is but not how he works, so prioritisation has nothing of his own to weigh against.**~~ **Done, 27 Sep 2026.** `PA.md` has a "How he works" section after "Who he is". `PA.md:12-21` gives one paragraph — design manager, four kinds of work in parallel, the list as memory across sessions — and the two tiers under "How he prioritises" (`:55-96`) score everything against impact and effort alone, reading tags off the task rather than anything about him. Nothing in `PA.md` says how he actually works: what he pushes through versus defers, how he treats a slipping date, what he'd rather do himself versus hand off. Written down, that section would sit beside "Who he is" and feed the same two tiers every `pa-*` skill already reads, rather than becoming a rule any one skill has to apply on its own.
   Build: Sonnet. Id `pa-working-style`. With `pa-personality`.
   Files: `agents/pa_agent/PA.md`.
   Tests: none found.
   Open: none.
 
-- **The PA has a tone but not a personality, and every skill reads the same three lines to get it.** `PA.md:224-239`'s "Tone" section is the only place any of that is written down: direct, no padding, short bullets, no preamble, British English, no em dashes. It describes a house style for the reports `pa` writes, not a character — nothing there names a way of talking that would feel like anyone rather than a formatter. Every `pa-*` skill (`agents/pa_agent/CLAUDE.md`'s table lists all ten) reads `PA.md` first and inherits this section as-is, so giving the PA an actual personality means deciding what it is and rewriting `Tone` to state it, which every skill picks up for free without a second file to keep in step.
+- ~~**The PA has a tone but not a personality, and every skill reads the same three lines to get it.**~~ **Done, 27 Sep 2026.** "Tone and personality" in `PA.md`: proactive, kind and professionally caring, his answer, with the old tone rules kept. Every skill already pointed at `PA.md`. `PA.md:224-239`'s "Tone" section is the only place any of that is written down: direct, no padding, short bullets, no preamble, British English, no em dashes. It describes a house style for the reports `pa` writes, not a character — nothing there names a way of talking that would feel like anyone rather than a formatter. Every `pa-*` skill (`agents/pa_agent/CLAUDE.md`'s table lists all ten) reads `PA.md` first and inherits this section as-is, so giving the PA an actual personality means deciding what it is and rewriting `Tone` to state it, which every skill picks up for free without a second file to keep in step.
   Build: Sonnet. Id `pa-personality`. With `pa-working-style`.
   Files: `agents/pa_agent/PA.md`.
   Tests: none found.
@@ -807,8 +807,8 @@ they settled is written up in the README rather than left here:
   first — only a sub-task with a `stableId` can open its own panel at all today, and a
   hand-added one never gets one.
 
-- **Skipping a `[to:: Plan agent]`/`[to:: Implement agent]` tag with no matching
-  sub-task should have an exception, rather than the flat skip it gets today.**
+- ~~**Skipping a `[to:: Plan agent]`/`[to:: Implement agent]` tag with no matching
+  sub-task should have an exception, rather than the flat skip it gets today.**~~ **Done, 27 Sep 2026.** The Plan agent queues a `handover` request (`pick.unhanded()`, `tick_queue.append_handover()`) and the board's `drainHandover()` runs `handOver()` on load, so the task is planned the night after.
   `plannable()` (`agents/plan-agent/pick.py:63-75`) reads the tag as the Plan
   agent's work only when the `<id>-plan`/`<id>-implement` sub-tasks are also
   there, and treats a tag with neither as not planned, full stop — the same gap
@@ -1172,7 +1172,7 @@ they settled is written up in the README rather than left here:
   `[to::]`, and every `[ai::]` tag is stripped (58 full, 183 partial and 245 none on
   the `twinkl` list).
 
-- **The board's tag chips are its own `.tag` classes, not Tenon's `Tag`.**
+- ~~**The board's tag chips are its own `.tag` classes, not Tenon's `Tag`.**~~ **Done, 27 Sep 2026.** Project, theme and start date are Tenon's `Pill`. Your move stays `.tag` until Tenon's `Tag` has a filled tone, and the start date keeps a dashed-border rule until `Pill` has a dashed option.
   `cardModel()` (`kanban/js/09-columns.js`) gives each chip a class such as
   `tag impact-high` or `tag due late`, and `board.css` styles about twenty of
   them (`.tag.needsscore`, `.tag.proj`, `.tag.jira` and the rest), while Tenon's
@@ -1291,6 +1291,7 @@ they settled is written up in the README rather than left here:
   needs `openDrawer()`'s rebuild-the-panel-as-a-string model turned into React
   state. The drawer has no `.err` box, and `#drawer`/`#scrim` are a docked
   panel that 31 places query, so Tenon's centred `Modal` does not fit them.
+  The project section went on 27 Sep 2026 (`kanban/ui/DrawerProjectSection.tsx`, `renderProjectSection()`). Still strings: the steps, date pickers, dependency picker and sub-task list.
   Build: Sonnet. Id `drawer-header-modal-to-react`.
   Files: `kanban/js/18-timeline.js`, `kanban/js/07-render-board.js`, `kanban/js/19-drawer.js`, `kanban/js/23-conflict-modal.js`, `kanban/ui/BoardModal.tsx`.
   Tests: `scripts/test-board.sh test_board.mjs`, `node kanban/ui/test_primitives.mjs`.
