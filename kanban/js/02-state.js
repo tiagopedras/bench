@@ -347,6 +347,27 @@ const RESERVED_TIERS = [BACKLOG_TIER, TODO_TIER, DOING_TIER, WAIT_COL, DONE_COL]
 /* The first bucket tab shows every bucket at once. Not a real bucket, so it
    needs a name no heading in the file could ever produce. */
 const ALL_BUCKETS = '__all__';
+/* What each agent does, what it cannot do and what it needs from the person,
+   one card each at the top of the Agents tab (agentCardsHTML() in
+   27-agents.js). Written for someone who has never handed a task to an agent,
+   so it names what they will see rather than how it works. The rules behind
+   it are `[to:: ]` in CONVENTIONS.md and the two agents' READMEs; change this
+   when either changes. The PA first, since it is the one every list has. */
+const AGENT_CARDS = [
+  { name: 'PA',
+    does: 'Keeps your list. Tell it in the chat what moved and it adds, moves, dates and ticks off tasks, and writes the message or agenda that goes with one.',
+    cannot: 'Do the work on a task, or change one you did not mention.',
+    needs: 'You to say what changed, in your own words.' },
+  { name: 'Plan agent',
+    does: 'Works out overnight what doing a task would take, and leaves a plan on the task’s card for you to read.',
+    cannot: 'Carry anything out. Nothing in a plan has been done yet.',
+    needs: 'A task delegated to it, and a set-up bucket so it knows how you work there. You approve the plan or send it back with a note.' },
+  { name: 'Implement agent',
+    does: 'Carries out a plan you approved: a write-up, a draft, a prompt, data, a deck or code.',
+    cannot: 'Change your list, send anything on your behalf, or start work you have not agreed. Figma work only runs with you there.',
+    needs: 'An approved plan, or a task that already says exactly how. You review what it made before the card moves on.' }
+];
+
 /* Hints match the tier descriptions in the file. Unknown tier names simply
    show no hint, so renaming a section in todo.md never breaks the board. */
 const TIER_HINT = {

@@ -110,6 +110,8 @@ check('it shows both agents', await evalJS(`(() => { const t = document.querySel
 check('it read /agents-api, not the dashboard routes', await evalJS(`window.__stateReads > 0`))
 check('the list view draws an hour track per target', await evalJS(`document.querySelectorAll('#agentsRoot .trow .hours .hr').length === 72`))
 check('and the ruler over them', await evalJS(`!!document.querySelector('#agentsRoot .rulerwrap .ruler')`))
+check('a card per agent under it', await evalJS(`[...document.querySelectorAll('#agentsCards .agentcard h3')].map(h => h.textContent).join(',') === 'PA,Plan agent,Implement agent'`))
+check('each card says does, cannot and needs', await evalJS(`[...document.querySelectorAll('#agentsCards .agentcard')].every(c => [...c.querySelectorAll('dt')].map(d => d.textContent).join('|') === 'Does|Cannot|Needs from you' && [...c.querySelectorAll('dd')].every(d => d.textContent.length > 20))`))
 
 if (process.env.SHOT) {
   const shot = await send('Page.captureScreenshot', { format: 'png' })
