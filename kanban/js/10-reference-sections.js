@@ -826,6 +826,11 @@ function makeChatWin(newFor, o){
     pinned: !!(o && o.pinned),
     ownerLabel: chatOwnerLabel,
     readOnlyHelp: '',
+    // "Can write" in the head, drawn only while the list's claude.json has
+    // "work": true. The server holds a writing run to its cwd and refuses
+    // every data/*/todo.md, so the list still only changes through the board.
+    writeSwitch: true,
+    writeNote: chatWriteNote,
     onSessionsChanged,
     onSend: p => {
       if (p.key === PA_KEY) { paWaiting = { ask: p.ask || '' }; paBeforeSend(); }
@@ -843,6 +848,14 @@ function makeChatWin(newFor, o){
   inst.loadStatus();
   chatWins.set(++chatWinSeq, { inst, newFor, pinned: !!(o && o.pinned) });
   return inst;
+}
+
+function chatWriteNote(on){
+  return on
+    ? '(Writing is now switched on for this conversation: you can create and edit files inside the working directory, and nothing outside it. ' +
+      'Anything said earlier about not being able to write no longer holds. The lists\' todo.md files stay refused: ' +
+      'for a change to the list, end your reply with a fenced pa-changes block as before, and the board applies it.)'
+    : '(Writing is now switched off again for this conversation: you can read, but not create or edit files.)';
 }
 
 function openChatWin(ownerId, ownerKey, sessionId, seed, o){

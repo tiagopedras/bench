@@ -387,6 +387,12 @@ check('two minimised chats line up leftwards', await until(`(() => {
 await evalJS(`chat.openSession('${built.ids[0]}', 'aaaaaa', '${S1}')`)
 check('re-opening a minimised chat opens it anchored', await until(`findChatWin('${S1}').dockState() === 'anchored' && !!document.querySelector('.aic-anchored')`))
 check('  with buttons to minimise and expand it', await evalJS(`!!document.querySelector('.aic-anchored .aic-minimise') && !!document.querySelector('.aic-anchored .aic-expand')`))
+// The test list has no claude.json, so "work" is off and a board chat cannot
+// be switched to writing. The switch itself is covered in ai_chat_engine's
+// own suite.
+check('  and no Can write switch while the list has work off', await evalJS(`!document.querySelector('.aic-write') && findChatWin('${S1}').canWrite() === false`))
+await evalJS(`findChatWin('${S1}').setWrite(true)`)
+check('  setWrite does nothing with work off', await evalJS(`findChatWin('${S1}').canWrite() === false`))
 await evalJS(`findChatWin('${S1}').closeChat()`)
 check('closing a chat takes its instance down', await until(`chatWins.size === 1 && !findChatWin('${S1}') && document.querySelectorAll('[data-ai-chat]').length === 1`),
   await evalJS(`chatWins.size + ' instances, ' + document.querySelectorAll('[data-ai-chat]').length + ' roots'`))
