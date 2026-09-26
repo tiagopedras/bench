@@ -1360,7 +1360,19 @@ function drainHandover(it){
   return handOver(t, who) ? 'handed' : 'cleared';
 }
 
+/* Drained on load, when the tab comes back into focus, and once when a run this
+   tab started finishes (20-loading-saving.js), so a plan written by a run the
+   board did not start still gets its `Plan:` line without a reload. One drain at
+   a time: two overlapping would both read the queue before either had posted
+   what it dealt with, and tick the same sub-task twice. */
+let tickDraining = false;
 async function drainTickQueue(){
+  if (tickDraining) return;
+  tickDraining = true;
+  try { await drainTickQueueOnce(); } finally { tickDraining = false; }
+}
+
+async function drainTickQueueOnce(){
   if (state.locked || !state.doc) return;
   let items;
   try {
