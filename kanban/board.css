@@ -2955,3 +2955,7 @@
 .agentsetup h1 { margin: 0 0 8px; font-size: var(--tenon-typography-size-lg); }
 .agentsetup p { margin: 0 0 14px; color: var(--tenon-text-subtle); line-height: 1.5; }
 .agentsetup-more { margin: 12px 0 0; }
+.agentsetup-missing { color: var(--tenon-text-error); margin: 0 0 8px; font-size: var(--tenon-typography-size-sm); }
+.agentsetup-done .agentcards h2 { display: none; }
+.agentsetup-done .agentcards-grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.agentsetup-next { margin: 14px 0 0; line-height: 1.5; }
