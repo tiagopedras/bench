@@ -43,7 +43,9 @@ export type CardProgress = { kind: 'steps', done: number, total: number, pct: nu
 
 export interface TaskCardModel {
   id: string
-  /** `done`, `waiting` or `backlog`, plus `onething` for the headline. */
+  /** `done`, `waiting` or `backlog`, plus `onething` for the headline and
+   *  `selected` while it's held for a bulk action (state.selectedIds,
+   *  02-state.js) — cardModel() decides all of these, this just draws them. */
   cls: string
   /** The title as written, inline Markdown and all. */
   title: string
@@ -65,7 +67,11 @@ export interface TaskCardProps {
    *  handlers. The matrix's hover preview is one, and must not land in the tab
    *  order or take a click meant for whatever is under it. */
   static?: boolean
-  onOpen?: (id: string) => void
+  /** `multi` is true when the click carried shift, cmd or ctrl — the board's
+   *  cue to toggle the card into state.selectedIds instead of opening it (see
+   *  the onOpen wiring in 18-timeline.js's renderBoard()). Plain Enter/Space
+   *  never sets it: a bulk pick is a mouse gesture, not a keyboard one. */
+  onOpen?: (id: string, multi?: boolean) => void
   onDragStart?: (e: DragEvent<HTMLElement>, id: string) => void
   onDragEnd?: (e: DragEvent<HTMLElement>, id: string) => void
 }
@@ -86,9 +92,11 @@ function ChipSpan({ c }: { c: Chip }) {
 export function TaskCard(props: TaskCardProps) {
   const { model: m, stripe, bucketLabel, draggable, dragging, onOpen, onDragStart, onDragEnd } = props
   const still = !!props.static
-  const open = () => { if (onOpen) onOpen(m.id) }
+  const open = (e: { metaKey?: boolean, ctrlKey?: boolean, shiftKey?: boolean }) => {
+    if (onOpen) onOpen(m.id, !!(e.metaKey || e.ctrlKey || e.shiftKey))
+  }
   const key = (e: KeyboardEvent<HTMLElement>) => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open() }
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open({}) }
   }
 
   const tags = (m.chips.length || m.when.length) ? (

@@ -807,6 +807,11 @@ function renderView(){
   const def = isBackups ? { id:'backups', label:'Backups' }
     : defs.find(d => d.id === state.view);
   const isBoard = def.id === 'board';
+  // The bulk action bar only ever means anything on the board — its own
+  // check on state.view (19-drawer.js) hides it the moment a tab switch takes
+  // this away from 'board', same as leaving the selection itself in place
+  // rather than clearing it, so it's waiting there if he switches back.
+  renderBulkBar();
   // Keep the URL in step with whichever tab is on screen, so a refresh (or a
   // link back to this page) lands on the same view instead of the default.
   // syncHash() (07-render-board.js) does the actual write — every branch below
@@ -1061,7 +1066,10 @@ function renderBoard(){
   BoardUI.mountFlushed(board, BoardUI.h(BoardUI.BoardView, {
     columns: data,
     locked: state.locked,
-    onOpen: id => openDrawer(id),
+    // multi is shift/cmd/ctrl on the click (TaskCard.tsx) — the board's own cue
+    // to add the card to the bulk selection instead of opening it. See
+    // toggleCardSelect() and the action bar it feeds, both in 19-drawer.js.
+    onOpen: (id, multi) => { if (multi) toggleCardSelect(id); else openDrawer(id); },
     onDragStart: (e, id) => {
       e.dataTransfer.setData('text/plain', id);
       e.dataTransfer.effectAllowed = 'move';
