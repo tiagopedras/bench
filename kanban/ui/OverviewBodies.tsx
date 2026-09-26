@@ -19,7 +19,7 @@
  */
 import { Fragment } from 'react'
 import type { CSSProperties } from 'react'
-import { Alert, Card, ColumnEmpty, Tag } from '@tiagopedras/tenon'
+import { Alert, Card, ColumnEmpty, Pill, Tag } from '@tiagopedras/tenon'
 import type { Chip } from './TaskCard'
 import { InlineMd } from './InlineMd'
 
@@ -56,6 +56,7 @@ export type RefBlock =
 
 function ChipSpan({ c }: { c: Chip }) {
   if (c.tone) return <Tag tone={c.tone} title={c.title}>{c.text}</Tag>
+  if (c.pill) return <Pill tone={c.pill} className={c.cls} data-project={c.project} title={c.title}>{c.text}</Pill>
   return <span className={c.cls} data-project={c.project} title={c.title}>{c.text}</span>
 }
 

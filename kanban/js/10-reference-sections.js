@@ -265,8 +265,8 @@ function refChips(it){
      every other tag on the card: the deadline is the next occurrence. */
   if (it.repeat) chips.push({ tone: 'neutral', text: it.repeat.label, title: 'Recurring ' + it.repeat.label });
   const si = startInfo(it.start);
-  // Kept as the board's own chip — see cardModel()'s startdate comment.
-  if (si) chips.push({ cls: 'tag startdate', text: si.label + ' · ' + si.note });
+  // A dashed `Pill` — see cardModel()'s startdate comment.
+  if (si) chips.push({ pill: 'neutral', cls: 'startdate', text: si.label + ' · ' + si.note });
   const di = dueInfo(it.due, it.tier === WAIT_COL);
   if (di) chips.push({ tone: DUE_TONE[di.cls] || 'neutral', text: di.label + (di.note ? ' · ' + di.note : '') });
   if (it.urgent) chips.push({ tone: 'urgent', text: 'urgent' });
