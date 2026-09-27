@@ -18,7 +18,7 @@ needs a decision, a new tag, or a new piece of the board before it can be built.
 
 ## Small
 
-- **A plan written by a background run cannot be read until the board is reloaded.**
+- ~~**A plan written by a background run cannot be read until the board is reloaded.**~~ **Done, 27 Sep 2026.** The drawer finds a plan in `/plans.json` when the note has no `Plan:` line, and the tick queue drains on focus, on leaving the Agents view and when a run this tab started finishes.
   The drawer's Read the plan button (`openPlanReader()`, `kanban/js/19-drawer.js:1791`)
   gets its file only from a `- Plan: plans/<file>.md` line in the review sub-task's note
   (`planRel`, `19-drawer.js:1847`). The Plan agent cannot write that line itself: it
@@ -641,8 +641,8 @@ they settled is written up in the README rather than left here:
 
 ## Big
 
-- **The board edits one task at a time, so moving or deleting ten cards is ten
-  trips through the drawer.** Every change goes through the open task:
+- ~~**The board edits one task at a time, so moving or deleting ten cards is ten
+  trips through the drawer.**~~ **Done, 27 Sep 2026.** Shift-, ⌘- or Ctrl-click selects cards on the Board view, and a bar moves them to a column or bucket or deletes them, as one undo step. Moving to Done does not tick them. Every change goes through the open task:
   `state.openTask` feeds the bucket menu's click handler
   (`kanban/js/19-drawer.js:1918`) and the `#del` button (`:1945`), whose
   `confirm()` and `splice()` act on the one card `locate()` returns. Bulk
@@ -946,7 +946,7 @@ they settled is written up in the README rather than left here:
   Tests: `python3 agents/plan-agent/test_planning_agent.py`.
   Open: none.
 
-- **The app and its data sit in one checkout, so the hosted web version can only ever show `demo.md` and cannot work on a data folder on the person's own machine.**
+- ~~**The app and its data sit in one checkout, so the hosted web version can only ever show `demo.md` and cannot work on a data folder on the person's own machine.**~~ **Done, 27 Sep 2026, for `todo.md`.** In Chrome and Edge the hosted page opens a folder on the person's machine (File System Access API), with the changed-on-disk check, a backup per visit and a crash copy. Plans, reports, projects and the schedule are still read only through the helper.
   `ROOT` and `DATA = "data"` (`kanban/server.py:41`, `:74`) put every dataset at
   `dataset_dir()` (`:131`) beside the code, and everything the page reads comes through
   routes on that one server: `/data/todo.md` (`FILE_URL`, `kanban/js/01-markdown-model.js:10`),
@@ -984,7 +984,7 @@ they settled is written up in the README rather than left here:
   lands there, so someone who never picks one works exactly as today. The agents that read a project folder, `implementing-agent` and the planners,
   would follow the note's path rather than assuming `projects_dir()`.
 
-- **A new user cannot set up an agent from inside the app, because agents, their rules and their skills are all written by hand.**
+- ~~**A new user cannot set up an agent from inside the app, because agents, their rules and their skills are all written by hand.**~~ **Done, 27 Sep 2026.** The Agents tab has a four-question setup that writes the bucket's brief through `PUT /bucket-brief`. Learning from use is left for its own entry.
   An agent today is a file in `agents/planning_agent/` (`planning-<stream>.md`, `agent.json`,
   `schedule.py`) plus a brief under `data/<dataset>/buckets/<stream>/` and the rules in
   `CONVENTIONS.md`; nothing in `kanban/` creates one. Bench's users know very little about AI
@@ -1033,7 +1033,7 @@ they settled is written up in the README rather than left here:
   Tests: `scripts/test-board.sh test_board.mjs test_subtasks.mjs`.
   Open: none.
 
-- **Someone who only uses the PA to keep their list still has agent columns, a Plans tab, an "AI can do" filter and `ai` chips in their way.**
+- ~~**Someone who only uses the PA to keep their list still has agent columns, a Plans tab, an "AI can do" filter and `ai` chips in their way.**~~ **Done, 27 Sep 2026.** Until a list has a planner, a written brief or a delegated task, Delegate to offers no agents and Overview drops its Delegate to Claude column.
   `renderViewTabs()` (`kanban/js/18-timeline.js:879`) always draws Plans,
   `boardColumns()` (`kanban/js/02-state.js:337`) always splices in Handed to AI,
   and `state.aiFilter` (`kanban/js/02-state.js:71`, read in
@@ -1120,7 +1120,7 @@ they settled is written up in the README rather than left here:
   Tests: `scripts/test-board.sh test_board.mjs`.
   Open: the entry names `openPlanModal()`/`openPlanChat()` in `kanban/js/13-plans.js`, which no longer exists — folded into the board 22 Sep 2026. Default: the equivalent surface today is the sub-task's own panel in the drawer.
 
-- **Someone new to the app cannot tell what the agents can do, or what full, partial and none mean.**
+- ~~**Someone new to the app cannot tell what the agents can do, or what full, partial and none mean.**~~ **Done, 27 Sep 2026.** The Agents tab has a card each for the PA, the Plan agent and the Implement agent (`AGENT_CARDS`, `02-state.js`). Full, partial and none went with `[ai::]` on 21 Sep.
   The rules live only in `CONVENTIONS.md`, and `TIER_HINT` in
   `kanban/js/02-state.js:325` says no more than "tagged ai:: full, not done yet".
   Matters once the app ships: each agent gets a short card saying what it does,
