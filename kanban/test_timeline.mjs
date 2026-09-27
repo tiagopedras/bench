@@ -84,8 +84,13 @@ await evalJS(`(() => {
     '# To-do', '', '## 1. Tasks', '',
     '### To do', '',
     '- [ ] Dated one \`id:tl0001\` [bucket:: People] [impact:: high] [effort:: S] \`start:2026-09-10\` \`due:2026-09-12\`',
-    '- [ ] Undated one \`id:tl0002\` [bucket:: People] [impact:: med] [effort:: S]',
     '- [ ] Dated two \`id:tl0003\` [bucket:: People] [impact:: low] [effort:: S] \`start:2026-09-15\` \`due:2026-09-17\`',
+    // Both kept last so the reorder drag below, worked out against the
+    // lane's first two rows, still lands on the two dated ones untouched by
+    // either one's arrival. Two undated ones: the first goes tray-to-scale
+    // (unchanged behaviour), the second gets clicked on its own row's track.
+    '- [ ] Undated one \`id:tl0002\` [bucket:: People] [impact:: med] [effort:: S]',
+    '- [ ] Undated two \`id:tl0004\` [bucket:: People] [impact:: med] [effort:: S]',
     ''
   ].join('\\n'), 'demo.md', {});
 })()`)
@@ -158,7 +163,7 @@ check('a second visit still finds a lane and a wired tray card, not a stale one'
 /* The board renumbers ids on load, so a row is found by its title. */
 const ID = await evalJS(`(() => {
   const items = allItems().filter(i => !i.sub);
-  return Object.fromEntries([['one','Dated one'],['un','Undated one'],['two','Dated two']]
+  return Object.fromEntries([['one','Dated one'],['un','Undated one'],['two','Dated two'],['un2','Undated two']]
     .map(([k, t]) => [k, items.find(i => i.title === t).id]));
 })()`)
 const mouse = (type, x, y) => send('Input.dispatchMouseEvent', {
@@ -185,8 +190,11 @@ await evalJS(`(() => {
   }));
 })()`)
 
-/* Row reorder: Dated one's label onto Dated two's lower half. */
-check('two dated rows, board order to start', await rowOrder() === ID.one + ',' + ID.two, await rowOrder())
+/* Row reorder: Dated one's label onto Dated two's lower half. Both undated
+   ones also have rows now, third and fourth in the lane (see the fixture),
+   untouched by a drag between the first two. */
+check('four rows, board order to start',
+  await rowOrder() === ID.one + ',' + ID.two + ',' + ID.un + ',' + ID.un2, await rowOrder())
 await evalJS(`(async () => {
   const rows = [...document.querySelector('.tllanegroup').querySelectorAll(':scope > .tlrow[data-tlreorder]')];
   const grip = rows[0].querySelector('.tllabel');
@@ -197,7 +205,8 @@ await evalJS(`(async () => {
   __fire('drop', rows[1], r.left + 20, r.bottom - 2);
   __fire('dragend', grip, r.left + 20, r.bottom - 2);
 })()`)
-check('dragging a row label below the next row reorders the lane', await rowOrder() === ID.two + ',' + ID.one, await rowOrder())
+check('dragging a row label below the next row reorders the lane',
+  await rowOrder() === ID.two + ',' + ID.one + ',' + ID.un + ',' + ID.un2, await rowOrder())
 {
   const one = await taskDates(ID.one), two = await taskDates(ID.two)
   check('and writes tlrank 0.. in the new order, leaving both dates alone',
@@ -277,6 +286,32 @@ check('dragging a row label below the next row reorders the lane', await rowOrde
   await new Promise(r => setTimeout(r, 50))
   const d = await taskDates(ID.two)
   check('clicking the empty track sets the due date to that day', d.start === '2026-09-15' && d.due === '2026-09-22', JSON.stringify(d))
+  await evalJS(`closeDrawer()`)
+}
+
+/* An undated task gets a row of its own now too (the point of this change) —
+   empty track, no bar or diamond — and clicking that track sets its due date
+   exactly the way a dated row’s already did just above. It sits in the tray
+   as well until then, the same undated task shown two ways at once. */
+{
+  check('an undated task still gets a lane row, with an empty track', await evalJS(`(() => {
+    const track = document.querySelector('.tlrow[data-tlreorder="${ID.un2}"] .tltrack');
+    return !!track && !track.querySelector('.tlbar') && !track.querySelector('.tlmilestone');
+  })()`))
+  check('and it is still in the tray at the same time', await evalJS(`
+    !!document.querySelector('.tltraycard[data-tlid="${ID.un2}"]')
+  `))
+  const target = await dateAt(12)
+  const p = await dayX(ID.un2, 12)
+  check('the click lands on its own empty track', await evalJS(`document.elementFromPoint(${p.x}, ${p.y})?.classList.contains('tltrack')`) === true)
+  await mouse('mousePressed', p.x, p.y)
+  await mouse('mouseReleased', p.x, p.y)
+  await new Promise(r => setTimeout(r, 50))
+  const d = await taskDates(ID.un2)
+  check('clicking an undated row’s track sets its due date, same as a dated row’s',
+    d.due === target && d.start === null, JSON.stringify({ d, target }))
+  check('and it leaves the tray, same as a tray-to-scale drop would',
+    await evalJS(`!document.querySelector('.tltraycard[data-tlid="${ID.un2}"]')`))
   await evalJS(`closeDrawer()`)
 }
 
@@ -426,6 +461,68 @@ await evalJS(`document.querySelector('.tlsub .tllabeltext[data-open="sb0001"]').
 await new Promise(r => setTimeout(r, 80))
 check("clicking a sub-task's title opens its own panel", await evalJS(`state.openTask === 'sb0001' && subPanelOpen()`))
 await evalJS(`closeDrawer && closeDrawer()`)
+
+/* ---- an undated sub-task, under an undated parent ----
+
+   Neither carries a date anywhere. Both still get a row (goal 2), and
+   clicking the sub-task's own track dates the sub-task, not its parent — a
+   fresh fixture, so the fold/click checks above stay about the one task they
+   were written against. */
+await evalJS(`(() => {
+  load([
+    '# To-do', '', '## 1. Tasks', '',
+    '### To do', '',
+    '- [ ] Undated parent \`id:tlpar2\` [bucket:: People] [impact:: med] [effort:: S]',
+    '  - [ ] Own row \`id:sb0003\`',
+    ''
+  ].join('\\n'), 'demo.md', {});
+  state.view = 'timeline'; renderView();
+})()`)
+const parentId2 = await evalJS(`allItems().find(i => i.title === 'Undated parent' && !i.sub).id`)
+check('the undated parent gets a lane row, with an empty track', await evalJS(`(() => {
+  const track = document.querySelector('.tlrow[data-tlreorder="${parentId2}"] .tltrack');
+  return !!track && !track.querySelector('.tlbar') && !track.querySelector('.tlmilestone');
+})()`))
+check('its undated sub-task is drawn under it, also with an empty track', await evalJS(`(() => {
+  const row = document.querySelector('.tlsub [data-open="sb0003"]')?.closest('.tlrow');
+  const track = row && row.querySelector('.tltrack');
+  return !!track && !track.querySelector('.tlbar') && !track.querySelector('.tlmilestone');
+})()`))
+{
+  const target = await dateAt(9)
+  const p = await evalJS(`(() => {
+    const track = document.querySelector('.tlsub [data-open="sb0003"]').closest('.tlrow').querySelector('.tltrack');
+    track.scrollIntoView({ block: 'center', inline: 'nearest' });
+    document.querySelector('.tlscroll').scrollLeft = 0;
+    const r = track.getBoundingClientRect();
+    return { x: r.left + 9.25 * TL_DAY_PX, y: r.top + r.height / 2 };
+  })()`)
+  check('the click lands on the sub-task’s own track', await evalJS(`document.elementFromPoint(${p.x}, ${p.y})?.classList.contains('tltrack')`) === true)
+  await mouse('mousePressed', p.x, p.y)
+  await mouse('mouseReleased', p.x, p.y)
+  await new Promise(r => setTimeout(r, 50))
+  const line = await evalJS(`readSub(locateSub('sb0003').loc.task, locateSub('sb0003').step.line)`)
+  check('clicking it writes the sub-task’s own due date', line && line.due === target, JSON.stringify({ line, target }))
+  const parent = await evalJS(`(() => { const t = allItems().find(i => i.id === '${parentId2}' && !i.sub).task; return t.start + ' ' + t.due; })()`)
+  check('and leaves the parent task undated', parent === ' ', parent)
+}
+
+/* ---- nothing dated at all still draws a scale (goal 3) ---- */
+await evalJS(`(() => {
+  load([
+    '# To-do', '', '## 1. Tasks', '',
+    '### To do', '',
+    '- [ ] Only undated \`id:tlonly1\` [bucket:: People] [impact:: med] [effort:: S]',
+    ''
+  ].join('\\n'), 'demo.md', {});
+  state.view = 'timeline'; renderView();
+})()`)
+check('with nothing dated at all, timelineSection still returns a scale',
+  await evalJS(`!!timelineSection().model.scale`))
+check('and the scale is drawn — a lane with an empty track, not just the tray',
+  await evalJS(`!!document.querySelector('.tlscroll .tlbody .tltrack')`))
+check('the one task left is still in the tray as well',
+  await evalJS(`document.querySelectorAll('.tltraycard').length`) === 1)
 
 /* ---- the point of the guard ---- */
 

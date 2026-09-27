@@ -57,14 +57,21 @@ function timelineTasks(){
       // A step with no date of its own shows the task's, the way the drawer
       // shows what it inherits. It carries its own id, so it drags and opens
       // like a task; one written before ids were minted keeps its parent's
-      // and stays still.
+      // and stays still. Every open step gets a row now, dated or not — a
+      // dateless one under a dateless task draws an empty track same as the
+      // task above it, rather than being left off entirely.
       const steps = splitBody(t).steps
-        .filter(s => !s.done && (s.due || s.start || t.due || t.start))
+        .filter(s => !s.done)
         .map(s => ({ id: s.stableId || t.id, sub: !!s.stableId, title: s.clean,
                      start: laterOf(s.start, t.start), due: s.due || t.due }));
       const row = { id: t.id, title: t.title, bucket: b.name, color,
                     start: t.start, due: t.due, blocked, steps, tlrank: t.tlrank };
-      (t.start || t.due || steps.length ? dated : undated).push(row);
+      // Whether the task itself carries a date, or a step does — same test as
+      // before, just no longer readable off steps.length now that a dateless
+      // step is kept too. This is what still decides the tray, not the lane:
+      // every row gets a lane row either way (see timelineSection).
+      const hasDate = !!(t.start || t.due) || steps.some(s => s.start || s.due);
+      (hasDate ? dated : undated).push(row);
     }));
   });
   return { dated, undated };
@@ -208,30 +215,37 @@ function timelineScaleModel(scale){
 }
 
 /* Everything the Timeline's body draws, as data for TimelineBody. It was one
-   HTML string until 25 Sep 2026. Undated open tasks, most of a fresh list, go
-   to the tray rather than being left off the view. The count is every open
-   top-level task, dated or not: the tray is part of the column. */
+   HTML string until 25 Sep 2026. Every open top-level task gets a lane row
+   now, dated or not — an undated one draws with an empty track, clickable
+   the same way a dated one's already was. It still sits in the tray too
+   (unchanged): the row and the tray card are two ways to give it a date, not
+   one replacing the other. `scale` is null only when nothing at all is open —
+   dated.length === 0 no longer means that, since an undated row still needs
+   a scale to draw its empty track against (see timelineScale, which floors
+   to a window around today with nothing dated to measure). The count is
+   every open top-level task, dated or not: the tray is part of the column. */
 function timelineSection(){
   const { dated, undated } = timelineTasks();
   const tray = undated.map(row => ({ id: row.id, title: row.title, color: row.color, bucket: row.bucket }));
-  if (!dated.length) return { model: { scale: null, lanes: [], legendColors: [], tray }, n: undated.length };
+  const rows = dated.concat(undated);
+  if (!rows.length) return { model: { scale: null, lanes: [], legendColors: [], tray }, n: 0 };
   const scale = timelineScale(dated);
   const byBucket = new Map();
-  dated.forEach(row => {
+  rows.forEach(row => {
     if (!byBucket.has(row.bucket)) byBucket.set(row.bucket, []);
     byBucket.get(row.bucket).push(row);
   });
   const lanes = [];
-  byBucket.forEach((rows, bucket) => {
+  byBucket.forEach((bucketRows, bucket) => {
     // Dragged rows carry a `tlrank` and sort by it; everything else falls
     // back to board order, same split Delegate uses for its own `rank`.
-    const ranked = rows.filter(r => r.tlrank != null).sort((a, b) => a.tlrank - b.tlrank);
-    const unranked = rows.filter(r => r.tlrank == null);
+    const ranked = bucketRows.filter(r => r.tlrank != null).sort((a, b) => a.tlrank - b.tlrank);
+    const unranked = bucketRows.filter(r => r.tlrank == null);
     lanes.push(timelineLaneModel(bucket, ranked.concat(unranked), scale));
   });
   return {
     model: { scale: timelineScaleModel(scale), lanes,
-             legendColors: Array.from(byBucket.values()).map(rows => rows[0].color), tray },
+             legendColors: Array.from(byBucket.values()).map(bucketRows => bucketRows[0].color), tray },
     n: dated.length + undated.length,
   };
 }

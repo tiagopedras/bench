@@ -91,7 +91,9 @@ export interface TimelineTrayCard {
 }
 
 export interface TimelineModel {
-  /** Null when nothing open carries a date, so there is no scale to draw. */
+  /** Null only when nothing at all is open — an undated task still gets a
+   *  lane row with an empty track, so a scale to draw it against exists as
+   *  long as anything open exists, dated or not. */
   scale: TimelineScale | null
   lanes: TimelineLane[]
   /** One per lane on screen, for the legend's striped bucket swatch. */
@@ -357,7 +359,7 @@ function Tray({ cards, locked, h }: { cards: TimelineTrayCard[], locked: boolean
 export function TimelineBody({ model, locked, handlers: h }: TimelineBodyProps) {
   const body = useRef<HTMLDivElement>(null)
   const { scale, lanes, legendColors, tray } = model
-  if (!scale && !tray.length) return <ColumnEmpty>Nothing open on the list.</ColumnEmpty>
+  if (!scale) return <ColumnEmpty>Nothing open on the list.</ColumnEmpty>
 
   const at = <E,>(fn: (e: E, b: HTMLElement) => void) => (e: E) => { if (body.current) fn(e, body.current) }
   const scrollProps = h ? {
@@ -370,20 +372,14 @@ export function TimelineBody({ model, locked, handlers: h }: TimelineBodyProps) 
 
   return (
     <>
-      {scale ? (
-        <>
-          <div className="tlscroll" {...scrollProps}>
-            <div ref={body} className="tlbody" data-daypx={scale.dayPx}
-              style={{ ['--tllabelw' as string]: scale.labelWidth + 'px', ['--tldaypx' as string]: scale.dayPx + 'px' } as CSSProperties}>
-              <Header scale={scale} h={h} />
-              {lanes.map(l => <Lane key={l.bucket} lane={l} scale={scale} locked={locked} h={h} />)}
-            </div>
-          </div>
-          <Legend colors={legendColors} />
-        </>
-      ) : (
-        <ColumnEmpty>Nothing with a date yet — everything open is in the tray below.</ColumnEmpty>
-      )}
+      <div className="tlscroll" {...scrollProps}>
+        <div ref={body} className="tlbody" data-daypx={scale.dayPx}
+          style={{ ['--tllabelw' as string]: scale.labelWidth + 'px', ['--tldaypx' as string]: scale.dayPx + 'px' } as CSSProperties}>
+          <Header scale={scale} h={h} />
+          {lanes.map(l => <Lane key={l.bucket} lane={l} scale={scale} locked={locked} h={h} />)}
+        </div>
+      </div>
+      <Legend colors={legendColors} />
       <Tray cards={tray} locked={locked} h={h} />
     </>
   )
