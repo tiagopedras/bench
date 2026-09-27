@@ -367,6 +367,66 @@ check('dragging a row label below the next row reorders the lane', await rowOrde
   `))
 }
 
+/* ---- sub-tasks ----
+
+   A sub-task is drawn under its task from the start, and drags, resizes and
+   opens the way a task does, writing its own line. One with no date of its
+   own shows the task's due; one with no id of its own stays still. */
+await evalJS(`(() => {
+  load([
+    '# To-do', '', '## 1. Tasks', '',
+    '### To do', '',
+    '- [ ] Parent \`id:tlpar1\` [bucket:: People] [impact:: high] [effort:: S] \`start:2026-09-10\` \`due:2026-09-20\`',
+    '  - [ ] Own dates \`id:sb0001\` \`start:2026-09-12\` [due:: 2026-09-14]',
+    '  - [ ] Inherits \`id:sb0002\`',
+    '  - [ ] No id [due:: 2026-09-16]',
+    ''
+  ].join('\\n'), 'demo.md', {});
+  state.view = 'timeline'; renderView();
+})()`)
+check('sub-tasks are drawn under their task without expanding it',
+  await evalJS(`document.querySelectorAll('.tlrow.tlsub').length`) === 3,
+  await evalJS(`document.querySelectorAll('.tlrow.tlsub').length`))
+check("one with no date of its own shows the task's due", await evalJS(`(() => {
+  const r = timelineTasks().dated[0].steps.find(s => s.id === 'sb0002');
+  return !!r && r.due === '2026-09-20';
+})()`))
+check('one with an id takes drags, one without does not', await evalJS(`
+  !!document.querySelector('.tlsub [data-tlrow="sb0001"][data-tldrag]') &&
+  !!document.querySelector('.tlsub [data-tlrow="sb0002"][data-tldrag]') &&
+  !document.querySelector('.tlsub [data-tldrag]:not([data-tlrow^="sb"])')
+`))
+{
+  const bar = () => evalJS(`(() => {
+    const b = document.querySelector('.tlsub .tlbar[data-tlrow="sb0001"]');
+    b.scrollIntoView({ block: 'center', inline: 'nearest' });
+    const r = b.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  })()`)
+  const p = await bar()
+  await mouse('mousePressed', p.x, p.y)
+  for (let i = 1; i <= 4; i++) await mouse('mouseMoved', p.x + i * 0.5 * await evalJS(`TL_DAY_PX`), p.y)
+  await mouse('mouseReleased', p.x + 2 * await evalJS(`TL_DAY_PX`), p.y)
+  await new Promise(r => setTimeout(r, 80))
+  const line = await evalJS(`locateSub('sb0001') && readSub(locateSub('sb0001').loc.task, locateSub('sb0001').step.line)`)
+  check("dragging a sub-task's bar moves both of its own dates by two days",
+    line && line.start === '2026-09-14' && line.due === '2026-09-16', JSON.stringify(line))
+  const parent = await evalJS(`(() => { const t = allItems().find(i => i.title === 'Parent' && !i.sub).task; return t.start + ' ' + t.due })()`)
+  check("and leaves its task's dates alone", parent === '2026-09-10 2026-09-20', parent)
+}
+await evalJS(`tlTarget('sb0002').write(null, '2026-09-18')`)
+check('a drag on an inheriting sub-task writes a due of its own', await evalJS(`
+  readSub(locateSub('sb0002').loc.task, locateSub('sb0002').step.line).due === '2026-09-18'`))
+await evalJS(`document.querySelector('.tlchevron').click()`)
+await new Promise(r => setTimeout(r, 50))
+check('the chevron folds them away', await evalJS(`document.querySelectorAll('.tlrow.tlsub').length`) === 0)
+await evalJS(`document.querySelector('.tlchevron').click()`)
+await new Promise(r => setTimeout(r, 50))
+await evalJS(`document.querySelector('.tlsub .tllabeltext[data-open="sb0001"]').click()`)
+await new Promise(r => setTimeout(r, 80))
+check("clicking a sub-task's title opens its own panel", await evalJS(`state.openTask === 'sb0001' && subPanelOpen()`))
+await evalJS(`closeDrawer && closeDrawer()`)
+
 /* ---- the point of the guard ---- */
 
 check('the timeline wrote nothing, which is all it should ever do',

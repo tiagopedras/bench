@@ -47,8 +47,11 @@ export interface TimelineRow {
   id: string
   /** The title as written, inline Markdown and all. */
   title: string
-  /** A step nested under its task: thinner, no grip, no chevron, no drag. */
+  /** A step nested under its task: thinner, no grip, no chevron. */
   sub: boolean
+  /** Whether its mark and track take a drag. False only on a step written
+      before sub-tasks had ids of their own, which has nothing to write to. */
+  draggable: boolean
   blocked: boolean
   /** Absent on a step, which has never carried a colour of its own. */
   color?: string
@@ -189,8 +192,8 @@ function Row({ row, bucket, scale, locked, h }: {
         <span className="tllabeltext" data-open={row.id} title={row.title}><InlineMd text={row.title} /></span>
       </div>
       <div className="tltrack" style={{ width: scale.trackWidth + 'px' }}
-        {...(!sub && h ? { onPointerDown: (e: PointerEvent<HTMLElement>) => h.onTrackPointerDown(e, row.id) } : {})}>
-        <Mark row={row} h={sub ? null : h} />
+        {...(row.draggable && h ? { onPointerDown: (e: PointerEvent<HTMLElement>) => h.onTrackPointerDown(e, row.id) } : {})}>
+        <Mark row={row} h={row.draggable ? h : null} />
       </div>
     </div>
   )

@@ -212,7 +212,7 @@ $('#lists').addEventListener('click', e => {
   const toggle = e.target.closest('[data-tltoggle]');
   if (toggle) {
     const id = toggle.dataset.tltoggle;
-    if (tlExpanded.has(id)) tlExpanded.delete(id); else tlExpanded.add(id);
+    if (tlCollapsed.has(id)) tlCollapsed.delete(id); else tlCollapsed.add(id);
     renderView();
     return;
   }
@@ -301,7 +301,7 @@ $('#lists').addEventListener('click', e => {
      never hovers, so opening the drawer was the only way to find out what a
      dot was. The preview carries the control that opens the task. */
   if (open.classList.contains('mdot')) return;
-  if (!locate(open.dataset.open)) return;
+  if (!locate(open.dataset.open) && !locateSub(open.dataset.open)) return;
   openDrawer(open.dataset.open);
 });
 

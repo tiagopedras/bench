@@ -54,9 +54,14 @@ function timelineTasks(){
       if (t.done || !matches(t, tier.name)) return;
       const it = items.find(i => i.id === t.id && !i.sub);
       const blocked = !!it && !actionable(items, it);
+      // A step with no date of its own shows the task's, the way the drawer
+      // shows what it inherits. It carries its own id, so it drags and opens
+      // like a task; one written before ids were minted keeps its parent's
+      // and stays still.
       const steps = splitBody(t).steps
-        .filter(s => !s.done && (s.due || s.start))
-        .map(s => ({ id: t.id, title: s.clean, start: laterOf(s.start, t.start), due: s.due }));
+        .filter(s => !s.done && (s.due || s.start || t.due || t.start))
+        .map(s => ({ id: s.stableId || t.id, sub: !!s.stableId, title: s.clean,
+                     start: laterOf(s.start, t.start), due: s.due || t.due }));
       const row = { id: t.id, title: t.title, bucket: b.name, color,
                     start: t.start, due: t.due, blocked, steps, tlrank: t.tlrank };
       (t.start || t.due || steps.length ? dated : undated).push(row);
@@ -139,17 +144,16 @@ function tlWeekends(scale){
 /* One row as data for TimelineBody (kanban/ui/TimelineBody.tsx): a sticky
    label plus a track the width of the whole scale, with the bar or diamond
    positioned inside it by day offset. `sub` is a step nested under its
-   parent: same track, thinner mark, and no drag. A step's dates live inside
-   its line's own tags rather than on a property the way a task's do, so
-   rescheduling one by dragging would mean rewriting that line's text rather
-   than just setting a field. That is still only done from the drawer.
+   parent: same track, thinner mark, and the same drags a task has, which
+   rewrite its line's own tags through tlTarget(). A step with no id of its
+   own has nothing to write to, so it alone stays still.
 
    Every task's mark has an edge at each end. On a bar they set start and due.
    A trail's right edge sets the due date it is missing, which makes it a bar,
    and a diamond's left edge sets the start it is missing the same way. */
 function timelineRowModel(row, scale, sub){
   const s = tlOffset(scale, row.start), d = tlOffset(scale, row.due);
-  const drag = !sub;
+  const drag = !sub || row.sub;
   let mark = null;
   if (s != null && d != null) {
     const di = dueInfo(row.due);
@@ -169,9 +173,9 @@ function timelineRowModel(row, scale, sub){
              title: row.title, drag: drag ? 'due' : null, handles: drag };
   }
   // A step carries no colour of its own (see timelineTasks), and never has.
-  return { id: row.id, title: row.title, sub: !!sub,
+  return { id: row.id, title: row.title, sub: !!sub, draggable: drag,
            blocked: !!row.blocked, color: row.color, mark,
-           steps: (!sub && row.steps) ? row.steps.length : 0, expanded: tlExpanded.has(row.id) };
+           steps: (!sub && row.steps) ? row.steps.length : 0, expanded: !tlCollapsed.has(row.id) };
 }
 
 /* A lane: its tasks in order, each followed by its steps when expanded. */
@@ -180,7 +184,7 @@ function timelineLaneModel(bucket, rows, scale){
   const out = [];
   rows.forEach(row => {
     out.push(timelineRowModel(row, scale));
-    if (row.steps.length && tlExpanded.has(row.id)) {
+    if (row.steps.length && !tlCollapsed.has(row.id)) {
       row.steps.forEach(st => out.push(timelineRowModel(st, scale, true)));
     }
   });
@@ -423,8 +427,9 @@ function hideTlTargetLine(){ if (tlTargetEl) { tlTargetEl.remove(); tlTargetEl =
      .tlbar itself       — data-tldrag="move", shifts start and due together
      .tlhandle-l/-r       — data-tldrag="start"/"due", resizes one end
      .tlmilestone         — data-tldrag="due", the only date it has
-   Sub-step marks carry none of these and get no handler (see Mark in
-   kanban/ui/TimelineBody.tsx). This is the handler each mark's
+   A sub-task's marks carry the same, written through tlTarget(); only a step
+   with no id of its own gets none (see Mark in kanban/ui/TimelineBody.tsx).
+   This is the handler each mark's
    onPointerDown calls, with the element as e.currentTarget.
 
    A stopped drag under a few pixels is treated as the click it probably
@@ -438,6 +443,36 @@ function hideTlTargetLine(){ if (tlTargetEl) { tlTargetEl.remove(); tlTargetEl =
    React keeps the same element from one render to the next, where the string
    version replaced it, so up() takes both its listeners off: one left behind
    would fire on a later pointercancel and write this drag's dates again. */
+/* What a timeline drag writes to: a task's own start and due, or a sub-task's
+   line through readSub()/writeSub(), the way its drawer writes it. `start` and
+   `due` are what the row shows, inherited dates included, so a drag starts
+   from the mark on screen and writes the step dates of its own. */
+function tlTarget(id){
+  const loc = locate(id);
+  if (loc) {
+    const t = loc.task;
+    return { start: t.start, due: t.due,
+             write(start, due){
+               if (start != null) t.start = start;
+               if (due != null) t.due = due;
+               t.dirty = true;
+             } };
+  }
+  const found = locateSub(id);
+  if (!found || !found.loc) return null;
+  const t = found.loc.task, line = found.step.line;
+  const cur = readSub(t, line);
+  if (!cur) return null;
+  return { start: laterOf(cur.start, t.start), due: cur.due || t.due,
+           write(start, due){
+             const f = readSub(t, line);
+             if (!f) return;
+             if (start != null) f.start = start;
+             if (due != null) f.due = due;
+             writeSub(t, line, f);
+           } };
+}
+
 function tlMarkPointerDown(e, id, kind){
   const el = e.currentTarget;
   if (e.button) return;
@@ -447,10 +482,9 @@ function tlMarkPointerDown(e, id, kind){
   // handler's setPointerCapture() steals the pointer back off the
   // handle, so every resize drag was actually moving the whole bar.
   e.stopPropagation();
-  const loc = locate(id);
+  const t = tlTarget(id);
   const track = el.closest('.tltrack');
-  if (!loc || !track) return;
-  const t = loc.task;
+  if (!t || !track) return;
   const scale = timelineScale(timelineTasks().dated);
   const bar = el.classList.contains('tlbar') ? el : el.closest('.tlbar');
   const milestone = el.classList.contains('tlmilestone') ? el : null;
@@ -535,9 +569,8 @@ function tlMarkPointerDown(e, id, kind){
     const swallow = ev => { ev.stopPropagation(); ev.preventDefault(); };
     window.addEventListener('click', swallow, { capture: true, once: true });
     setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 0);
-    if (newStart != null) t.start = ymd(addDays(scale.min, newStart));
-    if (newDue != null) t.due = ymd(addDays(scale.min, newDue));
-    t.dirty = true;
+    t.write(newStart != null ? ymd(addDays(scale.min, newStart)) : null,
+            newDue != null ? ymd(addDays(scale.min, newDue)) : null);
     markDirty();
     refreshView();
   };
@@ -556,16 +589,15 @@ function tlMarkPointerDown(e, id, kind){
    Guarded against the marks .tlbar/.tlmilestone/.tlhandle already draw on
    top of the track: e.target.closest('[data-tldrag]') is true for any of
    them, and this leaves them to tlMarkPointerDown rather than fighting it for
-   the same pointerdown. Each task row's track calls this from its
-   onPointerDown; a step's track has none. */
+   the same pointerdown. Each row's track calls this from its onPointerDown,
+   a sub-task's included; only a step with no id of its own has none. */
 let tlTrackActive = false;
 function tlTrackPointerDown(e, id){
   const track = e.currentTarget;
   if (e.button) return;
   if (e.target.closest('[data-tldrag]')) return;
-  const loc = locate(id);
-  if (!loc) return;
-  const t = loc.task;
+  const t = tlTarget(id);
+  if (!t) return;
   const scale = timelineScale(timelineTasks().dated);
   const trackRect = track.getBoundingClientRect();
   const beginDay = Math.floor((e.clientX - trackRect.left) / scale.dayPx);
@@ -603,12 +635,10 @@ function tlTrackPointerDown(e, id){
     tlTrackActive = false;
     if (moved) {
       const lo = Math.min(beginDay, endDay), hi = Math.max(beginDay, endDay);
-      t.start = ymd(addDays(scale.min, lo));
-      t.due = ymd(addDays(scale.min, hi));
+      t.write(ymd(addDays(scale.min, lo)), ymd(addDays(scale.min, hi)));
     } else {
-      t.due = ymd(addDays(scale.min, beginDay));
+      t.write(null, ymd(addDays(scale.min, beginDay)));
     }
-    t.dirty = true;
     markDirty();
     refreshView();
   };
@@ -1157,9 +1187,9 @@ let dragId = null;
 let subDrag = null;
 /* Which timeline tasks are showing their steps. Not persisted — reparsing
    mints fresh task ids (see resetUndo), so a stored id would stop matching
-   anything by the next reload anyway. Collapsed by default: the row-per-step
-   count could otherwise dwarf the tasks that own them. */
-let tlExpanded = new Set();
+   anything by the next reload anyway. Expanded by default, since a step is
+   scheduled the same way a task is; the chevron folds one task's away. */
+let tlCollapsed = new Set();
 
 /* A line showing where the card will land. One element, moved around the board
    rather than one per gap, so there is never more than one target on screen.
