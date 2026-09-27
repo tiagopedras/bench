@@ -434,6 +434,22 @@ check('the arrow keys move between views', await evalJS(`state.view === 'timelin
 await evalJS(`state.view = 'board'; renderView()`)
 await new Promise(r => setTimeout(r, 150))
 
+/* ---- bulk move ticks and unticks ---- */
+
+check('bulk moving cards into Done ticks them, and out of Done unticks them', await evalJS(`(() => {
+  const all = [];
+  state.doc.buckets.forEach(b => b.tiers.forEach(t => t.tasks.forEach(k => all.push({ k, tier: t.name }))));
+  const pick = all.find(x => !x.k.done && x.k.id && x.tier !== DONE_COL);
+  if (!pick) return false;
+  const t = pick.k;
+  state.selectedIds.clear(); state.selectedIds.add(t.id);
+  bulkMoveToColumn(DONE_COL);
+  const ticked = t.done === true && locate(t.id).tier.name === DONE_COL;
+  state.selectedIds.add(t.id);
+  bulkMoveToColumn(TODO_TIER);
+  return ticked && t.done === false && locate(t.id).tier.name === TODO_TIER;
+})()`))
+
 /* ---- the point of the guard ---- */
 
 /* The tab is unlocked here, so the board tries to save after every move. The

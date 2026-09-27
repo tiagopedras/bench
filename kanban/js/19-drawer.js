@@ -2587,6 +2587,10 @@ function bulkMoveToColumn(tierName){
     if (!loc || loc.tier.name === tierName) return;
     loc.tier.tasks.splice(loc.index, 1);
     ensureTier(loc.bucket, tierName).tasks.unshift(loc.task);
+    // Into Done ticks the card, out of Done unticks it, the same as ticking
+    // it by hand; `stay` because the card has already been placed.
+    const inDone = tierName === DONE_COL;
+    if (loc.task.done !== inDone) setDone(loc.task, inDone, { stay: true });
     moved++;
   });
   state.selectedIds.clear();

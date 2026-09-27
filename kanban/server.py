@@ -1873,12 +1873,13 @@ def ai_chat_for(name):
             config_path=os.path.join(dataset_dir(name), "claude.json"),
             sessions_path=os.path.join(dataset_dir(name), "sessions.json"),
         )
-        # A chat switched to "Can write" may edit inside its cwd, but never a
-        # list: every change to todo.md goes through the board, from a
-        # pa-changes block. An engine older than write mode takes no
-        # write_denies and has no write mode to guard either.
+        # A chat switched to "Can write" may edit only inside the list's
+        # project folders, and never a list: every change to todo.md goes
+        # through the board, from a pa-changes block. An engine older than
+        # write mode takes neither and has no write mode to guard either.
         try:
-            engine = Engine(write_denies=CHAT_WRITE_DENIES, **paths)
+            engine = Engine(write_denies=CHAT_WRITE_DENIES,
+                            write_allows=[projects_dir(name)], **paths)
         except TypeError:
             engine = Engine(**paths)
         inst = ChatEndpoints(engine)
