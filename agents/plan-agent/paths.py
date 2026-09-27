@@ -113,6 +113,16 @@ def history_path():
     return os.path.join(data_dir(), "history.jsonl")
 
 
+def agent_runs_path():
+    """Where each agent run on a sub-task stands. See core/agent_runs.py."""
+    return os.path.join(data_dir(), "agent-runs.json")
+
+
+def notify_queue_path():
+    """The companion's queue for this dataset, under DATA_ROOT like the rest."""
+    return os.path.join(data_dir(), "notify-queue.json")
+
+
 def buckets_dir():
     """This dataset's bucket briefs, one folder per stream inside it.
 

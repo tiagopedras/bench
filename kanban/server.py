@@ -386,6 +386,16 @@ def task_history(task_id, name=None):
     return [e for e in events if not check or not check(e)]
 
 
+def agent_runs_path(name=None):
+    """Where each agent run on a sub-task stands. See core/agent_runs.py.
+
+    The agents write it; the board reads it for the status line on a card and
+    the activity feed on a sub-task, and asks for two changes of his through
+    POST /agent-runs: retry and clear.
+    """
+    return os.path.join(dataset_dir(name or current_dataset()), "agent-runs.json")
+
+
 def reports_dir(name=None):
     # Written reports live beside the list they're about rather than in the
     # repo, because a report names people, dates and internal decisions — the
@@ -2096,6 +2106,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if not re.match(r"^[0-9a-z]{6}$", want):
                 return self._json(400, {"error": "task should be a six-character id"})
             return self._json(200, {"task": want, "events": task_history(want)})
+        if path == "/agent-runs.json":
+            import agent_runs
+            return self._json(200, {"subs": agent_runs.read(agent_runs_path())})
         if path == "/briefings.json":
             try:
                 with open(briefings_path(), encoding="utf-8") as fh:
@@ -2604,6 +2617,26 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 os.fsync(fh.fileno())
             os.replace(tmp, path_out)
             return self._json(200, {"ok": True})
+        if path == "/agent-runs":
+            # His two requests about an agent's run: retry a failed one, or
+            # clear one he has taken back. Everything else in the file is the
+            # agents' to write (core/agent_runs.py). Same guard as the queues.
+            if self.headers.get("X-Board") != "1":
+                return self._json(403, {"error": "not from the board"})
+            try:
+                payload = json.loads((self._body() or b"{}").decode("utf-8"))
+            except (UnicodeDecodeError, ValueError):
+                return self._json(400, {"error": "body was not valid JSON"})
+            import agent_runs
+            action = payload.get("action") if isinstance(payload, dict) else None
+            sub = str((payload or {}).get("sub") or "").strip().lower()
+            if action not in ("retry", "clear") or not re.fullmatch(r"[a-z0-9]{6}", sub):
+                return self._json(400, {"error": "expected {\"action\": \"retry\" or \"clear\", \"sub\": id}"})
+            if action == "retry":
+                agent_runs.retry(sub, path=agent_runs_path())
+            else:
+                agent_runs.clear(sub, path=agent_runs_path())
+            return self._json(200, {"ok": True, "subs": agent_runs.read(agent_runs_path())})
         if path == "/tick-queue.json":
             # The board says which requests it dealt with, applied or refused,
             # and they come out. Anything an agent queued since it read the

@@ -2317,6 +2317,36 @@
   .bar{flex:1; height:3px; border-radius:var(--tenon-radius-sm); background:var(--tenon-stroke-subtle); overflow:hidden}
   .bar i{display:block; height:100%; background:var(--tenon-background-success)}
   .tenon-card__footer{font-size: var(--tenon-typography-size-sm); margin-top:6px}
+  /* Where an agent's run on the task stands (agentRunStatus(), 28-agent-runs.js).
+     A dot in the line's own colour, then the words, so failed reads red at a glance. */
+  .runline{display:flex; align-items:center; gap:6px; margin-top:6px; font-size: var(--tenon-typography-size-sm); color:var(--tenon-text-subtle); min-width:0}
+  .runline::before{content:''; flex:none; width:6px; height:6px; border-radius:50%; background:currentColor}
+  .runline--running{color:var(--tenon-text-running)}
+  .runline--queued{color:var(--tenon-text-faint)}
+  .runline--you{color:var(--tenon-text-accent)}
+  .runline--failed{color:var(--tenon-text-error); font-weight:600}
+  .runline + .prog{margin-top:4px}
+  .runblock .runline{margin-top:0}
+  .runblock .reviewbtns{margin-top:6px}
+  /* The activity feed on a handover's sub-task (28-agent-runs.js). */
+  .actlist{list-style:none; margin:0; padding:0 0 0 12px; border-left:2px solid var(--tenon-stroke-subtle); display:flex; flex-direction:column; gap:10px}
+  .act{font-size: var(--tenon-typography-size-sm); color:var(--tenon-text-default); min-width:0}
+  .acthead{font-weight:600; color:var(--tenon-text-subtle)}
+  .act--you .acthead{color:var(--tenon-text-accent)}
+  .act--failed .acthead{color:var(--tenon-text-error)}
+  .actbody{margin-top:2px; overflow-wrap:anywhere}
+  .actbody .reviewbtns{margin-top:6px}
+  .actfiles{display:flex; flex-wrap:wrap; gap:6px; margin-top:6px}
+  .actfile{font:inherit; font-size: var(--tenon-typography-size-sm); padding:2px 8px; border:1px solid var(--tenon-stroke-subtle); border-radius:var(--tenon-radius-default); background:none; color:var(--tenon-text-accent); cursor:pointer}
+  .actfile:hover{border-color:var(--tenon-text-accent)}
+  .actdraft{margin-top:6px; border:1px solid var(--tenon-stroke-subtle); border-radius:var(--tenon-radius-default); overflow:hidden}
+  .actdraft-head{display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 8px; background:var(--tenon-background-neutral); color:var(--tenon-text-subtle)}
+  .actdraft pre{margin:0; padding:8px; white-space:pre-wrap; word-break:break-word; max-height:240px; overflow:auto; font:inherit}
+  .actbranch{margin-top:6px}
+  .actfigma{display:inline-block; margin-top:6px; color:var(--tenon-text-accent)}
+  .actreply{margin-top:12px; display:flex; flex-direction:column; align-items:flex-start; gap:6px}
+  .actreply > div{align-self:stretch}
+  .runlog{white-space:pre-wrap; word-break:break-word; max-height:60vh; overflow:auto; margin:0; padding:12px; border-radius:var(--tenon-radius-default); background:var(--tenon-background-neutral); font-size: var(--tenon-typography-size-sm); color:var(--tenon-text-default)}
 
   /* ---------- drawer ---------- */
   .scrim{position:fixed; inset:0; background:rgba(10,12,16,.28); opacity:0; pointer-events:none; transition:opacity .15s; z-index:30}

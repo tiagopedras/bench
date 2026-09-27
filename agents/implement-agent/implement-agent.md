@@ -141,6 +141,15 @@ Write a short report into the project folder: what you did, what you left, what
 needs him. Then say the same thing back in three or four lines. He is reading
 over coffee.
 
+A message, Slack note or email you wrote goes in a file of its own whose name
+ends `.draft.md`, and a Figma file or branch you worked in is named on a line of
+its own, `FIGMA: <link>`. The board's activity feed on the task shows the first
+ready to copy and the second as a link into the desktop app. The session that
+invoked you records what you produced for that feed, as it queues your tick:
+`python3 core/agent_runs.py output <sub-task id> --project <folder> --file <name>`
+(once per file, plus `--figma <link>`, or `--branch`, `--repo`, `--commit`,
+`--commits` and `--summary` for code).
+
 End that reply with one line summing it up. The invoking session copies it into
 the plan's `production_summary:`, which is what he reads on the card without
 opening it.

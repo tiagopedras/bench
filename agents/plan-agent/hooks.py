@@ -12,6 +12,9 @@ functions as before:
   `plan-agent.log`, the plan files, `ledger.json`, the day's `index.md` and
   `run.json`, `window.json` on a usage limit, and the one notification on the
   companion's queue. The lock is still `data/.plan-agent-<list>.lock`.
+- where each task's run stands, in `agent-runs.json` (core/agent_runs.py), for
+  the status line on its card: running from starting(), done from land(),
+  failed from failed() with one banner on the companion's queue.
 - the briefings and reports still run once per scheduled wake (`on_wake`).
 - the batch still stops if todo.md changes under it, and when less than twenty
   minutes of the usage window is left.
@@ -31,6 +34,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOT, "core"))
 sys.path.insert(0, HERE)
 
+import agent_runs  # noqa: E402
 import dashboard  # noqa: E402
 import paths  # noqa: E402
 import pick  # noqa: E402
@@ -99,6 +103,11 @@ def _item(task, ledger, skip=None):
     # fingerprint, and the runner's own ledger never holds back a task the
     # planning ledger has released.
     stamp = "|".join(str(row.get(k) or "") for k in ("state", "status", "owner", "planned", "file"))
+    # A retry asked for from the board changes the fingerprint, so a task the
+    # runner set aside after failing is tried again.
+    retry = agent_runs.retry_stamp(getattr(task, "plan_sub", ""), paths.agent_runs_path())
+    if retry:
+        stamp += "|retry:" + retry
     return {"id": key, "title": task.title, "fields": {}, "body": "", "task": task, "skip": skip,
             "fingerprint": "%s|%s" % (pick.fingerprint(task), stamp)}
 
@@ -252,15 +261,30 @@ def starting(item, target, opts):
     # the task in flight.
     plan.log("  > %s (%s)" % (task.title[:60], opts["agent"]))
     (_night.get(target["id"]) or {})["began"] = time.time()
+    if getattr(task, "plan_sub", ""):
+        agent_runs.start(task.plan_sub, task.stable_id, task.title, NAME, path=paths.agent_runs_path())
 
 
 def failed(item, result, target):
     _use(target["id"])
     err = result.get("error") or ""
+    sub = getattr(item["task"], "plan_sub", "")
     if result.get("kind") == "limit":
         plan.record_limit(err)
+        # Not the task's failure: the window ran out, and it goes again next time.
+        if sub:
+            agent_runs.clear(sub, path=paths.agent_runs_path())
         return
     plan.log("  failed %-50s %s" % (item["title"][:50], (err.splitlines() or [""])[0][:120]))
+    _failed(item, (err.splitlines() or ["the run failed"])[0][:200], err)
+
+
+def _failed(item, why, error=""):
+    """The card's "Plan agent · failed" line, and one banner, for this task."""
+    task = item["task"]
+    if getattr(task, "plan_sub", ""):
+        agent_runs.fail(task.plan_sub, why, error, path=paths.agent_runs_path(),
+                        notify_path=paths.notify_queue_path(), task=task.stable_id, title=task.title, agent=NAME)
 
 
 def land(item, result, target):
@@ -270,6 +294,7 @@ def land(item, result, target):
     if plan.file_hash(paths.todo_path()) != night["guard"]:
         plan.log("STOPPED: todo.md changed during the run. Nothing else was attempted.")
         plan.log("  the agent for %r is the suspect; check it before running again" % task.title)
+        _failed(item, "todo.md changed while this task was being planned, so no plan was written")
         return {"failed": "todo.md changed while this task was being planned, so no plan was written",
                 "fix": "Check what the agent for this task did before running again.",
                 "stop": "todo.md changed during the run"}
@@ -292,6 +317,9 @@ def land(item, result, target):
         "seen": False, "resolution": "",
     }
     pick.save_ledger(ledger)
+    if getattr(task, "plan_sub", ""):
+        agent_runs.finish(task.plan_sub, "needs a decision" if folded else "planned", summary,
+                          path=paths.agent_runs_path(), plan=name)
     took = int(time.time() - night.get("began", time.time()))
     plan.log("  planned %-50s %3ds  $%.2f" % (task.title[:50], took, result.get("cost") or 0.0))
     return {"label": "needs a decision" if folded else "planned", "tone": "warn" if folded else "good",

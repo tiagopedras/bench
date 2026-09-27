@@ -65,7 +65,7 @@ def queue_path(dataset=None):
     return os.path.join(ROOT, "data", dataset, "notify-queue.json")
 
 
-def queue(title, body, dataset=None, task=None, view=None):
+def queue(title, body, dataset=None, task=None, view=None, path=None):
     """Append one notification. Returns the path, or None if it could not be written.
 
     `task` and `view` are where the banner goes when it is pressed, and are
@@ -73,10 +73,13 @@ def queue(title, body, dataset=None, task=None, view=None):
     companion treats a missing key and an empty one the same way, and an entry
     with nothing to say about where it points should not carry the keys.
 
+    `path` names the queue file outright, for a caller that already resolves
+    its dataset folder itself (core/agent_runs.py, under $TODOS_DATA_ROOT).
+
     Never raises. A caller asking for a banner is never doing it as its main job,
     so a failure here must not take down whatever was actually being done.
     """
-    path = queue_path(dataset)
+    path = path or queue_path(dataset)
     try:
         with open(path, encoding="utf-8") as fh:
             items = json.load(fh)
