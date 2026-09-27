@@ -108,6 +108,11 @@ def tick_queue_path():
     return os.path.join(data_dir(), "tick-queue.json")
 
 
+def history_path():
+    """Each task's history, one event a line. See core/history.py."""
+    return os.path.join(data_dir(), "history.jsonl")
+
+
 def buckets_dir():
     """This dataset's bucket briefs, one folder per stream inside it.
 

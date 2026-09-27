@@ -273,6 +273,58 @@ try {
   check('and it is the one that moves the card, into Reviewing', await evalJS(`locate(state.doc.buckets[0].tiers.flatMap(x => x.tasks).find(t => t.title === 'Handed over').id).tier.name`) === 'Reviewing')
   await evalJS(`state.locked = true`)
 
+  /* ---- the handover level ---- */
+
+  await evalJS(`(() => {
+    load([
+      '# To-do', '', '## 1. Tasks', '',
+      '### To do', '',
+      '- [ ] **Just do it** \`id:jj0001\`',
+      '- [ ] **Folded** \`id:ff0001\`',
+      '- [ ] **Not offered** \`id:nn0001\`',
+      ''
+    ].join('\\n'), 'demo.md', {});
+    state.locked = false;
+    try { localStorage.removeItem(handoverLevelsKey()); } catch (e) {}
+  })()`)
+  const task = title => `state.doc.buckets[0].tiers.flatMap(x => x.tasks).find(t => t.title === '${title}')`
+  check('the Plan agent hands over at Plan first, and the Implement agent at Just do it, until he says otherwise',
+    await evalJS(`handoverLevel('Plan agent') + ' ' + handoverLevel('Implement agent')`) === 'plan-first just-do-it')
+  check('a handover at Just do it lays out the same four sub-tasks, with the plan review marked to approve itself', await evalJS(`(() => {
+    const t = ${task('Just do it')};
+    if (!handOver(t, 'Plan agent', 'just-do-it')) return false;
+    const steps = subSteps(t);
+    const rv = steps.find(s => s.slug === 'jj0001-plan-review');
+    return steps.length === 4 && justDoIt(t, rv.line) && !justDoIt(t, steps[0].line);
+  })()`))
+  await evalJS(`(() => {
+    const j = ${task('Just do it')}, f = ${task('Folded')};
+    handOver(f, 'Plan agent', 'just-do-it');
+    const plan = t => subSteps(t).find(s => s.slug === t.stableId + '-plan').stableId;
+    window.__queue = [
+      { id: 'q6', sub: plan(j), by: 'Plan agent', plan: 'jj0001-just-do-it.md', type: 'data' },
+      { id: 'q7', sub: plan(f), by: 'Plan agent', plan: 'ff0001-folded.md' }
+    ];
+    window.__posted = [];
+  })()`)
+  await evalJS(`drainTickQueue()`)
+  await new Promise(r => setTimeout(r, 300))
+  const review = title => evalJS(`(() => { const t = ${task(title)}; const rv = subSteps(t).find(s => s.slug === t.stableId + '-plan-review');
+    return (rv.done ? 'ticked' : 'open') + ' | ' + stepNoteText(t, rv.line).replace(/\\n/g, ' / '); })()`)
+  check('when its plan lands, Review the plan is ticked for him, and says why', /^ticked \| .*- Approved: just do it/.test(await review('Just do it')), await review('Just do it'))
+  check('with the plan still named on it to read', /- Plan: plans\/jj0001-just-do-it\.md/.test(await review('Just do it')), await review('Just do it'))
+  check('a folded plan still waits for him', /^open \|/.test(await review('Folded')), await review('Folded'))
+  check('an agent set to Off is not offered under Delegate to, and takes no handover', await evalJS(`(() => {
+    setHandoverLevel('Plan agent', 'off');
+    const html = delegateSelectHTML('', '');
+    const t = ${task('Not offered')};
+    const ok = !html.includes('value="Plan agent"') && html.includes('value="Implement agent"') &&
+      handOver(t, 'Plan agent') === false && !subSteps(t).length && !t.to;
+    localStorage.removeItem(handoverLevelsKey());
+    return ok;
+  })()`))
+  await evalJS(`state.locked = true`)
+
   /* ---- the point of the guard ---- */
 
   check('nothing reached todo.md', await evalJS(`window.__blocked.length === 0 && window.__posted.every(p => p.startsWith('POST /tick-queue.json'))`), await evalJS(`window.__blocked.concat(window.__posted).join(' | ')`))

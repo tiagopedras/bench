@@ -30,6 +30,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOT, "core"))
 sys.path.insert(0, HERE)
 
+import history as task_history  # noqa: E402  (plan.history() below is the plan file's own)
 import paths  # noqa: E402
 import pick  # noqa: E402
 import plan_types  # noqa: E402
@@ -775,6 +776,27 @@ def queue_plan_tick(task, plan_file, kind=""):
     tick_queue.append(task.plan_sub, "Plan agent",
                       note="plan written to %s" % plan_file,
                       path=paths.tick_queue_path(), plan=plan_file, kind=kind)
+
+
+def record_call(task, planner):
+    """Writes into the task's history that the Plan agent brought this bucket's
+    planner in and it wrote the plan (core/history.py).
+
+    The planner is a specialist: it did the work but never owns the task, so this
+    line is the only record that it touched it. Nothing for a task with no id,
+    which the board has not handed over and so has nothing to hang a history on.
+    A failure here is logged and never stops the plan landing.
+    """
+    tid = getattr(task, "stable_id", "")
+    if not tid or not planner:
+        return None
+    try:
+        return task_history.call(tid, "Plan agent", planner, did="work",
+                                 bucket=bucket_stream(task.bucket), note="wrote the plan",
+                                 path=paths.history_path())
+    except OSError as exc:
+        log("  history not written for %r: %s" % (task.title[:50], exc))
+        return None
 
 
 def queue_handovers(text, path=None):

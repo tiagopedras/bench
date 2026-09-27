@@ -2556,6 +2556,10 @@
   details.field[open] > summary::before, details.sugg[open] > summary::before{content:'▾'}
   .sublabel{font-style:normal; font-weight:550; text-transform:none; letter-spacing:0; color:var(--tenon-text-faint); opacity:.85; margin-left:6px}
   .substeps{display:flex; flex-direction:column; gap:1px; --tenon-reorder-gap: 1px}
+  /* The drawer's History section: one line per specialist called in. */
+  .dhistory{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px}
+  .dhistory li{display:flex; flex-direction:column; font-size: var(--tenon-typography-size-sm); color:var(--tenon-text-default)}
+  .dhistory .sublabel{margin-left:0}
   .sub{
     display:flex; gap:7px; align-items:flex-start; font-size: var(--tenon-typography-size-sm); padding:5px 6px; color:var(--tenon-text-default);
     border:1px solid transparent; border-radius:var(--tenon-radius-default); background:var(--tenon-background-default);
@@ -2971,6 +2975,9 @@
 .agentcard dl { margin: 0; display: flex; flex-direction: column; gap: 8px; }
 .agentcard dt { font-size: var(--tenon-typography-size-xs); font-weight: 640; color: var(--tenon-text-faint); text-transform: uppercase; letter-spacing: .04em; }
 .agentcard dd { margin: 2px 0 0; font-size: var(--tenon-typography-size-sm); color: var(--tenon-text-default); line-height: 1.45; }
+.agentcard-level { margin-top: 12px; display: flex; flex-direction: column; gap: 4px; }
+.agentcard-level label { font-size: var(--tenon-typography-size-xs); font-weight: 640; color: var(--tenon-text-faint); text-transform: uppercase; letter-spacing: .04em; }
+.agentcard-level select { align-self: flex-start; }
 .agentsetup { max-width: 640px; padding-top: 8px; }
 .agentsetup h1 { margin: 0 0 8px; font-size: var(--tenon-typography-size-lg); }
 .agentsetup p { margin: 0 0 14px; color: var(--tenon-text-subtle); line-height: 1.5; }

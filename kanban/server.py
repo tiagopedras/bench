@@ -373,6 +373,19 @@ def tick_queue_path(name=None):
     return os.path.join(dataset_dir(name or current_dataset()), "tick-queue.json")
 
 
+def task_history(task_id, name=None):
+    """One task's history, oldest first: which specialist an owning agent brought
+    in on it (core/history.py). Read-only; the agents append and nothing here
+    writes. An event the work-streams contract refuses is left out rather than
+    drawn half-right, and with the package absent every well-formed line passes.
+    """
+    import history as history_log
+    path = os.path.join(dataset_dir(name or current_dataset()), "history.jsonl")
+    events = history_log.read(path, about=task_id) if task_id else []
+    check = getattr(ws_manifest, "validate_event", None) if ws_manifest else None
+    return [e for e in events if not check or not check(e)]
+
+
 def reports_dir(name=None):
     # Written reports live beside the list they're about rather than in the
     # repo, because a report names people, dates and internal decisions — the
@@ -2076,6 +2089,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if path == "/tick-queue.json":
             import tick_queue
             return self._json(200, tick_queue.read(tick_queue_path()))
+        # One task's history, `?task=ab12cd`. See task_history() above.
+        if path == "/history.json":
+            from urllib.parse import parse_qs, urlparse
+            want = (parse_qs(urlparse(self.path).query).get("task") or [""])[0].strip().lower()
+            if not re.match(r"^[0-9a-z]{6}$", want):
+                return self._json(400, {"error": "task should be a six-character id"})
+            return self._json(200, {"task": want, "events": task_history(want)})
         if path == "/briefings.json":
             try:
                 with open(briefings_path(), encoding="utf-8") as fh:

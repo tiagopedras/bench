@@ -459,9 +459,57 @@ const HANDOVER_STEPS = {
   'implement':   { title: 'Implement',       to: 'Implement agent' },
   'work-review': { title: 'Review the work', to: OWNER_NAME }
 };
-function handOver(t, agent){
+/* ---- How much of an agent's work waits on him: its handover level ----
+   Set per agent, per list, on the agent's card in the Agents tab.
+     off         the agent is not offered under Delegate to and takes nothing.
+     plan-first  the four sub-tasks above: he reads and approves the plan
+                 before the work starts. The Plan agent's default.
+     just-do-it  the same four, but Review the plan carries a `Handover: just
+                 do it` note, and when the plan lands the board ticks that
+                 review for him (drainTickQueue(), 10-reference-sections.js),
+                 so the work goes on to Implement and he meets it at Review the
+                 work, with the plan still there to read. A plan that folded,
+                 asking him something, still waits for him.
+   The Implement agent has no plan of its own, so it is just do it or off.
+   Read at the moment of handover and written onto the card, so changing the
+   level later leaves the tasks already handed over as they were. Kept in
+   localStorage like the drawer's width: it is how he likes to work with an
+   agent, not a fact about any task. */
+const HANDOVER_LEVELS = {
+  'Plan agent':      ['plan-first', 'just-do-it', 'off'],
+  'Implement agent': ['just-do-it', 'off']
+};
+const HANDOVER_LEVEL_LABEL = { 'plan-first': 'Plan first', 'just-do-it': 'Just do it', 'off': 'Off' };
+const JUST_DO_IT_NOTE = '- Handover: just do it';
+function handoverLevelsKey(){ return 'todo-board-handover:' + (state.dataset || ''); }
+function handoverLevels(){
+  try { const got = JSON.parse(localStorage.getItem(handoverLevelsKey()) || '{}'); return got && typeof got === 'object' ? got : {}; }
+  catch (err) { return {}; }
+}
+function handoverLevel(agent){
+  const allowed = HANDOVER_LEVELS[agentOf(agent)];
+  if (!allowed) return '';
+  const saved = handoverLevels()[agentOf(agent)];
+  return allowed.indexOf(saved) > -1 ? saved : allowed[0];
+}
+function setHandoverLevel(agent, level){
+  const allowed = HANDOVER_LEVELS[agentOf(agent)];
+  if (!allowed || allowed.indexOf(level) < 0) return false;
+  const all = handoverLevels();
+  all[agentOf(agent)] = level;
+  try { localStorage.setItem(handoverLevelsKey(), JSON.stringify(all)); } catch (err) { return false; }
+  return true;
+}
+/* Whether a Review the plan sub-task was laid out to approve itself. */
+function justDoIt(t, line){
+  return stepNoteText(t, line).split('\n').some(l => l.trim().toLowerCase() === JUST_DO_IT_NOTE.toLowerCase());
+}
+
+function handOver(t, agent, level){
   if (state.locked || !agentOf(agent)) return false;
   agent = agentOf(agent);
+  level = level || handoverLevel(agent);
+  if (level === 'off') return false;
   t.to = agent;
   t.dirty = true;
   /* Already laid out when a sub-task carries the slug a handover makes. An
@@ -483,6 +531,9 @@ function handOver(t, agent){
     const f = { done: false, bold: false, title: HANDOVER_STEPS[kind].title, to: HANDOVER_STEPS[kind].to,
                 slug, blockedBy: before ? [before] : [], stableId: id, body: [], dirty: true, extra: [] };
     t.body.push(indent + serializeTask(f)[0]);
+    /* Written as the review's own note, the way setStepNoteText() indents one,
+       and not through it: that marks an undo point half way through a handover. */
+    if (kind === 'plan-review' && level === 'just-do-it') t.body.push(indent + '  ' + JUST_DO_IT_NOTE);
     before = slug;
   });
   const loc = locate(t.id);

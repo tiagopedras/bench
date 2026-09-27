@@ -32,20 +32,24 @@ function delegateSelectHTML(value, dis, id){
   /* No agents offered on a list that has none set up yet (agentsSetUp(),
      27-agents.js), unless this field already names one, which stays as
      written. */
-  const agents = agentsSetUp() || agentOf(cur) ? AGENT_NAMES.map(a => agentOf(cur) === a ? cur : a) : [];
+  /* An agent whose handover level is Off (handoverLevel(), 04-tier-two-the-
+     one-thing.js) is left out the same way. */
+  const any = agentsSetUp() || !!agentOf(cur);
+  const offered = AGENT_NAMES.filter(a => agentOf(cur) === a || (any && handoverLevel(a) !== 'off'));
+  const agents = offered.map(a => agentOf(cur) === a ? cur : a);
   const item = (v, label) => '<button type="button" class="dropdown-item delegateopt' + (v === cur ? ' on' : '') +
     '" role="menuitemradio" aria-checked="' + (v === cur) + '" data-delegate-value="' + esc(v) + '">' +
     agentAvatarHTML(v, 18) + '<span>' + esc(label || v) + '</span></button>';
   return '<div class="dropdown bucketfield delegatefield">' +
     '<select id="' + id + '" class="hidden" tabindex="-1" aria-hidden="true"' + dis + '>' + opt('', 'Nobody') +
-      (agents.length ? '<optgroup label="Agents">' + agents.map((v, i) => opt(v, AGENT_NAMES[i])).join('') + '</optgroup>' : '') +
+      (agents.length ? '<optgroup label="Agents">' + agents.map((v, i) => opt(v, offered[i])).join('') + '</optgroup>' : '') +
       (people.length ? '<optgroup label="People">' + people.map(p => opt(p)).join('') + '</optgroup>' : '') +
     '</select>' +
     '<button type="button" class="bucketbtn delegatebtn" data-delegate-btn="' + id + '"' + dis + '>' +
       delegateBtnInner(cur) + '</button>' +
     (dis ? '' : '<div class="dropdown-panel hidden" data-delegate-menu="' + id + '" role="menu">' +
       item('', 'Nobody') +
-      (agents.length ? '<div class="delegatehead">Agents</div>' + agents.map((v, i) => item(v, AGENT_NAMES[i])).join('') : '') +
+      (agents.length ? '<div class="delegatehead">Agents</div>' + agents.map((v, i) => item(v, offered[i])).join('') : '') +
       (people.length ? '<div class="delegatehead">People</div>' + people.map(p => item(p)).join('') : '') +
     '</div>') +
   '</div>';
@@ -846,6 +850,36 @@ async function drawProjectPicker(t){
    does. Quiet about failure on purpose: this is a caption on a button that
    already works, so a helper too old to answer leaves the name and nothing
    else rather than an error where a sentence goes. */
+/* The task's history: which specialist an owning agent brought in on it, one
+   line per call (historyLine() in 02-state.js). Drawn empty and filled by
+   loadTaskHistory() once the panel is up, the way the Project card is. */
+function historySection(t){
+  return sideSection('History', 'history',
+    '<div id="f-history">' + emptyState(t.stableId
+      ? 'No specialist has been called in on this task yet.'
+      : 'Nothing yet. An agent that brings a specialist in on this task writes it here.') + '</div>');
+}
+
+async function loadTaskHistory(t){
+  if (!t || !t.stableId) return;
+  const taskId = t.id;
+  let got;
+  try {
+    const res = await fetch('/history.json?task=' + encodeURIComponent(t.stableId) + '&t=' + Date.now(),
+                            { cache:'no-store' });
+    if (!res.ok) return;
+    got = await res.json();
+  } catch (err) { return; }
+  if (state.openTask !== taskId) return;
+  const box = $('#f-history');
+  const rows = ((got && got.events) || []).map(ev => ({ ev, line: historyLine(ev) })).filter(r => r.line);
+  if (!box || !rows.length) return;
+  box.innerHTML = '<ul class="dhistory">' + rows.slice().reverse().map(r =>
+    '<li><span>' + esc(r.line) + '</span>' +
+      '<em class="sublabel">' + esc([cvWhen(r.ev.at), r.ev.note].filter(Boolean).join(' · ')) + '</em></li>'
+  ).join('') + '</ul>';
+}
+
 async function loadTaskProject(name, taskId){
   let meta;
   try {
@@ -1469,7 +1503,8 @@ function openDrawer(id, focusTitle){
       { emptyText: 'None yet. Written as `- Suggested message: ...` in Notes.' }) +
     suggestionSection('Prompt suggestions', sugg.prompt,
       { claude:true, task:t.id, emptyText: 'None yet. Written as `- Prompt: ...` in Notes.' }) +
-    jiraSection(sugg.jira);
+    jiraSection(sugg.jira) +
+    historySection(t);
 
   $('#dbody').innerHTML = '<div class="dcols">' +
     '<div class="dcol dcol-main">' + mainFields + '</div>' +
@@ -1501,6 +1536,7 @@ function openDrawer(id, focusTitle){
   projectDrawRO = ro;
   renderProjectSection();
   if (proj) loadTaskProject(proj, t.id);
+  loadTaskHistory(t);
   bindDependencySection(t);
   wireSubRows(t);
 
@@ -1520,7 +1556,9 @@ function openDrawer(id, focusTitle){
       touch();
       openDrawer(id);
       if (laid) {
-        $('#status').textContent = 'handed to the ' + agentOf(e.target.value) + ' — sub-tasks added, and the card is in Doing';
+        $('#status').textContent = 'handed to the ' + agentOf(e.target.value) + ' — sub-tasks added, and the card is in Doing' +
+          (agentOf(e.target.value) === 'Plan agent' && handoverLevel('Plan agent') === 'just-do-it'
+            ? '; the plan will be approved when it lands' : '');
         $('#status').classList.add('dirty');
       }
       return;

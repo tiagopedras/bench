@@ -1416,15 +1416,22 @@ async function drainTickQueueOnce(){
       }
     }
     const kind = String(it.type || '').trim().toLowerCase();
-    if (who === 'Plan agent' && PRE_APPROVED_TYPES.indexOf(kind) > -1 && f.slug && t.stableId) {
-      const rv = subSteps(t).find(x => x.slug === t.stableId + '-plan-review' &&
-                                       (x.blockedBy || []).indexOf(f.slug) > -1);
-      const g = rv && readSub(t, rv.line);
+    /* Review the plan ticks itself for a pre-approved type, and for any plan on
+       a task handed over at Just do it (handOver(), 04-tier-two-the-one-thing.js).
+       A folded plan arrives with no type, and waits for him either way. */
+    const rv = who === 'Plan agent' && kind && f.slug && t.stableId
+      ? subSteps(t).find(x => x.slug === t.stableId + '-plan-review' && (x.blockedBy || []).indexOf(f.slug) > -1)
+      : null;
+    const why = !rv ? ''
+      : PRE_APPROVED_TYPES.indexOf(kind) > -1 ? 'pre-approved type (' + kind + ')'
+      : justDoIt(t, rv.line) ? 'just do it' : '';
+    if (why) {
+      const g = readSub(t, rv.line);
       if (g && !g.done && !agentOf(g.to)) {
         g.done = true; g.doneOn = ymd(today()); g.doing = false;
         writeSub(t, rv.line, g);
         const now = stepNoteText(t, rv.line).split('\n').filter(l => !/^- Approved:/i.test(l));
-        setStepNoteText(t, rv.line, now.concat('- Approved: pre-approved type (' + kind + ')').filter(Boolean).join('\n'));
+        setStepNoteText(t, rv.line, now.concat('- Approved: ' + why).filter(Boolean).join('\n'));
         approved++;
       }
     }
@@ -1445,7 +1452,7 @@ async function drainTickQueueOnce(){
     $('#status').textContent = (ticked
       ? 'agents ticked ' + ticked + ' sub-task' + (ticked === 1 ? '' : 's') +
         (moved ? ', ' + moved + ' card' + (moved === 1 ? '' : 's') + ' into ' + WAIT_COL : '') +
-        (approved ? ', ' + approved + ' plan' + (approved === 1 ? '' : 's') + ' approved as a pre-approved type' : '') +
+        (approved ? ', ' + approved + ' plan' + (approved === 1 ? '' : 's') + ' approved on arrival' : '') +
         ' — save to apply'
       : '') + (refused ? (ticked ? '; ' : '') + refused + ' request' + (refused === 1 ? '' : 's') + ' refused' : '');
   }
