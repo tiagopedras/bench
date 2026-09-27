@@ -113,7 +113,7 @@ function renderAgentsView(){
   if (!host) {
     leaveAgentsView();
     lists.innerHTML = '<div class="agentsview"><div id="agentsRoot"></div>' +
-      '<div id="agentsCards"></div></div>';
+      '<div id="agentsCards"></div><div id="agentsPlanners"></div></div>';
     host = lists.querySelector('#agentsRoot');
     agentsRoot = host;
   }
@@ -121,6 +121,7 @@ function renderAgentsView(){
     '<p class="agentsetup-more"><button type="button" class="btn small" data-agent-setup>' +
     'Set up an agent for another bucket</button></p>';
   wireAgentSetupButtons(lists);
+  refreshBucketPlanners();
   BoardUI.mount(host, BoardUI.h(BoardUI.AgentsApp, {
     base: '/agents-api',
     title: 'Agents',
@@ -319,6 +320,41 @@ function agentSetupDone(){
     ' and choose Plan agent under Delegate to. It plans the task overnight and leaves the plan on the card for you.</p>',
     [{ label: 'Done', primary: true }],
     { wide: true });
+}
+
+/* ---- The seven bucket planners ----
+
+   AGENT_CARDS above says what the Plan and Implement agents do; it never
+   mentions the per-bucket planners (`agents/plan-agent/<dataset>-<stream>-agent.md`)
+   because there is one of those to describe, not seven. This section instead
+   names each bucket of the current list and which planner works it, or
+   "fallback planner" where none has been written yet.
+
+   The lookup — bucket_agent() and agent_on_disk() in agents/plan-agent/plan.py
+   — already runs server-side for /bucket-brief.json's "fallback" flag, so
+   this asks for it rather than working it out a second way in JS. The board
+   already has the bucket list in state.doc, so it sends the names rather
+   than the route re-parsing todo.md. */
+let plannersAsk = 0;
+async function refreshBucketPlanners(){
+  const host = $('#agentsPlanners');
+  if (!host || !state.doc || !state.doc.buckets.length) { if (host) host.innerHTML = ''; return; }
+  const names = state.doc.buckets.map(b => b.name);
+  const ask = ++plannersAsk;
+  let planners;
+  try {
+    planners = (await getJSON('/agents-planners.json?buckets=' + encodeURIComponent(names.join(',')))).planners || [];
+  } catch (err) {
+    return; // Not worth a toast — the cards above still work without it.
+  }
+  if (ask !== plannersAsk) return;
+  const again = $('#agentsPlanners');
+  if (!again) return;
+  again.innerHTML = '<section class="planners" aria-label="This list’s bucket planners">' +
+    '<h2>Bucket planners</h2><ul>' +
+    planners.map(p => '<li><span class="planner-bucket">' + esc(p.bucket) + '</span>' +
+      '<span class="planner-name">' + (p.onDisk ? esc(p.agent) : 'fallback planner') + '</span></li>').join('') +
+    '</ul></section>';
 }
 
 /* Called by renderView() for every view but this one. */

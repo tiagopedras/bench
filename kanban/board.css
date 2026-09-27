@@ -2986,3 +2986,13 @@
 .agentsetup-done .agentcards h2 { display: none; }
 .agentsetup-done .agentcards-grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
 .agentsetup-next { margin: 14px 0 0; line-height: 1.5; }
+.planners { max-width: 1100px; }
+.planners h2 { font-size: var(--tenon-typography-size-sm); font-weight: 640; color: var(--tenon-text-subtle); margin: 0 0 10px; }
+.planners ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.planners li {
+  display: flex; justify-content: space-between; gap: 12px;
+  background: var(--tenon-background-raised); border: 1px solid var(--tenon-stroke-default);
+  border-radius: var(--tenon-radius-md); padding: 8px 14px; font-size: var(--tenon-typography-size-sm);
+}
+.planner-bucket { color: var(--tenon-text-default); font-weight: 560; }
+.planner-name { color: var(--tenon-text-subtle); }
