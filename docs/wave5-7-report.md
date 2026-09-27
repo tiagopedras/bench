@@ -38,4 +38,4 @@ Wave 7 is the specialist agents model, handover level, run status line, output f
 - Bulk moving cards into Done now ticks them, and moving them out unticks them (`7ecccb0`).
 - Board chats in write mode can only edit inside the list's project folders (`data/<list>/projects/`). `ai_chat_engine` gained a `write_allows` option for this (`07f0f52`).
 - The tag handover and the "How he works" section stay as built.
-- The server was restarted at 07:2x.
+- The server was restarted at 07:06.
