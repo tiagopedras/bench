@@ -431,6 +431,10 @@ check('one with an id takes drags, one without does not', await evalJS(`
   !!document.querySelector('.tlsub [data-tlrow="sb0002"][data-tldrag]') &&
   !document.querySelector('.tlsub [data-tldrag]:not([data-tlrow^="sb"])')
 `))
+check('a sub-task bar is filled with its bucket colour', await evalJS(`(() => {
+  const b = document.querySelector('.tlsub .tlbar[data-tlrow="sb0001"]');
+  return !!b && !!getComputedStyle(b).getPropertyValue('--bc').trim();
+})()`))
 {
   const bar = () => evalJS(`(() => {
     const b = document.querySelector('.tlsub .tlbar[data-tlrow="sb0001"]');

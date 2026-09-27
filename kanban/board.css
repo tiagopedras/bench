@@ -3026,3 +3026,45 @@
 }
 .planner-bucket { color: var(--tenon-text-default); font-weight: 560; }
 .planner-name { color: var(--tenon-text-subtle); }
+
+/* Sub-task bars on the Timeline: each chart colour two steps darker on its
+   own Tenon scale (600 -> 700 light, 350 -> 450 dark), picked by
+   subBarColor() in 18-timeline.js. Selectors mirror Tenon's own theme blocks. */
+:root {
+    --tl-sub-1: var(--tenon-color-blue-700);
+    --tl-sub-2: var(--tenon-color-orange-700);
+    --tl-sub-3: var(--tenon-color-purple-700);
+    --tl-sub-4: var(--tenon-color-green-700);
+    --tl-sub-5: var(--tenon-color-magenta-700);
+    --tl-sub-6: var(--tenon-color-teal-700);
+    --tl-sub-7: var(--tenon-color-brown-700);
+    --tl-sub-8: var(--tenon-color-indigo-700);
+    --tl-sub-9: var(--tenon-color-red-700);
+    --tl-sub-10: var(--tenon-color-slate-700);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --tl-sub-1: var(--tenon-color-blue-450);
+    --tl-sub-2: var(--tenon-color-orange-450);
+    --tl-sub-3: var(--tenon-color-purple-450);
+    --tl-sub-4: var(--tenon-color-green-450);
+    --tl-sub-5: var(--tenon-color-magenta-450);
+    --tl-sub-6: var(--tenon-color-teal-450);
+    --tl-sub-7: var(--tenon-color-brown-450);
+    --tl-sub-8: var(--tenon-color-indigo-450);
+    --tl-sub-9: var(--tenon-color-red-450);
+    --tl-sub-10: var(--tenon-color-slate-450);
+  }
+}
+[data-theme="dark"], :root[data-theme="tiagopedras_2026"] {
+    --tl-sub-1: var(--tenon-color-blue-450);
+    --tl-sub-2: var(--tenon-color-orange-450);
+    --tl-sub-3: var(--tenon-color-purple-450);
+    --tl-sub-4: var(--tenon-color-green-450);
+    --tl-sub-5: var(--tenon-color-magenta-450);
+    --tl-sub-6: var(--tenon-color-teal-450);
+    --tl-sub-7: var(--tenon-color-brown-450);
+    --tl-sub-8: var(--tenon-color-indigo-450);
+    --tl-sub-9: var(--tenon-color-red-450);
+    --tl-sub-10: var(--tenon-color-slate-450);
+}

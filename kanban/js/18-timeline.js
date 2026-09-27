@@ -41,6 +41,15 @@ function isoWeekNumber(d){
    filtered — plus the one extra split this view needs: dated vs undated.
    "Dated" means the task itself carries a date, or one of its steps does,
    since a step's own bar would otherwise never be reachable. */
+/* A sub-task's bar is its bucket's colour two steps darker on the same Tenon
+   scale, so it reads as part of the task above without matching its weight.
+   The steps per theme live in board.css as --tl-sub-N; a colour that isn't
+   one of the chart swatches falls through unchanged. */
+function subBarColor(color){
+  const m = /^var\(--tenon-chart-(\d+)\)$/.exec(color || '');
+  return m ? 'var(--tl-sub-' + m[1] + ', ' + color + ')' : color;
+}
+
 function timelineTasks(){
   const items = allItems();
   const dated = [], undated = [];
@@ -62,7 +71,7 @@ function timelineTasks(){
       // task above it, rather than being left off entirely.
       const steps = splitBody(t).steps
         .filter(s => !s.done)
-        .map(s => ({ id: s.stableId || t.id, sub: !!s.stableId, title: s.clean,
+        .map(s => ({ id: s.stableId || t.id, sub: !!s.stableId, title: s.clean, color: subBarColor(color),
                      start: laterOf(s.start, t.start), due: s.due || t.due }));
       const row = { id: t.id, title: t.title, bucket: b.name, color,
                     start: t.start, due: t.due, blocked, steps, tlrank: t.tlrank };
