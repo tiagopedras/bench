@@ -846,6 +846,36 @@ async function drawProjectPicker(t){
    does. Quiet about failure on purpose: this is a caption on a button that
    already works, so a helper too old to answer leaves the name and nothing
    else rather than an error where a sentence goes. */
+/* The task's history: which specialist an owning agent brought in on it, one
+   line per call (historyLine() in 02-state.js). Drawn empty and filled by
+   loadTaskHistory() once the panel is up, the way the Project card is. */
+function historySection(t){
+  return sideSection('History', 'history',
+    '<div id="f-history">' + emptyState(t.stableId
+      ? 'No specialist has been called in on this task yet.'
+      : 'Nothing yet. An agent that brings a specialist in on this task writes it here.') + '</div>');
+}
+
+async function loadTaskHistory(t){
+  if (!t || !t.stableId) return;
+  const taskId = t.id;
+  let got;
+  try {
+    const res = await fetch('/history.json?task=' + encodeURIComponent(t.stableId) + '&t=' + Date.now(),
+                            { cache:'no-store' });
+    if (!res.ok) return;
+    got = await res.json();
+  } catch (err) { return; }
+  if (state.openTask !== taskId) return;
+  const box = $('#f-history');
+  const rows = ((got && got.events) || []).map(ev => ({ ev, line: historyLine(ev) })).filter(r => r.line);
+  if (!box || !rows.length) return;
+  box.innerHTML = '<ul class="dhistory">' + rows.slice().reverse().map(r =>
+    '<li><span>' + esc(r.line) + '</span>' +
+      '<em class="sublabel">' + esc([cvWhen(r.ev.at), r.ev.note].filter(Boolean).join(' · ')) + '</em></li>'
+  ).join('') + '</ul>';
+}
+
 async function loadTaskProject(name, taskId){
   let meta;
   try {
@@ -1469,7 +1499,8 @@ function openDrawer(id, focusTitle){
       { emptyText: 'None yet. Written as `- Suggested message: ...` in Notes.' }) +
     suggestionSection('Prompt suggestions', sugg.prompt,
       { claude:true, task:t.id, emptyText: 'None yet. Written as `- Prompt: ...` in Notes.' }) +
-    jiraSection(sugg.jira);
+    jiraSection(sugg.jira) +
+    historySection(t);
 
   $('#dbody').innerHTML = '<div class="dcols">' +
     '<div class="dcol dcol-main">' + mainFields + '</div>' +
@@ -1501,6 +1532,7 @@ function openDrawer(id, focusTitle){
   projectDrawRO = ro;
   renderProjectSection();
   if (proj) loadTaskProject(proj, t.id);
+  loadTaskHistory(t);
   bindDependencySection(t);
   wireSubRows(t);
 

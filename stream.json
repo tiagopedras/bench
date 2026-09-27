@@ -47,6 +47,9 @@
     { "key": "week",       "syntax": "bare", "own": true }
   ],
 
+  "history": { "path": "data/<dataset>/history.jsonl",
+    "note": "which specialist an owning agent called in on a task; see core/history.py" },
+
   "writer": {
     "who": "board",
     "how": { "kind": "http-put", "path": "/data/todo.md" },

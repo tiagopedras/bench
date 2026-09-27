@@ -450,6 +450,29 @@ check('bulk moving cards into Done ticks them, and out of Done unticks them', aw
   return ticked && t.done === false && locate(t.id).tier.name === TODO_TIER;
 })()`))
 
+/* ---- specialists called in show in the task's history ---- */
+
+check('a call to a bucket planner reads as the owner asking the specialist', await evalJS(`(() => {
+  const ev = { at: '2026-09-27T02:14:09', about: 'task:ab12cd', by: 'Plan agent', kind: 'call',
+               called: 'twinkl-people-agent', did: 'work' };
+  return specialistName('twinkl-people-agent') === 'Twinkl people agent' &&
+    historyLine(ev) === 'Plan agent asked the Twinkl people agent to do part of the work' &&
+    historyLine(Object.assign({}, ev, { did: 'view' })).endsWith('for a view') &&
+    historyLine(Object.assign({}, ev, { kind: 'moved' })) === '';
+})()`))
+
+check('the drawer has a History section', await evalJS(`(() => {
+  const all = [];
+  state.doc.buckets.forEach(b => b.tiers.forEach(t => t.tasks.forEach(k => all.push(k))));
+  const t = all.find(k => k.id);
+  if (!t) return false;
+  openDrawer(t.id);
+  const ok = !!document.querySelector('#f-history') &&
+    !!document.querySelector('details[data-collapse="sugg:history"]');
+  closeDrawer();
+  return ok;
+})()`))
+
 /* ---- the point of the guard ---- */
 
 /* The tab is unlocked here, so the board tries to save after every move. The

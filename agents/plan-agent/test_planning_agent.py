@@ -288,6 +288,58 @@ UNHANDED_DOC = SUB_DOC + """- [ ] **Tagged for the Implement agent by hand** [to
 """
 
 
+def test_history():
+    """A bucket planner is a specialist: it writes the plan and never owns the
+    task, so the task's history is the one record that it touched it
+    (specialist-agents-model, 27 Sep 2026)."""
+    import json
+    import history as task_history
+    tmp = tempfile.mkdtemp(prefix="history-test-")
+    try:
+        path = os.path.join(tmp, "history.jsonl")
+        old = paths.history_path
+        paths.history_path = lambda: path
+        try:
+            task = todo.parse_task(["- [ ] **Hire a designer** `id:ab12cd`"])
+            task.bucket = "## 3. People"
+            plan.record_call(task, "twinkl-people-agent")
+            plan.record_call(todo.parse_task(["- [ ] **No id yet**"]), "twinkl-people-agent")
+            plan.record_call(task, "Plan agent")
+            task_history.call("zz99zz", "Plan agent", "twinkl-ds-agent", did="view", path=path)
+        finally:
+            paths.history_path = old
+        got = task_history.read(path, about="ab12cd")
+        check("a planned task gets one call, by the Plan agent, to the planner, doing the work",
+              [(e["about"], e["by"], e["kind"], e["called"], e["did"], e["bucket"]) for e in got],
+              [("task:ab12cd", "Plan agent", "call", "twinkl-people-agent", "work", "people")])
+        check("nothing for a task with no id, or an owner calling itself; the other task's is its own",
+              len(task_history.read(path)), 2)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write("not json\n[1]\n")
+        check("a line that is not an event is skipped", len(task_history.read(path)), 2)
+        check("a missing history is an empty one", task_history.read(os.path.join(tmp, "none.jsonl")), [])
+
+        sys.path.insert(0, os.path.join(ROOT, "kanban"))
+        import server
+        real = server.dataset_dir
+        server.dataset_dir = lambda name=None: tmp
+        try:
+            with open(path, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps({"at": "2026-09-27", "about": "task:ab12cd", "by": "Plan agent",
+                                     "kind": "call", "called": "Plan agent", "did": "work"}) + "\n")
+            got = server.task_history("ab12cd", "test")
+        finally:
+            server.dataset_dir = real
+        # The contract's check comes from PACKAGES/work-streams, which a
+        # worktree has no sibling copy of; without it the malformed call passes.
+        strict = bool(getattr(server.ws_manifest, "validate_event", None))
+        check("the board is given one task's calls, without one the contract refuses",
+              [e["called"] for e in got],
+              ["twinkl-people-agent"] + ([] if strict else ["Plan agent"]))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def test_unhanded():
     """A tag with no handover behind it is handed over by the board, at the Plan
     agent's request (handover-tag-exception, 26 Sep 2026)."""
@@ -1654,6 +1706,7 @@ def main():
     test_pick()
     test_sub_tasks()
     test_unhanded()
+    test_history()
     test_rules()
     test_folding()
     test_plan_type()

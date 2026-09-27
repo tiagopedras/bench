@@ -381,6 +381,35 @@ const AGENT_CARDS = [
     needs: 'An approved plan, or a task that already says exactly how. You review what it made before the card moves on.' }
 ];
 
+/* Owners and specialists. The PA, the Plan agent and the Implement agent own
+   tasks: one of them is a task's `[to::]`, the way an assignee is. The
+   bucket planners (`agents/plan-agent/<dataset>-<stream>-agent.md`) are
+   specialists: one per bucket, brought in when a task in that bucket is
+   planned, or from another bucket when a task crosses two, to give a view or do
+   part of the work. They never own a task, so a task's history is the only
+   place they show, one line per call (core/history.py, read through
+   /history.json). The shape is PACKAGES/work-streams/CONTRACT.md's "An item's
+   history". */
+
+/* A specialist's name as the board says it: `twinkl-people-agent` is
+   "Twinkl people agent", the display half of the agent naming rule. */
+function specialistName(slug){
+  const words = String(slug || '').trim().replace(/-agent$/i, '').split(/[-_\s]+/).filter(Boolean);
+  if (!words.length) return 'a specialist';
+  const name = words.join(' ').toLowerCase();
+  return name.charAt(0).toUpperCase() + name.slice(1) + ' agent';
+}
+
+/* One history event as a line: "Plan agent asked the Twinkl people agent to do
+   part of the work". '' for anything that is not a call, so a kind added later
+   is left out rather than drawn wrong. */
+function historyLine(ev){
+  if (!ev || ev.kind !== 'call' || !ev.called) return '';
+  const by = ev.by === 'me' ? 'You' : (ev.by || 'Someone');
+  return by + ' asked the ' + specialistName(ev.called) +
+    (ev.did === 'view' ? ' for a view' : ' to do part of the work');
+}
+
 /* Hints match the tier descriptions in the file. Unknown tier names simply
    show no hint, so renaming a section in todo.md never breaks the board. */
 const TIER_HINT = {
