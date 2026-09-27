@@ -2317,6 +2317,15 @@
   .bar{flex:1; height:3px; border-radius:var(--tenon-radius-sm); background:var(--tenon-stroke-subtle); overflow:hidden}
   .bar i{display:block; height:100%; background:var(--tenon-background-success)}
   .tenon-card__footer{font-size: var(--tenon-typography-size-sm); margin-top:6px}
+  /* Where an agent's run on the task stands (agentRunStatus(), 28-agent-runs.js).
+     A dot in the line's own colour, then the words, so failed reads red at a glance. */
+  .runline{display:flex; align-items:center; gap:6px; margin-top:6px; font-size: var(--tenon-typography-size-sm); color:var(--tenon-text-subtle); min-width:0}
+  .runline::before{content:''; flex:none; width:6px; height:6px; border-radius:50%; background:currentColor}
+  .runline--running{color:var(--tenon-text-running)}
+  .runline--queued{color:var(--tenon-text-faint)}
+  .runline--you{color:var(--tenon-text-accent)}
+  .runline--failed{color:var(--tenon-text-error); font-weight:600}
+  .runline + .prog{margin-top:4px}
 
   /* ---------- drawer ---------- */
   .scrim{position:fixed; inset:0; background:rgba(10,12,16,.28); opacity:0; pointer-events:none; transition:opacity .15s; z-index:30}

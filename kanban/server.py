@@ -373,6 +373,16 @@ def tick_queue_path(name=None):
     return os.path.join(dataset_dir(name or current_dataset()), "tick-queue.json")
 
 
+def agent_runs_path(name=None):
+    """Where each agent run on a sub-task stands. See core/agent_runs.py.
+
+    The agents write it; the board reads it for the status line on a card and
+    the activity feed on a sub-task, and asks for two changes of his through
+    POST /agent-runs: retry and clear.
+    """
+    return os.path.join(dataset_dir(name or current_dataset()), "agent-runs.json")
+
+
 def reports_dir(name=None):
     # Written reports live beside the list they're about rather than in the
     # repo, because a report names people, dates and internal decisions — the
@@ -2076,6 +2086,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if path == "/tick-queue.json":
             import tick_queue
             return self._json(200, tick_queue.read(tick_queue_path()))
+        if path == "/agent-runs.json":
+            import agent_runs
+            return self._json(200, {"subs": agent_runs.read(agent_runs_path())})
         if path == "/briefings.json":
             try:
                 with open(briefings_path(), encoding="utf-8") as fh:

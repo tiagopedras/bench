@@ -41,6 +41,11 @@ export interface Chip {
 
 export type CardProgress = { kind: 'steps', done: number, total: number, pct: number }
 
+/** Where an agent's run on the task stands, one line: "Plan agent · waiting
+ *  for you · 02:05". `tone` is running, queued, you or failed
+ *  (agentRunStatus(), kanban/js/28-agent-runs.js). */
+export interface CardRunStatus { text: string, tone: string, title?: string }
+
 export interface TaskCardModel {
   id: string
   /** `done`, `waiting` or `backlog`, plus `onething` for the headline and
@@ -53,6 +58,8 @@ export interface TaskCardModel {
   /** Urgent and due, drawn together in the row's own corner. */
   when: Chip[]
   progress: CardProgress | null
+  /** Null, or absent, for a task with no agent part open. */
+  status?: CardRunStatus | null
 }
 
 export interface TaskCardProps {
@@ -109,12 +116,17 @@ export function TaskCard(props: TaskCardProps) {
   ) : null
 
   const p = m.progress
-  const body = !p ? null : (
+  const s = m.status
+  const prog = !p ? null : (
     <div className="prog">
       <span>{p.done + '/' + p.total + ' steps'}</span>
       <span className="bar"><i style={{ width: p.pct + '%' }} /></span>
     </div>
   )
+  const run = !s ? null : (
+    <div className={'runline runline--' + s.tone} title={s.title || undefined}>{s.text}</div>
+  )
+  const body = !prog && !run ? null : <>{run}{prog}</>
 
   return (
     <Card

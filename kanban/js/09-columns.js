@@ -420,6 +420,12 @@ function cardModel(t, opts){
                  pct: Math.round(doneSubs / subs.length * 100) };
   }
 
+  /* Where an agent's run on this task stands, "Plan agent · waiting for you ·
+     02:05", worked out in 28-agent-runs.js from the handover's sub-tasks and
+     the agents' own run records. Null for a task with no agent part open. */
+  const run = typeof agentRunStatus === 'function' ? agentRunStatus(t) : null;
+  const status = run ? { text: run.text, tone: run.tone, title: run.title || '' } : null;
+
   const statusClass = t.done ? ' done' :
     opts.tier === WAIT_COL ? ' waiting' :
     opts.tier === BACKLOG_TIER ? ' backlog' : '';
@@ -434,7 +440,7 @@ function cardModel(t, opts){
     id: t.id,
     cls: statusClass.trim() + (t.headline ? ' onething' : '') + (selected ? ' selected' : ''),
     title: t.title,
-    chips, when, progress
+    chips, when, progress, status
   };
 }
 

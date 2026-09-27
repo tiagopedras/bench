@@ -23,7 +23,8 @@ around each kind.
 
 It never writes todo.md. When the work is done it queues the tick on its own
 Implement sub-task through core/tick_queue.py, and appends what it did to the
-plan, which is what `do` has the driving session do.
+plan, which is what `do` has the driving session do. Where the run stands is
+kept in `agent-runs.json` (core/agent_runs.py) for the status line on the card.
 
 Off until he sets its hours on the agents dashboard: the runner treats a list it
 has no settings for as off.
@@ -44,6 +45,7 @@ for _p in (os.path.join(ROOT, "core"), PLAN_AGENT):
     if _p not in sys.path:
         sys.path.append(_p)
 
+import agent_runs  # noqa: E402
 import guard  # noqa: E402
 import paths  # noqa: E402
 import pick  # noqa: E402
@@ -188,6 +190,8 @@ def read_queue(text):
         h = hashlib.sha1()
         h.update(pick.fingerprint(t).encode())
         h.update(_plan_digest(path).encode())
+        # A retry asked for from the board, so a run the runner set aside goes again.
+        h.update(agent_runs.retry_stamp(imp.stable_id, paths.agent_runs_path()).encode())
         out.append({"id": imp.stable_id or imp.slug, "title": t.title, "fields": {}, "body": "",
                     "fingerprint": h.hexdigest()[:12], "task": t, "sub": imp.stable_id,
                     "plan": path, "plan_rel": rel, "front": front, "kind": kind,
@@ -301,6 +305,8 @@ def starting(item, target, opts):
     """Photograph the folder, or cut the branch. A failure here is kept for land()."""
     _use(target["id"])
     run = _runs[item["id"]] = {"kind": item["kind"], "day": dt.date.today()}
+    if item.get("sub"):
+        agent_runs.start(item["sub"], item["task"].stable_id, item["title"], NAME, path=paths.agent_runs_path())
     try:
         if item["kind"] == "code":
             build, gitwork = _improve()
@@ -460,6 +466,11 @@ def _report_into_plan(item, text, day, extra=""):
         fh.write(kept.rstrip("\n") + "\n\n" + section)
 
 
+def _finished(item, label, summary, output=None):
+    if item.get("sub"):
+        agent_runs.finish(item["sub"], label, summary, path=paths.agent_runs_path(), output=output)
+
+
 def _tick(item):
     tick_queue.append(item["sub"], BY, note="report written", path=paths.tick_queue_path())
 
@@ -495,6 +506,7 @@ def land(item, result, target):
         return {"failed": "it said it was done but wrote nothing", "label": "nothing written", "ref": rel}
     _report_into_plan(item, text, run["day"])
     _tick(item)
+    _finished(item, "done", summary)
     return {"label": "done", "ref": rel, "summary": summary or "done",
             "detail": "%d new file%s" % (len(report["added"]), "" if len(report["added"]) == 1 else "s")}
 
@@ -535,6 +547,7 @@ def _land_code(item, run, text, outcome, summary):
                     "fix": "The change is on %s with the failure named in the commit." % branch}
         _report_into_plan(item, text, run["day"], "Committed as %s on %s." % (commit, branch))
         _tick(item)
+        _finished(item, "built", summary)
         return {"label": "built", "ref": "%s %s" % (branch, commit), "summary": summary or "built"}
     finally:
         if gitwork.clean(path) and gitwork.branch(path) != run["was"]:

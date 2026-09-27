@@ -12,6 +12,8 @@ functions as before:
   `plan-agent.log`, the plan files, `ledger.json`, the day's `index.md` and
   `run.json`, `window.json` on a usage limit, and the one notification on the
   companion's queue. The lock is still `data/.plan-agent-<list>.lock`.
+- where each task's run stands, in `agent-runs.json` (core/agent_runs.py), for
+  the status line on its card: running from starting(), done from land().
 - the briefings and reports still run once per scheduled wake (`on_wake`).
 - the batch still stops if todo.md changes under it, and when less than twenty
   minutes of the usage window is left.
@@ -31,6 +33,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOT, "core"))
 sys.path.insert(0, HERE)
 
+import agent_runs  # noqa: E402
 import dashboard  # noqa: E402
 import paths  # noqa: E402
 import pick  # noqa: E402
@@ -99,6 +102,11 @@ def _item(task, ledger, skip=None):
     # fingerprint, and the runner's own ledger never holds back a task the
     # planning ledger has released.
     stamp = "|".join(str(row.get(k) or "") for k in ("state", "status", "owner", "planned", "file"))
+    # A retry asked for from the board changes the fingerprint, so a task the
+    # runner set aside after failing is tried again.
+    retry = agent_runs.retry_stamp(getattr(task, "plan_sub", ""), paths.agent_runs_path())
+    if retry:
+        stamp += "|retry:" + retry
     return {"id": key, "title": task.title, "fields": {}, "body": "", "task": task, "skip": skip,
             "fingerprint": "%s|%s" % (pick.fingerprint(task), stamp)}
 
@@ -252,6 +260,8 @@ def starting(item, target, opts):
     # the task in flight.
     plan.log("  > %s (%s)" % (task.title[:60], opts["agent"]))
     (_night.get(target["id"]) or {})["began"] = time.time()
+    if getattr(task, "plan_sub", ""):
+        agent_runs.start(task.plan_sub, task.stable_id, task.title, NAME, path=paths.agent_runs_path())
 
 
 def failed(item, result, target):
@@ -291,6 +301,9 @@ def land(item, result, target):
         "seen": False, "resolution": "",
     }
     pick.save_ledger(ledger)
+    if getattr(task, "plan_sub", ""):
+        agent_runs.finish(task.plan_sub, "needs a decision" if folded else "planned", summary,
+                          path=paths.agent_runs_path(), plan=name)
     took = int(time.time() - night.get("began", time.time()))
     plan.log("  planned %-50s %3ds  $%.2f" % (task.title[:50], took, result.get("cost") or 0.0))
     return {"label": "needs a decision" if folded else "planned", "tone": "warn" if folded else "good",
