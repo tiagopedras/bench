@@ -101,6 +101,8 @@ def figma_ready(item):
 PLAN_NOTE = re.compile(r"^\s*-\s*Plan:\s*plans/([\w./-]+\.md)\s*$", re.I)
 OUTCOME_RE = re.compile(r"^\s*OUTCOME:\s*([a-z-]+)\s*$", re.M | re.I)
 SUMMARY_RE = re.compile(r"^\s*SUMMARY:\s*(.+?)\s*$", re.M)
+# A Figma file or branch the work is in, named on a line of its own in the reply.
+FIGMA_RE = re.compile(r"^\s*FIGMA:\s*(https://(?:www\.)?figma\.com/\S+)\s*$", re.M | re.I)
 REPORT = "What the implementing agent did"
 
 # What one item is doing between starting() and land(), by item id.
@@ -380,7 +382,8 @@ Only inside this folder, and only new files:
 
 Never change, rename or delete a file that is already there. A new version of an
 existing file is saved beside it as `name-v2.md` (then -v3, and so on), keeping
-the original's extension. If the folder has no CLAUDE.md, write a short one
+the original's extension. A message, Slack note or email goes in full in a file
+of its own whose name ends `.draft.md`, so the board can show it ready to copy. If the folder has no CLAUDE.md, write a short one
 saying what the project is. The harness checks the folder after you: anything
 written over is put back, anything written elsewhere is moved aside, and the
 whole run is set aside for him.
@@ -466,6 +469,34 @@ def _report_into_plan(item, text, day, extra=""):
         fh.write(kept.rstrip("\n") + "\n\n" + section)
 
 
+def _figma(text):
+    m = FIGMA_RE.search(text or "")
+    return m.group(1) if m else ""
+
+
+def _files_output(folder, added, text=""):
+    """What a files run left, for the activity feed: the files, the folder as
+    the board names a project, and any `.draft.md` message with its text."""
+    default = os.path.realpath(project_folders.default_dir(paths.data_dir()))
+    real = os.path.realpath(folder)
+    project = os.path.relpath(real, default) if project_folders.inside(default, real) else real
+    return {"files": sorted(added), "project": project,
+            "drafts": agent_runs.read_drafts(folder, added), "figma": _figma(text)}
+
+
+def _commits(repo, base, branch):
+    """How many commits the branch carries past its base. 0 when git cannot say."""
+    import subprocess
+    if not base:
+        return 0
+    try:
+        out = subprocess.run(["git", "-C", repo, "rev-list", "--count", "%s..%s" % (base, branch)],
+                             capture_output=True, text=True, timeout=30)
+        return int(out.stdout.strip() or 0) if out.returncode == 0 else 0
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return 0
+
+
 def _finished(item, label, summary, output=None):
     if item.get("sub"):
         agent_runs.finish(item["sub"], label, summary, path=paths.agent_runs_path(), output=output)
@@ -523,7 +554,7 @@ def _land(item, result, target):
         return {"failed": "it said it was done but wrote nothing", "label": "nothing written", "ref": rel}
     _report_into_plan(item, text, run["day"])
     _tick(item)
-    _finished(item, "done", summary)
+    _finished(item, "done", summary, _files_output(run["folder"], report["added"], text))
     return {"label": "done", "ref": rel, "summary": summary or "done",
             "detail": "%d new file%s" % (len(report["added"]), "" if len(report["added"]) == 1 else "s")}
 
@@ -564,7 +595,10 @@ def _land_code(item, run, text, outcome, summary):
                     "fix": "The change is on %s with the failure named in the commit." % branch}
         _report_into_plan(item, text, run["day"], "Committed as %s on %s." % (commit, branch))
         _tick(item)
-        _finished(item, "built", summary)
+        _finished(item, "built", summary, {
+            "branch": {"repo": path, "name": branch, "commit": commit, "summary": summary,
+                       "commits": _commits(path, run.get("base"), branch)},
+            "figma": _figma(text)})
         return {"label": "built", "ref": "%s %s" % (branch, commit), "summary": summary or "built"}
     finally:
         if gitwork.clean(path) and gitwork.branch(path) != run["was"]:

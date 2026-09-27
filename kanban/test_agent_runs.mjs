@@ -203,6 +203,75 @@ check('and the run record is cleared', await evalJS(`
   window.__blocked.some(b => b.startsWith('POST /agent-runs'))
 `))
 
+/* ---- the activity feed ---- */
+
+await evalJS(`(() => {
+  const b = __sub('Beta', 'plan').stableId;
+  const runs = Object.assign({}, window.__runs);
+  runs[b] = { sub: b, state: 'done', at: __soon, label: 'planned', agent: 'Plan agent',
+              summary: 'Three steps, one message.', plan: 'bd-beta.md' };
+  __set(runs);
+  const t = __t('Beta');
+  t.body.unshift('  - Hire for the role by March.');
+  openDrawer(__sub('Beta', 'plan-review').stableId);
+})()`)
+await wait(300)
+const heads = await evalJS(`[...document.querySelectorAll('#sbody .actfeed .acthead')].map(e => e.textContent).join('|')`)
+check('a review\'s panel carries the feed: the brief, then the plan', heads === 'Brief|Plan agent · wrote the plan · ' + await evalJS(`runWhen(__soon)`), heads)
+check('the brief is the task\'s own note', await evalJS(`
+  /Hire for the role by March/.test(document.querySelector('#sbody .actfeed .actbody').textContent)
+`))
+check('the plan entry can be read from there', await evalJS(`
+  document.querySelector('#sbody .actfeed [data-readplan]').dataset.readplan === 'bd-beta.md'
+`))
+check('the reply goes to the agent that last touched it', await evalJS(`
+  document.querySelector('#act-send').textContent === 'Send to Plan agent'
+`))
+
+await evalJS(`(() => {
+  document.querySelector('#act-reply').value = 'Cover the notice period too.';
+  document.querySelector('#act-send').click();
+})()`)
+await wait(300)
+check('a reply to a finished step sends it back: the Plan step opens again', await evalJS(`!__sub('Beta', 'plan').done`))
+check('carrying the reply as a feedback note the agent reads', await evalJS(`
+  /- feedback: Cover the notice period too\\./.test(stepNoteText(__t('Beta'), __sub('Beta', 'plan').line))
+`))
+check('and the feed shows it as his', await evalJS(`
+  [...document.querySelectorAll('#sbody .actfeed .act--you .actbody')].some(e => /notice period/.test(e.textContent))
+`))
+
+await evalJS(`(() => {
+  closeSubPanel();
+  const t = __t('Beta');
+  ['plan', 'plan-review'].forEach(k => { const s = __sub('Beta', k); const f = readSub(t, s.line); f.done = true; writeSub(t, s.line, f); });
+  const i = __sub('Beta', 'implement').stableId;
+  const runs = Object.assign({}, window.__runs);
+  runs[i] = { sub: i, state: 'done', at: __soon, label: 'done', agent: 'Implement agent', summary: 'Wrote the brief.',
+    output: { files: ['brief.md', 'note.draft.md'], project: 'beta', drafts: [{ name: 'note.draft.md', text: 'Hey Sam' }],
+              figma: 'https://www.figma.com/design/ABC123/Beta-screens?node-id=1-2',
+              branch: { name: 'implement/2026-09-27', commits: 2, repo: '/x/tenon', summary: 'Tokens renamed.' } } };
+  __set(runs);
+  openDrawer(__sub('Beta', 'work-review').stableId);
+})()`)
+await wait(300)
+check('the output\'s files are links into the project, drafts left out', await evalJS(`
+  [...document.querySelectorAll('#sbody .actfile')].map(b => b.textContent + '@' + b.dataset.project).join(',')
+`) === 'brief.md@beta')
+check('a draft is shown in full, ready to copy', await evalJS(`
+  document.querySelector('#sbody .actdraft pre').textContent === 'Hey Sam' && !!document.querySelector('#sbody .actdraft [data-copy]')
+`))
+check('a branch shows its name and commit count', await evalJS(`
+  document.querySelector('#sbody .actbranch').textContent
+`) === 'implement/2026-09-27 · 2 commits · tenon')
+check('a Figma link opens in the desktop app', await evalJS(`
+  document.querySelector('#sbody .actfigma').getAttribute('href')
+`) === 'figma://file/ABC123/Beta-screens?node-id=1-2')
+check('the reply now goes to the Implement agent', await evalJS(`
+  document.querySelector('#act-send').textContent === 'Send to Implement agent'
+`))
+await evalJS(`closeSubPanel()`)
+
 /* ---- nothing written ---- */
 
 check('no write was attempted but the board saving its own file and its run requests', await evalJS(`

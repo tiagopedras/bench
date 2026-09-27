@@ -243,16 +243,216 @@ function takeBackTask(t){
   if (state.openTask) openDrawer(state.openTask);
 }
 
-/* The sub-task's panel: the same block on the agent's own step. */
+/* The sub-task's panel: the run block on the agent's own step, and the
+   activity feed on every step of a handover. */
 function mountSubRun(t, step){
   const box = document.querySelector('#sbody .dcol-main');
   if (!box) return;
-  const old = box.querySelector('.runblock');
-  if (old) old.remove();
-  const st = agentRunStatus(t);
-  if (!st || st.sub !== step.stableId) return;
+  box.querySelectorAll('.runblock, .actfeed').forEach(el => el.remove());
   const title = box.querySelector('label.field');
-  const html = runBlockHTML(t, st);
-  if (title) title.insertAdjacentHTML('afterend', html); else box.insertAdjacentHTML('afterbegin', html);
-  wireRunBlock(box.querySelector('.runblock'), t, st);
+  const put = html => { if (title) title.insertAdjacentHTML('afterend', html); else box.insertAdjacentHTML('afterbegin', html); };
+  const kinds = handoverSteps(t);
+  if (!kinds.some(x => x.step.stableId === step.stableId)) return;
+  // At the foot of the panel, where a history reads top to bottom.
+  box.insertAdjacentHTML('beforeend', activityFeedHTML(t));
+  wireActivityFeed(box.querySelector('.actfeed'), t);
+  const st = agentRunStatus(t);
+  if (st && st.sub === step.stableId) {
+    put(runBlockHTML(t, st));
+    wireRunBlock(box.querySelector('.runblock'), t, st);
+  }
+}
+
+/* =========================================================================
+   The activity feed: the brief, the plan, the output, and a reply.
+
+   On the panel of each sub-task a handover lays out, since the Plans modal
+   this was first written against went on 22 Sep 2026. Read top to bottom it is
+   the task's agent history: what he asked for, what the Plan agent wrote and
+   when, each time he sent it back, what the Implement agent produced, and
+   whether he approved each. What the Implement agent produced is drawn by
+   kind (core/agent_runs.py, `output`):
+
+     files     links that open the task's project folder in the drawer
+     drafts    a `.draft.md` message shown in full, with Copy
+     branch    its name, how many commits and the summary; merged through
+               the agents-review skill, never from here
+     figma     a link that opens the file in the desktop app
+
+   The reply goes to whichever agent last touched the task, as a `feedback:`
+   note on its step, the note the agents already read when they take a step
+   up again. Where that step is ticked it is a send-back (sendBack(),
+   04-tier-two-the-one-thing.js), so the agent's step opens again.
+   ========================================================================= */
+
+let actReplyMountEl = null;
+
+/* A figma.com link as the desktop app's own, so it opens there rather than in
+   a browser tab. A branch is a file of its own, so its key is the one to open. */
+function figmaAppHref(url){
+  const m = /^https:\/\/(?:www\.)?figma\.com\/(?:file|design|proto|board)\/([A-Za-z0-9]+)(?:\/branch\/([A-Za-z0-9]+))?(?:\/([^?#]*))?(\?[^#]*)?/.exec(String(url || ''));
+  if (!m) return '';
+  return 'figma://file/' + (m[2] || m[1]) + (m[3] ? '/' + m[3] : '') + (m[4] || '');
+}
+
+function feedbackNotes(t, step){
+  return stepNoteText(t, step.line).split('\n')
+    .map(l => (/^\s*-\s*feedback:\s*(.*)$/i.exec(l) || [])[1])
+    .filter(Boolean);
+}
+
+/* The plan a record or the review's `Plan:` note names, relative to plans/. */
+function planRelFor(t, planStep, reviewStep){
+  const rec = planStep && agentRunFor(planStep);
+  if (rec && /^[\w.-]+\.md$/.test(rec.plan || '')) return rec.plan;
+  if (!reviewStep) return '';
+  return (stepNoteText(t, reviewStep.line).match(/^-\s*Plan:\s*`?plans\/([^\s`]+\.md)/mi) || [])[1] || '';
+}
+
+/* The agent step the last thing happened on: the reply goes there. */
+function lastAgentStep(t){
+  const agents = handoverSteps(t).filter(x => x.kind === 'plan' || x.kind === 'implement');
+  const touched = agents.slice().reverse().find(x => x.step.done || agentRunFor(x.step));
+  const hit = touched || agents[0];
+  return hit && agentOf(hit.step.to) ? hit : null;
+}
+
+function actItem(head, body, cls){
+  return '<li class="act' + (cls ? ' ' + cls : '') + '"><div class="acthead">' + head + '</div>' +
+    (body ? '<div class="actbody">' + body + '</div>' : '') + '</li>';
+}
+
+function outputHTML(out, t){
+  if (!out) return '';
+  const bits = [];
+  const drafts = out.drafts || [];
+  const draftNames = drafts.map(d => d.name);
+  const files = (out.files || []).filter(f => draftNames.indexOf(f) < 0);
+  const proj = out.project || taskProject(t) || '';
+  if (files.length) {
+    bits.push('<div class="actfiles">' + files.map(f =>
+      '<button type="button" class="actfile" data-project="' + esc(proj) + '" title="Open ' + esc(proj || 'the project') + ' in the drawer">' +
+        esc(f) + '</button>').join('') + '</div>');
+  }
+  drafts.forEach((d, i) => {
+    bits.push('<div class="actdraft"><div class="actdraft-head"><span>' + esc(d.name) + '</span>' +
+      '<button type="button" class="btn small" data-copy="' + i + '">Copy</button></div>' +
+      '<pre>' + esc(d.text || '') + '</pre></div>');
+  });
+  const b = out.branch;
+  if (b && b.name) {
+    const n = Number(b.commits) || 0;
+    bits.push('<div class="actbranch"><code>' + esc(b.name) + '</code>' +
+      (n ? ' · ' + n + ' commit' + (n === 1 ? '' : 's') : '') +
+      (b.repo ? ' · ' + esc(String(b.repo).split('/').pop()) : '') + '</div>' +
+      (b.summary ? '<div>' + mdInline(b.summary) + '</div>' : '') +
+      '<span class="help">A proposal on a branch. Merge it through the agents-review skill.</span>');
+  }
+  const app = figmaAppHref(out.figma);
+  if (out.figma) {
+    bits.push('<a class="actfigma" href="' + esc(app || out.figma) + '"' + (app ? '' : ' target="_blank" rel="noopener"') + '>' +
+      'Open in Figma</a>');
+  }
+  return bits.join('');
+}
+
+function activityFeedHTML(t){
+  const hs = handoverSteps(t);
+  const by = k => (hs.find(x => x.kind === k) || {}).step;
+  const plan = by('plan'), planRev = by('plan-review'), imp = by('implement'), workRev = by('work-review');
+  const items = [];
+
+  const notes = splitBody(t).notes;
+  const brief = (Array.isArray(notes) ? notes.map(l => String(l).replace(/^\s{0,4}/, '')).join('\n') : String(notes || ''))
+    .split('\n').filter(l => !/^-\s*(Plan|Project):/i.test(l.trim())).join('\n').trim();
+  items.push(actItem('Brief', brief ? mdInline(brief.length > 600 ? brief.slice(0, 599) + '…' : brief).replace(/\n/g, '<br>')
+    : '<span class="help">Nothing written on the task beyond its title.</span>'));
+
+  const agentEntry = (step, verb) => {
+    if (!step) return;
+    const who = agentOf(step.to) || (step === plan ? 'Plan agent' : 'Implement agent');
+    const rec = agentRunFor(step);
+    const st = runState(rec);
+    const when = rec && rec.at ? ' · ' + esc(runWhen(rec.at)) : '';
+    if (st === 'running') items.push(actItem(esc(who) + ' · working' + when, ''));
+    else if (st === 'failed' || st === 'stale')
+      items.push(actItem(esc(who) + ' · failed' + when, rec.why ? mdInline(rec.why) : '', 'act--failed'));
+    else if (st === 'queued') items.push(actItem(esc(who) + ' · will try again' + when, ''));
+    else if (rec || step.done) {
+      let body = rec && rec.summary ? mdInline(rec.summary) : '';
+      if (step === plan) {
+        const rel = planRelFor(t, plan, planRev);
+        if (rel) body += '<div class="reviewbtns"><button type="button" class="btn small" data-readplan="' + esc(rel) + '">Read the plan</button></div>';
+      } else {
+        body += outputHTML(rec && rec.output, t);
+      }
+      items.push(actItem(esc(who) + ' · ' + verb + when, body));
+    }
+    feedbackNotes(t, step).forEach(f => items.push(actItem('You sent it back', mdInline(f), 'act--you')));
+  };
+  const reviewEntry = (step, what) => {
+    if (step && step.done) items.push(actItem('You approved the ' + what + (step.doneOn ? ' · ' + esc(step.doneOn) : ''), '', 'act--you'));
+  };
+  agentEntry(plan, 'wrote the plan');
+  reviewEntry(planRev, 'plan');
+  agentEntry(imp, 'finished the work');
+  reviewEntry(workRev, 'work');
+
+  const last = lastAgentStep(t);
+  const ro = state.locked;
+  const reply = !last ? '' :
+    '<div class="actreply"><div id="act-reply-mount"></div>' +
+      '<button type="button" class="btn small" id="act-send"' + (ro ? ' disabled' : '') + '>Send to ' +
+        esc(agentOf(last.step.to)) + '</button></div>';
+  return '<div class="field actfeed"><span>Activity</span><ol class="actlist">' + items.join('') + '</ol>' + reply + '</div>';
+}
+
+function wireActivityFeed(box, t){
+  if (!box) return;
+  box.querySelectorAll('[data-readplan]').forEach(b => { b.onclick = () => openPlanReader(b.dataset.readplan, t.title); });
+  box.querySelectorAll('.actfile').forEach(b => {
+    b.onclick = () => { if (b.dataset.project) openProjectDrawer(b.dataset.project); };
+  });
+  box.querySelectorAll('[data-copy]').forEach(b => {
+    b.onclick = async () => {
+      const pre = b.closest('.actdraft').querySelector('pre');
+      try { await navigator.clipboard.writeText(pre.textContent); showToast('Copied.', 'good'); }
+      catch (err) { showToast('Could not copy: ' + (err.message || err), 'bad'); }
+    };
+  });
+  if (actReplyMountEl) BoardUI.unmount(actReplyMountEl);
+  actReplyMountEl = box.querySelector('#act-reply-mount');
+  const last = lastAgentStep(t);
+  if (actReplyMountEl && last) {
+    BoardUI.mountFlushed(actReplyMountEl, BoardUI.h(BoardUI.Textarea, {
+      id: 'act-reply', disabled: state.locked,
+      placeholder: 'A reply to the ' + agentOf(last.step.to) + '. It reads this when it takes the task up again.',
+    }));
+  }
+  const send = box.querySelector('#act-send');
+  if (send) send.onclick = () => {
+    const ta = box.querySelector('#act-reply');
+    if (replyToAgent(t, ta ? ta.value : '')) openDrawer(state.openTask);
+  };
+}
+
+/* The reply, as a `feedback:` note on the agent's step. A step already ticked
+   is sent back through the review behind it, so it opens again. */
+function replyToAgent(t, text){
+  const said = String(text || '').trim();
+  const last = lastAgentStep(t);
+  if (state.locked || !said || !last) return false;
+  const step = subSteps(t).find(s => s.stableId === last.step.stableId);
+  if (!step) return false;
+  if (step.done) {
+    const review = subSteps(t).find(s => (s.blockedBy || []).indexOf(step.slug) > -1);
+    if (!review || !sendBack(t, review.line, said)) return false;
+  } else {
+    const now = stepNoteText(t, step.line);
+    setStepNoteText(t, step.line, (now ? now + '\n' : '') + '- feedback: ' + said.replace(/\n+/g, ' '));
+    markDirty();
+  }
+  refreshView();
+  showToast('Sent to the ' + agentOf(step.to) + '.', 'good');
+  return true;
 }

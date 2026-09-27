@@ -30,6 +30,7 @@ sys.path.insert(0, HERE)
 
 import guard  # noqa: E402
 import hooks  # noqa: E402
+import agent_runs  # noqa: E402  (core/, which hooks puts on the path)
 import paths  # noqa: E402
 import tick_queue  # noqa: E402
 
@@ -213,9 +214,21 @@ def test_land():
     before = item["fingerprint"]
     hooks.starting(item, TARGET, {})
     folder = hooks._runs[item["id"]]["folder"]
+    check("starting marks the run as running, for the card",
+          (agent_runs.get("aaaap3", paths.agent_runs_path()) or {}).get("state"), "running")
     write(os.path.join(folder, "brief.md"), "the brief\n")
+    write(os.path.join(folder, "note-to-sam.draft.md"), "Hey Sam\n")
     got = hooks.land(item, {"text": REPLY}, TARGET)
     check("a clean run lands as done", got.get("label"), "done")
+    rec = agent_runs.get("aaaap3", paths.agent_runs_path()) or {}
+    check("and its run record says so", (rec.get("state"), rec.get("label")), ("done", "done"))
+    check("naming the files it wrote, for the activity feed",
+          (rec.get("output") or {}).get("files"), ["brief.md", "note-to-sam.draft.md"])
+    check("with a .draft.md message's text, to show inline",
+          (rec.get("output") or {}).get("drafts"), [{"name": "note-to-sam.draft.md", "text": "Hey Sam\n"}])
+    check("and the project the way the board names it",
+          (rec.get("output") or {}).get("project"), os.path.basename(folder))
+    os.remove(os.path.join(folder, "note-to-sam.draft.md"))
     check("and queues its own tick, as the Implement agent",
           [(e["sub"], e["by"]) for e in tick_queue.read(q)], [("aaaap3", "Implement agent")])
     text = read(item["plan"])
@@ -233,6 +246,15 @@ def test_land():
     write(os.path.join(folder, "brief.md"), "rewritten\n")
     got = hooks.land(item, {"text": REPLY}, TARGET)
     check("writing over a file sets the task aside", (got.get("set_aside"), got.get("label")), (True, "refused"))
+    rec = agent_runs.get("aaaap3", paths.agent_runs_path()) or {}
+    check("and marks the run failed, with why", (rec.get("state"), rec.get("why", "")[:22]),
+          ("failed", "it broke the folder ru"))
+    banners = json.loads(read(paths.notify_queue_path()))
+    check("with one banner, pointing at the sub-task", (banners[-1]["title"], banners[-1]["task"]),
+          ("Implement agent", "aaaap3"))
+    agent_runs.retry("aaaap3", path=paths.agent_runs_path())
+    check("a retry from the board changes what the runner fingerprints",
+          hooks.items(TARGET)[0]["fingerprint"] != item["fingerprint"], True)
     check("the file is as it was", read(os.path.join(folder, "brief.md")), "the brief\n")
     check("and no tick is queued", tick_queue.read(q), [])
 
