@@ -2156,6 +2156,29 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 "fallback": not planning_agent_plan.agent_on_disk(
                     planning_agent_plan.bucket_agent(bucket)),
             })
+        # The Agents tab's own planner list: one row per bucket the caller
+        # names (the board already has the current list's buckets in
+        # state.doc, so it sends them rather than this route parsing todo.md
+        # itself). Same lookup /bucket-brief.json's "fallback" flag already
+        # uses — bucket_agent() and agent_on_disk() in
+        # agents/plan-agent/plan.py — so a bucket with no planner on disk
+        # reads the same way in both places.
+        if path == "/agents-planners.json":
+            from urllib.parse import parse_qs, urlparse
+            q = parse_qs(urlparse(self.path).query)
+            raw = (q.get("buckets") or [""])[0]
+            names = [n for n in (part.strip() for part in raw.split(",")) if n]
+            if planning_agent_plan is None:
+                return self._json(200, {"planners": []})
+            planners = []
+            for name in names:
+                agent = planning_agent_plan.bucket_agent(name)
+                planners.append({
+                    "bucket": name,
+                    "agent": agent,
+                    "onDisk": planning_agent_plan.agent_on_disk(agent),
+                })
+            return self._json(200, {"planners": planners})
         if path == "/reports.json":
             return self._json(200, {"reports": report_listing()})
         if path == "/projects.json":

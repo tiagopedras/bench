@@ -962,6 +962,18 @@ function renderFilterBar(){
   // Follows the strip it belongs to, and goes with it in a preview or the demo,
   // where the file behind it is not one that can be written to.
   $('#editBuckets').classList.toggle('hidden', state.locked);
+  // The Agents tab has no buckets to filter — there is nothing under it for
+  // the strip, its theme pills or the edit-buckets pencil to narrow. Hidden
+  // here, after renderTabs() has drawn them (still needed for syncHash() and
+  // to keep the strip's own content current), rather than skipped above, so
+  // whichever view comes next finds them already right and just un-hides
+  // them the same way it always has.
+  const onAgents = state.view === 'agents';
+  $('#bucketFilters').classList.toggle('hidden', onAgents);
+  if (onAgents) {
+    $('#themeBar').classList.add('hidden');
+    $('#editBuckets').classList.add('hidden');
+  }
 }
 
 /* The strip of column names above the board, phone only — which one is on

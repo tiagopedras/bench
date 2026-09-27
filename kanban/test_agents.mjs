@@ -201,6 +201,25 @@ check('the list view draws an hour track per target', await evalJS(`document.que
 check('and the ruler over them', await evalJS(`!!document.querySelector('#agentsRoot .rulerwrap .ruler')`))
 check('a card per agent under it', await evalJS(`[...document.querySelectorAll('#agentsCards .agentcard h3')].map(h => h.textContent).join(',') === 'PA,Plan agent,Implement agent'`))
 check('each card says does, cannot and needs', await evalJS(`[...document.querySelectorAll('#agentsCards .agentcard')].every(c => [...c.querySelectorAll('dt')].map(d => d.textContent).join('|') === 'Does|Cannot|Needs from you' && [...c.querySelectorAll('dd')].every(d => d.textContent.length > 20))`))
+check('the tab lists this list\'s bucket planners under the cards', await evalJS(`(() => {
+  const el = document.querySelector('#agentsPlanners .planners li')
+  if (!el) return false
+  return el.querySelector('.planner-bucket')?.textContent === 'Tasks' &&
+    el.querySelector('.planner-name')?.textContent === 'fallback planner'
+})()`))
+check('the Agents tab hides the bucket filter strip, theme pills and edit-buckets pencil; other views bring them back', await evalJS(`(() => {
+  const wasLocked = state.locked, wasView = state.view
+  state.locked = false
+  state.view = 'agents'; renderFilterBar()
+  const hidden = document.querySelector('#bucketFilters').classList.contains('hidden') &&
+    document.querySelector('#themeBar').classList.contains('hidden') &&
+    document.querySelector('#editBuckets').classList.contains('hidden')
+  state.view = 'board'; renderFilterBar()
+  const back = !document.querySelector('#bucketFilters').classList.contains('hidden') &&
+    !document.querySelector('#editBuckets').classList.contains('hidden')
+  state.locked = wasLocked; state.view = wasView; renderFilterBar()
+  return hidden && back
+})()`))
 
 if (process.env.SHOT) {
   const shot = await send('Page.captureScreenshot', { format: 'png' })
