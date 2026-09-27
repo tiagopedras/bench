@@ -18,9 +18,9 @@ needs a decision, a new tag, or a new piece of the board before it can be built.
 
 ## Small
 
-- **The Agents tab shows the Plan and Implement agents but none of the
+- ~~**The Agents tab shows the Plan and Implement agents but none of the
   bucket planners that do the planning, and it still draws the bucket filters,
-  which mean nothing there.** `renderAgentsView()` (`kanban/js/27-agents.js:100`)
+  which mean nothing there.**~~ **Done, 27 Sep 2026.** A Bucket planners section under the cards, from `/agents-planners.json`, and the bucket strip is hidden on the Agents view only. `renderAgentsView()` (`kanban/js/27-agents.js:100`)
   mounts `AgentsApp` over `/agents-api`, which finds agents by their
   `agent.json` and so sees the two runners, then adds one card per entry in
   `AGENT_CARDS` (`kanban/js/02-state.js`). The seven planners in
@@ -1025,7 +1025,7 @@ they settled is written up in the README rather than left here:
   Tests: none found.
   Open: whether "learning from use" (the agent suggesting a brief edit after a send-back) ships in the same pass. Default: no, ship the four-question setup first and leave learning from use as its own entry.
 
-- **Bench's agents are three the person works with, plus specialists they call in, and nothing in the app models that yet.**
+- ~~**Bench's agents are three the person works with, plus specialists they call in, and nothing in the app models that yet.**~~ **Done, 27 Sep 2026, as the call history.** The Plan agent writes a line to `data/<dataset>/history.jsonl` each time it brings in a bucket planner (`core/history.py`), and the drawer shows it under History. CONTRACT.md has "An item's history".
   Agreed on 21 Sep 2026 after the second UX review (`/Users/tiagopedras/Code/AGENTS/ux_agent/reviews/2026-09-21-bench-delegation-2/review.md`). The PA,
   the planner and the implementer are the only agents that own a task, each shown by
   name as its owner, the way an assignee is. Specialists sit one per bucket by default
@@ -1040,7 +1040,7 @@ they settled is written up in the README rather than left here:
   Tests: `node /Users/tiagopedras/Code/PACKAGES/work-streams/test_streams.mjs`, `python3 /Users/tiagopedras/Code/PACKAGES/work-streams/test_streams.py`.
   Open: the entry asks for an `owner` field in the contract, which already exists (`CONTRACT.md:37`) — what's missing is the history per task, not the field. Default: build the specialist-call history only.
 
-- **Every agent works one way, plan then accept then produce, so someone who only wants the output has to read and accept a plan first.**
+- ~~**Every agent works one way, plan then accept then produce, so someone who only wants the output has to read and accept a plan first.**~~ **Done, 27 Sep 2026.** Each agent card on the Agents tab has a Handover level: Plan first, Just do it (Review the plan ticks itself when the plan lands) or Off. The Implement agent's own plan-type gate still applies.
   The implementing agent only runs on accepted plans (the `implementing-agent`
   entry further down), and of 41 plans written 5 were accepted and 2 produced.
   Review finding 3 in `/Users/tiagopedras/Code/AGENTS/ux_agent/reviews/2026-09-21-bench-delegation-2/review.md` suggests a
@@ -1112,7 +1112,7 @@ they settled is written up in the README rather than left here:
   stays on the board for the whole life of its task, and the agents' part shows as sub-tasks
   (entry at the top of Big). Sorting stays as it was before an agent picked the task up.
 
-- **Once a task is handed over, the card cannot say whether the agent has started, is stuck, is waiting on you or has finished.**
+- ~~**Once a task is handed over, the card cannot say whether the agent has started, is stuck, is waiting on you or has finished.**~~ **Done, 27 Sep 2026.** A status line on a handed-over card, from the sub-tasks and `data/<dataset>/agent-runs.json` (`core/agent_runs.py`).
   The only signal on the card is the gear `colgear` draws in `kanban/js/09-columns.js:539`,
   and it turns per column, not per task. Run state lives in the Plans column headers
   (`PlansView.tsx`, "Last run 02:05, planned 0 of 2"). A line on each card reading
@@ -1124,7 +1124,7 @@ they settled is written up in the README rather than left here:
   Tests: `scripts/test-board.sh test_board.mjs`.
   Open: none.
 
-- **What the implementing agent produces never reaches the board, so it cannot be checked or sent back from where the task lives.**
+- ~~**What the implementing agent produces never reaches the board, so it cannot be checked or sent back from where the task lives.**~~ **Done, 27 Sep 2026.** An activity feed at the foot of each handover sub-task's panel: brief, plan, send-backs, output by kind, approvals and a reply box (`kanban/js/28-agent-runs.js`).
   A plan can be read in `openPlanModal()` and talked through in `openPlanChat()`
   (`kanban/js/13-plans.js:485` and `:390`), but past Ready to be produced the work is
   reviewed through the `do` and `agents-review` skills in a terminal. Each ticket needs
@@ -1149,7 +1149,7 @@ they settled is written up in the README rather than left here:
   Tests: `scripts/test-board.sh test_board.mjs`.
   Open: none.
 
-- **Nothing decides what a failed agent run looks like on a task.**
+- ~~**Nothing decides what a failed agent run looks like on a task.**~~ **Done, 27 Sep 2026.** A failed run turns the card red and sends one companion banner. The drawer offers Read the log, Retry and Take it back. A run past three hours counts as failed, and a usage-limit stop does not.
   A planning or implementing run that errors or gives up leaves no mark on the card
   today. A failure shows as a state line on the card ("Producer · failed") and as a
   desktop notification sent for failures only, for the person who trusts the output and
