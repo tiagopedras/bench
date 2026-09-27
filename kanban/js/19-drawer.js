@@ -1265,8 +1265,17 @@ function openDrawer(id, focusTitle){
        opens underneath and the sub-task slides in over it. */
     const found = locateSub(id);
     if (!found) return;
-    drawingUnderSub = true;
-    try { openDrawer(found.loc.task.id); } finally { drawingUnderSub = false; }
+    /* The task is redrawn behind it only when its panel is already the one
+       open. Otherwise the sub-task opens on its own, and whatever else was
+       open closes. */
+    if (parentDrawerOpen(found.loc.task.id)) {
+      drawingUnderSub = true;
+      try { openDrawer(found.loc.task.id); } finally { drawingUnderSub = false; }
+    } else if ($('#drawer').classList.contains('open')) {
+      $('#drawer').classList.remove('open', 'projectview');
+      $('#scrim').classList.remove('open');
+      state.openProject = null;
+    }
     openSubtaskDrawer(locateSub(id));
     return;
   }
@@ -1814,11 +1823,18 @@ function hideSubPanel(){
 function closeSubPanel(){
   const parent = state.openSubParent;
   subSendBackFor = null;
-  if (!parent || !locate(parent)) { hideSubPanel(); return; }
+  if (!parent || !locate(parent) || !$('#drawer').classList.contains('open')) { closeDrawer(); return; }
   closingSub = true;
   try { openDrawer(parent); } finally { closingSub = false; }
 }
 function subPanelOpen(){ return $('#subpanel').classList.contains('open'); }
+/* The task's own panel is open: showing the task, or behind one of its
+   sub-tasks. */
+function parentDrawerOpen(taskId){
+  const d = $('#drawer');
+  if (!d.classList.contains('open') || d.classList.contains('projectview')) return false;
+  return state.openTask === taskId || state.openSubParent === taskId;
+}
 
 /* ---- The panel, showing a sub-task ----
    Opened by the id written on its line: `openDrawer(id)` takes either a task's
@@ -2058,9 +2074,9 @@ function openSubtaskDrawer(found){
 
   /* As wide as the task drawer's own left column, where the sub-task's row
      sits, rather than the whole drawer's dragged width. */
-  const main = $('#dbody .dcol-main');
+  const main = $('#drawer').classList.contains('open') && $('#dbody .dcol-main');
   const w = main ? Math.round(main.getBoundingClientRect().width) : 0;
-  panel.style.width = Math.max(w + 28, 340) + 'px';
+  panel.style.width = w ? Math.max(w + 28, 340) + 'px' : '';
   panel.classList.add('open');
   $('#subscrim').classList.add('open');
   syncHash(!wasOpen);

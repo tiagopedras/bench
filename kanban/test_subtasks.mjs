@@ -189,6 +189,14 @@ try {
   await evalJS(`closeDrawer()`)
   check('the address opens a sub-task by its key', await evalJS(`openTaskByKey('aa0004') &&
     document.querySelector('#subpanel').classList.contains('open') && document.querySelector('#s-title').value === 'Review the work'`))
+  check('with its task closed, the sub-task opens on its own', await evalJS(`
+    !document.querySelector('#drawer').classList.contains('open') && state.openSubParent === __parent.id`))
+  await evalJS(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`)
+  check('and Escape closes it without opening the task', await evalJS(`
+    !document.querySelector('#subpanel').classList.contains('open') && !document.querySelector('#drawer').classList.contains('open') && state.openTask === null`))
+  await evalJS(`openProjectDrawer('Somewhere'); openDrawer('aa0004')`)
+  check('a sub-task opened over a project\'s panel closes that panel', await evalJS(`
+    document.querySelector('#subpanel').classList.contains('open') && !document.querySelector('#drawer').classList.contains('open')`))
   await evalJS(`closeDrawer()`)
   check('closing the drawer closes both', await evalJS(`!document.querySelector('#subpanel').classList.contains('open') && !document.querySelector('#drawer').classList.contains('open')`))
 
