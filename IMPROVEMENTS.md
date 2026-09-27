@@ -18,6 +18,25 @@ needs a decision, a new tag, or a new piece of the board before it can be built.
 
 ## Small
 
+- **The Agents tab shows the Plan and Implement agents but none of the
+  bucket planners that do the planning, and it still draws the bucket filters,
+  which mean nothing there.** `renderAgentsView()` (`kanban/js/27-agents.js:100`)
+  mounts `AgentsApp` over `/agents-api`, which finds agents by their
+  `agent.json` and so sees the two runners, then adds one card per entry in
+  `AGENT_CARDS` (`kanban/js/02-state.js`). The seven planners in
+  `agents/plan-agent/<dataset>-<stream>-agent.md` never appear, though
+  `kanban/server.py:2153` already works out per bucket whether one is on disk
+  (`planning_agent_plan.bucket_agent()`, `agent_on_disk()`), so a small
+  listing route could give the tab each bucket of the current list with its
+  planner's name, or "fallback planner" where there is none, drawn as a section
+  under the cards. Separately, `renderView()` (`kanban/js/18-timeline.js:847`)
+  calls `renderFilterBar()` for the agents view, so `#bucketFilters`, the
+  theme pills and `#editBuckets` show above a page they do not filter; the
+  agents case should hide that strip and the next view should bring it back.
+  Build: Sonnet. Id `agents-tab-bucket-planners`.
+  Files: `kanban/js/27-agents.js`, `kanban/js/18-timeline.js`, `kanban/js/07-render-board.js`, `kanban/server.py`, `kanban/board.css`.
+  Tests: `scripts/test-board.sh test_agents.mjs test_board.mjs`.
+  Open: a section in the board's own `27-agents.js`, or rows inside `AgentsApp` in `PACKAGES/agents-engine`? Default: the board's own section, since the planners have no hours of their own and agents-engine is a second repo.
 - ~~**A plan written by a background run cannot be read until the board is reloaded.**~~ **Done, 27 Sep 2026.** The drawer finds a plan in `/plans.json` when the note has no `Plan:` line, and the tick queue drains on focus, on leaving the Agents view and when a run this tab started finishes.
   The drawer's Read the plan button (`openPlanReader()`, `kanban/js/19-drawer.js:1791`)
   gets its file only from a `- Plan: plans/<file>.md` line in the review sub-task's note
