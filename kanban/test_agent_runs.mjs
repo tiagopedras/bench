@@ -66,7 +66,18 @@ await evalJS(`(() => {
   window.__blocked = [];
   window.fetch = (u, o) => {
     const m = (o && o.method) || 'GET';
-    if (m !== 'GET') { window.__blocked.push(m + ' ' + u); return Promise.resolve(new Response('{"subs":{}}', { status: 200 })) }
+    if (m !== 'GET') {
+      window.__blocked.push(m + ' ' + u);
+      /* Answers /agent-runs the way kanban/server.py would, on the page's copy. */
+      if (u === '/agent-runs') {
+        const b = JSON.parse(o.body), runs = Object.assign({}, window.__runs || {});
+        if (b.action === 'retry' && runs[b.sub]) runs[b.sub] = Object.assign({}, runs[b.sub], { state: 'queued', retry: '2026-09-27T10:00:00' });
+        if (b.action === 'clear') delete runs[b.sub];
+        window.__runs = runs;
+        return Promise.resolve(new Response(JSON.stringify({ ok: true, subs: runs }), { status: 200 }));
+      }
+      return Promise.resolve(new Response('{}', { status: 200 }));
+    }
     if (String(u).startsWith('/agent-runs.json')) return Promise.resolve(new Response(JSON.stringify({ subs: window.__runs || {} }), { status: 200 }));
     return real(u, o);
   };
@@ -127,10 +138,75 @@ check('in the tone that says it is his', /runline--you/.test(await evalJS(`__ton
 check('a card with no agent part has the same body as before',
   await evalJS(`!document.querySelector('#board .tenon-card[data-id="' + __t('Gamma').id + '"] .tenon-card__body')`))
 
+/* ---- a failed run ---- */
+
+await evalJS(`(() => {
+  const a = __sub('Alpha', 'plan').stableId;
+  const runs = Object.assign({}, window.__runs);
+  runs[a] = { sub: a, state: 'failed', at: __soon, agent: 'Plan agent', why: 'the CLI exited 1',
+              error: 'Traceback (most recent call last):\\nValueError: nope' };
+  __set(runs);
+})()`)
+await wait(200)
+check('a failed run reads failed on the card',
+  await evalJS(`__line('Alpha') === 'Plan agent · failed · ' + runWhen(__soon)`), await evalJS(`__line('Alpha')`))
+check('in the error tone', /runline--failed/.test(await evalJS(`__tone('Alpha')`)))
+
+await evalJS(`openDrawer(__t('Alpha').id)`)
+await wait(200)
+check('the task drawer shows the line with its three ways out', await evalJS(`
+  [...document.querySelectorAll('#dbody .runblock [data-run]')].map(b => b.textContent).join('|')
+`) === 'Read the log|Retry|Take it back')
+
+await evalJS(`document.querySelector('#dbody .runblock [data-run="log"]').click()`)
+await wait(200)
+check('Read the log shows the run\'s own output', await evalJS(`
+  !!(modalEl && /ValueError: nope/.test(modalEl.querySelector('.runlog').textContent))
+`))
+await evalJS(`closeModal()`)
+
+await evalJS(`openDrawer(__sub('Alpha', 'plan').stableId)`)
+await wait(200)
+check('the Plan sub-task\'s own panel carries the same block', await evalJS(`
+  document.querySelectorAll('#sbody .runblock [data-run]').length === 3
+`))
+check('its Review the plan does not', await evalJS(`(() => {
+  openDrawer(__sub('Alpha', 'plan-review').stableId);
+  return !document.querySelector('#sbody .runblock');
+})()`))
+
+await evalJS(`(() => { closeSubPanel(); openDrawer(__t('Alpha').id);
+  document.querySelector('#dbody .runblock [data-run="retry"]').click(); })()`)
+await wait(300)
+check('Retry asks the server to queue it again', await evalJS(`
+  window.__blocked.some(b => b.startsWith('POST /agent-runs'))
+`), await evalJS(`window.__blocked.join(' | ')`))
+check('and the card then says when it goes again',
+  await evalJS(`__line('Alpha')`) === 'Plan agent · retrying tonight', await evalJS(`__line('Alpha')`))
+
+await evalJS(`(() => {
+  const a = __sub('Alpha', 'plan').stableId;
+  const runs = Object.assign({}, window.__runs);
+  runs[a] = Object.assign({}, runs[a], { state: 'failed' });
+  __set(runs);
+  openDrawer(__t('Alpha').id);
+  window.__blocked.length = 0;
+  document.querySelector('#dbody .runblock [data-run="takeback"]').click();
+})()`)
+await wait(300)
+check('Take it back puts him on every open agent step', await evalJS(`
+  ['plan', 'implement'].every(k => __sub('Alpha', k).to === OWNER_NAME)
+`))
+check('and takes the agent off the task', await evalJS(`!agentOf(__t('Alpha').to)`))
+check('so the card has no agent line left', await evalJS(`__line('Alpha')`) === '')
+check('and the run record is cleared', await evalJS(`
+  window.__blocked.some(b => b.startsWith('POST /agent-runs'))
+`))
+
 /* ---- nothing written ---- */
 
-check('no write was attempted but the board saving its own file', await evalJS(`
-  window.__blocked.every(b => /^(PUT|HEAD) \\/data\\/todo\\.md/.test(b))
+check('no write was attempted but the board saving its own file and its run requests', await evalJS(`
+  window.__blocked.every(b => /^(PUT|HEAD) \\/data\\/todo\\.md/.test(b) || /^POST \\/agent-runs$/.test(b))
 `), await evalJS(`window.__blocked.join(' | ')`))
 
 ws.close()

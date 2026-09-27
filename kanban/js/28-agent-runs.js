@@ -126,3 +126,133 @@ function agentRunStatus(t){
     title: cur.kind === 'plan-review' ? 'The plan is written and waits for your review.'
       : 'The work is done and waits for your review.' };
 }
+
+/* =========================================================================
+   A failed run, and the three ways out of it.
+
+   A run that errors or gives up shows as "Implement agent · failed · 02:05" on
+   the card, and the companion puts up a banner for it (core/agent_runs.py
+   fail(), failures only). Opening the task shows the same line with three
+   buttons:
+
+     Read the log   the run's own error output, in a sheet
+     Retry          the same run again: tonight for the Plan agent, on the next
+                    /do (or its next unattended run) for the Implement agent.
+                    The agents fold the retry into the item's fingerprint, so a
+                    run the shared runner had set aside after failing goes again.
+     Take it back   the agent comes off every open step of the handover, and off
+                    the task, so the task is his again.
+   ========================================================================= */
+
+function runLineHTML(st){
+  return '<div class="runline runline--' + esc(st.tone) + '"' + (st.title ? ' title="' + esc(st.title) + '"' : '') + '>' +
+    esc(st.text) + '</div>';
+}
+
+function runBlockHTML(t, st){
+  if (!st) return '';
+  const ro = state.locked ? ' disabled' : '';
+  const btns = !st.failed ? '' :
+    '<div class="reviewbtns">' +
+      '<button type="button" class="btn small" data-run="log">Read the log</button>' +
+      '<button type="button" class="btn small" data-run="retry"' + ro + '>Retry</button>' +
+      '<button type="button" class="btn small reject" data-run="takeback"' + ro + '>Take it back</button>' +
+    '</div>' +
+    '<span class="help">' + esc(st.agent === 'Plan agent'
+      ? 'Retry runs it again tonight. Take it back makes the task yours.'
+      : 'Retry runs it again on the next /do. Take it back makes the task yours.') + '</span>';
+  return '<div class="field runblock"><span>Agent</span>' + runLineHTML(st) + btns + '</div>';
+}
+
+function wireRunBlock(box, t, st){
+  if (!box || !st) return;
+  box.querySelectorAll('[data-run]').forEach(b => {
+    b.onclick = () => {
+      if (b.dataset.run === 'log') openRunLog(st.sub, t.title);
+      else if (b.dataset.run === 'retry') retryRun(st.sub, t);
+      else if (b.dataset.run === 'takeback') takeBackTask(t);
+    };
+  });
+}
+
+/* The task drawer: the line at the top of its main column. */
+function mountRunBlock(t){
+  const old = document.querySelector('#dbody .runblock');
+  if (old) old.remove();
+  const st = agentRunStatus(t);
+  const main = document.querySelector('#dbody .dcol-main');
+  if (!st || !main) return;
+  main.insertAdjacentHTML('afterbegin', runBlockHTML(t, st));
+  wireRunBlock(main.querySelector('.runblock'), t, st);
+}
+
+function openRunLog(sub, title){
+  const rec = agentRuns[sub] || {};
+  const stale = runState(rec) === 'stale';
+  const said = stale
+    ? 'It started at ' + runWhen(rec.started || rec.at) + ' and never said it had finished. ' +
+      'The agent\'s own log under data/runner/ has the rest.'
+    : (rec.error || rec.why || 'The run left no output.');
+  showModal('What the run said', esc((rec.agent || 'The agent') + ' on ' + (title || rec.title || 'this task') +
+      (rec.at ? ', ' + runWhen(rec.at) : '')),
+    '<pre class="runlog">' + esc(said) + '</pre>',
+    [{ label: 'Close', primary: true }], { wide: true });
+}
+
+async function postAgentRuns(action, sub){
+  const got = await postJSON('/agent-runs', { action, sub });
+  if (got && got.subs && typeof got.subs === 'object') {
+    agentRuns = got.subs;
+    agentRunsSig = JSON.stringify(got.subs);
+  }
+  return got;
+}
+
+async function retryRun(sub, t){
+  if (state.locked) return;
+  try {
+    await postAgentRuns('retry', sub);
+  } catch (err) {
+    showToast('Could not ask for a retry: ' + (err.message || err), 'bad');
+    return;
+  }
+  const st = agentRunStatus(t);
+  showToast(st && st.agent === 'Implement agent' ? 'It will run again on the next /do.' : 'It will run again tonight.', 'good');
+  refreshView();
+  if (state.openTask) openDrawer(state.openTask);
+}
+
+/* The agent comes off every open step of the handover and off the task. The
+   steps stay, now his, so what was planned is still there to work from. */
+function takeBackTask(t){
+  if (state.locked) return;
+  const subs = [];
+  handoverSteps(t).forEach(({ step }) => {
+    if (step.done || !agentOf(step.to)) return;
+    const f = readSub(t, step.line);
+    if (!f) return;
+    f.to = OWNER_NAME;
+    writeSub(t, step.line, f);
+    subs.push(step.stableId);
+  });
+  if (agentOf(t.to)) { t.to = ''; t.dirty = true; }
+  markDirty();
+  refreshView();
+  subs.filter(Boolean).forEach(sub => { postAgentRuns('clear', sub).catch(() => {}); });
+  showToast('Taken back. The task is yours again.', 'good');
+  if (state.openTask) openDrawer(state.openTask);
+}
+
+/* The sub-task's panel: the same block on the agent's own step. */
+function mountSubRun(t, step){
+  const box = document.querySelector('#sbody .dcol-main');
+  if (!box) return;
+  const old = box.querySelector('.runblock');
+  if (old) old.remove();
+  const st = agentRunStatus(t);
+  if (!st || st.sub !== step.stableId) return;
+  const title = box.querySelector('label.field');
+  const html = runBlockHTML(t, st);
+  if (title) title.insertAdjacentHTML('afterend', html); else box.insertAdjacentHTML('afterbegin', html);
+  wireRunBlock(box.querySelector('.runblock'), t, st);
+}

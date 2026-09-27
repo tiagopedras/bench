@@ -149,6 +149,16 @@ def test_notify_queue():
         check("neither is written when neither was given",
               [k for k in ("task", "view") if k in items[0]], [])
 
+        # A failed agent run names its queue outright (core/agent_runs.py
+        # resolves the dataset under $TODOS_DATA_ROOT) and points at the
+        # sub-task, whose panel holds Read the log, Retry and Take it back.
+        elsewhere = os.path.join(tmp, "other", "notify-queue.json")
+        os.makedirs(os.path.dirname(elsewhere))
+        notify.queue("Implement agent", "Failed on X: it wrote nothing", task="aa0003", path=elsewhere)
+        with open(elsewhere, encoding="utf-8") as fh:
+            items = json.load(fh)
+        check("a queue named by path is the one written", items[-1]["task"], "aa0003")
+
         # It must never raise: every caller is doing something else as its real
         # job, and a banner is not worth taking that down for.
         notify.ROOT = "/nonexistent/nowhere"

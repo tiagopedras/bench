@@ -2326,6 +2326,9 @@
   .runline--you{color:var(--tenon-text-accent)}
   .runline--failed{color:var(--tenon-text-error); font-weight:600}
   .runline + .prog{margin-top:4px}
+  .runblock .runline{margin-top:0}
+  .runblock .reviewbtns{margin-top:6px}
+  .runlog{white-space:pre-wrap; word-break:break-word; max-height:60vh; overflow:auto; margin:0; padding:12px; border-radius:var(--tenon-radius-default); background:var(--tenon-background-neutral); font-size: var(--tenon-typography-size-sm); color:var(--tenon-text-default)}
 
   /* ---------- drawer ---------- */
   .scrim{position:fixed; inset:0; background:rgba(10,12,16,.28); opacity:0; pointer-events:none; transition:opacity .15s; z-index:30}

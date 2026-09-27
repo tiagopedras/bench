@@ -1747,6 +1747,9 @@ function openDrawer(id, focusTitle){
     };
   }
 
+  // Where an agent's run on this task stands, and what to do when it failed
+  // (28-agent-runs.js). Put in at the top of the main column.
+  if (typeof mountRunBlock === 'function') mountRunBlock(t);
   $('#drawer').classList.add('open');
   $('#scrim').classList.add('open');
   if (focusTitle) { const el = $('#f-title'); el.focus(); el.select(); }
@@ -2011,6 +2014,9 @@ function openSubtaskDrawer(found){
     note.onblur = () => { if (note.value !== saved) { setStepNoteText(t, line, note.value); refreshView(); } };
     note.onkeydown = e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); note.blur(); } };
   }
+
+  // The run on a handover's sub-task, and its activity feed (28-agent-runs.js).
+  if (typeof mountSubRun === 'function') mountSubRun(t, step);
 
   /* As wide as the task drawer's own left column, where the sub-task's row
      sits, rather than the whole drawer's dragged width. */

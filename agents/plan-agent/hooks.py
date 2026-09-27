@@ -13,7 +13,8 @@ functions as before:
   `run.json`, `window.json` on a usage limit, and the one notification on the
   companion's queue. The lock is still `data/.plan-agent-<list>.lock`.
 - where each task's run stands, in `agent-runs.json` (core/agent_runs.py), for
-  the status line on its card: running from starting(), done from land().
+  the status line on its card: running from starting(), done from land(),
+  failed from failed() with one banner on the companion's queue.
 - the briefings and reports still run once per scheduled wake (`on_wake`).
 - the batch still stops if todo.md changes under it, and when less than twenty
   minutes of the usage window is left.
@@ -267,10 +268,23 @@ def starting(item, target, opts):
 def failed(item, result, target):
     _use(target["id"])
     err = result.get("error") or ""
+    sub = getattr(item["task"], "plan_sub", "")
     if result.get("kind") == "limit":
         plan.record_limit(err)
+        # Not the task's failure: the window ran out, and it goes again next time.
+        if sub:
+            agent_runs.clear(sub, path=paths.agent_runs_path())
         return
     plan.log("  failed %-50s %s" % (item["title"][:50], (err.splitlines() or [""])[0][:120]))
+    _failed(item, (err.splitlines() or ["the run failed"])[0][:200], err)
+
+
+def _failed(item, why, error=""):
+    """The card's "Plan agent · failed" line, and one banner, for this task."""
+    task = item["task"]
+    if getattr(task, "plan_sub", ""):
+        agent_runs.fail(task.plan_sub, why, error, path=paths.agent_runs_path(),
+                        notify_path=paths.notify_queue_path(), task=task.stable_id, title=task.title, agent=NAME)
 
 
 def land(item, result, target):
@@ -280,6 +294,7 @@ def land(item, result, target):
     if plan.file_hash(paths.todo_path()) != night["guard"]:
         plan.log("STOPPED: todo.md changed during the run. Nothing else was attempted.")
         plan.log("  the agent for %r is the suspect; check it before running again" % task.title)
+        _failed(item, "todo.md changed while this task was being planned, so no plan was written")
         return {"failed": "todo.md changed while this task was being planned, so no plan was written",
                 "fix": "Check what the agent for this task did before running again.",
                 "stop": "todo.md changed during the run"}

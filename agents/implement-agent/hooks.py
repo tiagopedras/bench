@@ -476,6 +476,23 @@ def _tick(item):
 
 
 def land(item, result, target):
+    """What came back, landed. A failure it reports is also the card's
+    "Implement agent · failed" line and one banner (core/agent_runs.py)."""
+    got = _land(item, result, target)
+    if isinstance(got, dict) and got.get("failed"):
+        _failed(item, got["failed"], got.get("fix") or "")
+    return got
+
+
+def _failed(item, why, fix="", error=""):
+    if item.get("sub"):
+        said = "\n\n".join(x for x in (error or why, fix) if x)
+        agent_runs.fail(item["sub"], why, said, path=paths.agent_runs_path(),
+                        notify_path=paths.notify_queue_path(), task=item["task"].stable_id,
+                        title=item["title"], agent=NAME)
+
+
+def _land(item, result, target):
     _use(target["id"])
     run = _runs.pop(item["id"], {})
     text = result.get("text") or ""
@@ -558,6 +575,13 @@ def failed(item, result, target):
     """Claude failed part way. Whatever it left goes, and the repo goes back."""
     _use(target["id"])
     run = _runs.pop(item["id"], {})
+    err = result.get("error") or ""
+    if result.get("kind") == "limit":
+        # The window ran out, which is not the task's failure: it goes again.
+        if item.get("sub"):
+            agent_runs.clear(item["sub"], path=paths.agent_runs_path())
+    else:
+        _failed(item, (err.splitlines() or ["the run failed"])[0][:200], error=err)
     if run.get("error"):
         return
     if run.get("kind") == "code":
