@@ -93,6 +93,7 @@ function agentCardsHTML(highlight){
         '<header><span class="avatar" aria-hidden="true">' + avatarSvg(c.name, 28) + '</span>' +
         '<h3>' + esc(c.name) + '</h3></header>' +
         '<dl>' + row('Does', c.does) + row('Cannot', c.cannot) + row('Needs from you', c.needs) + '</dl>' +
+        handoverLevelHTML(c.name) +
       '</article>').join('') +
     '</div></section>';
 }
@@ -145,6 +146,34 @@ function wireAgentSetupButtons(root){
   root.querySelectorAll('[data-agent-setup]').forEach(btn => {
     btn.onclick = () => openAgentSetup();
   });
+  root.querySelectorAll('[data-handover-level]').forEach(sel => {
+    sel.onchange = () => {
+      setHandoverLevel(sel.dataset.handoverLevel, sel.value);
+      const help = sel.closest('.agentcard-level').querySelector('.help');
+      if (help) help.textContent = HANDOVER_LEVEL_HELP[sel.value] || '';
+    };
+  });
+}
+
+/* The handover level on an agent's card (handOver(), 04-tier-two-the-one-
+   thing.js): how much of its work waits on you. Only for the agents a task can
+   be handed to; the PA has none. */
+const HANDOVER_LEVEL_HELP = {
+  'plan-first': 'You read and approve its plan before the work starts.',
+  'just-do-it': 'The work goes straight on to review. Any plan is still there to read.',
+  'off': 'Not offered under Delegate to. Tasks already handed over carry on.'
+};
+function handoverLevelHTML(agent){
+  const levels = HANDOVER_LEVELS[agentOf(agent)];
+  if (!levels) return '';
+  const cur = handoverLevel(agent);
+  const id = 'handover-' + agentOf(agent).toLowerCase().replace(/\s+/g, '-');
+  return '<div class="field agentcard-level"><label for="' + id + '">Handover</label>' +
+    '<select id="' + id + '" data-handover-level="' + esc(agentOf(agent)) + '">' +
+      levels.map(l => '<option value="' + l + '"' + (l === cur ? ' selected' : '') + '>' +
+        esc(HANDOVER_LEVEL_LABEL[l]) + '</option>').join('') +
+    '</select>' +
+    '<span class="help">' + esc(HANDOVER_LEVEL_HELP[cur] || '') + '</span></div>';
 }
 
 /* ---- Setting up an agent: four questions about one bucket ----

@@ -118,6 +118,10 @@ if (process.env.SHOT_SETUP) {
   writeFileSync(process.env.SHOT_SETUP, Buffer.from(shot.result.data, 'base64'))
 }
 check('and still shows the cards', await evalJS(`document.querySelectorAll('#agentsCards .agentcard').length === 3`))
+check('the Plan and Implement agents\' cards each carry a handover level, and the PA\'s does not', await evalJS(`
+  [...document.querySelectorAll('#agentsCards .agentcard')].map(c => c.dataset.agentCard + ':' +
+    [...c.querySelectorAll('[data-handover-level] option')].map(o => o.value).join('/')).join(' ')`) ===
+  'PA: Plan agent:plan-first/just-do-it/off Implement agent:just-do-it/off')
 check('Delegate to offers no agents', await evalJS(`!delegateSelectHTML('', '').includes('Plan agent')`))
 check('but keeps one a task already names', await evalJS(`delegateSelectHTML('Plan agent', '').includes('Implement agent')`))
 await evalJS(`state.view = 'overview'; renderView()`)

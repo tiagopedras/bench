@@ -2975,6 +2975,9 @@
 .agentcard dl { margin: 0; display: flex; flex-direction: column; gap: 8px; }
 .agentcard dt { font-size: var(--tenon-typography-size-xs); font-weight: 640; color: var(--tenon-text-faint); text-transform: uppercase; letter-spacing: .04em; }
 .agentcard dd { margin: 2px 0 0; font-size: var(--tenon-typography-size-sm); color: var(--tenon-text-default); line-height: 1.45; }
+.agentcard-level { margin-top: 12px; display: flex; flex-direction: column; gap: 4px; }
+.agentcard-level label { font-size: var(--tenon-typography-size-xs); font-weight: 640; color: var(--tenon-text-faint); text-transform: uppercase; letter-spacing: .04em; }
+.agentcard-level select { align-self: flex-start; }
 .agentsetup { max-width: 640px; padding-top: 8px; }
 .agentsetup h1 { margin: 0 0 8px; font-size: var(--tenon-typography-size-lg); }
 .agentsetup p { margin: 0 0 14px; color: var(--tenon-text-subtle); line-height: 1.5; }
