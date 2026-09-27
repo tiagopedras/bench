@@ -2143,6 +2143,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 # rather than letting an untouched template read as written.
                 "filled": exists and marker not in text,
                 "marker": marker,
+                # What the board compares the sections with to tell a brief
+                # someone wrote from one scaffolded with a one-line summary,
+                # which carries no marker but only the template's own prose.
+                "template": brief_template(),
                 # A heading always resolves to a stream of its own since 17 Sep
                 # 2026, so "fallback" no longer means "nothing matched" — it
                 # means no planner of that name exists on disk yet, which is the

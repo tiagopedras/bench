@@ -41,7 +41,7 @@ Every top-level task carries impact, effort and a delegation tag. Dates only whe
 - `[impact:: high]` / `med` / `low` — how much it moves the needle for the team, the design system or the business
 - `[effort:: S]` / `M` / `L` — S is under half a day, M is one to three days, L is a week or more
 - `[due:: YYYY-MM-DD]` — the deadline. When it has to be finished by. Only when there is a genuine date.
-- `[to:: ]` — who does the work. `Plan agent` plans it and stops. `Implement agent` carries it out, because the task already says how. Anything else is a person's name as `people.md` writes it. Left off when he is doing it himself, which is most of the list. It replaced `[ai:: ]` on 21 Sep 2026, and a line still carrying `ai:` loses it on the next save.
+- `[to:: ]` — who does the work. `Plan agent` plans it and stops. `Implement agent` carries it out, because the task already says how. Anything else is a person's name as `people.md` writes it. Left off when he is doing it himself, which is most of the list. It replaced `[ai:: ]` on 21 Sep 2026, and a line still carrying `ai:` loses it on the next save. What each agent does, cannot do and needs from the person is on the Agents tab, one card each (`AGENT_CARDS` in `kanban/js/02-state.js`); change it when an agent's rules change.
 - `start:YYYY-MM-DD` — the earliest it can begin. Optional, and only where something real gates it.
 - `urgent` — time-critical with no fixed date. Never combine with `due`, they are alternatives.
 - `done:YYYY-MM-DD` — the day it was ticked off. Written by the board, not by hand. Never add it to an open task, and never remove it from a ticked one: it is what decides when finished work is old enough to be archived out of the file.
