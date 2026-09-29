@@ -3070,7 +3070,7 @@
     --tl-sub-10: var(--tenon-color-slate-450);
   }
 }
-[data-theme="dark"], :root[data-theme="tiagopedras_2026"] {
+[data-theme="dark"], :root[data-theme="1984"] {
     --tl-sub-1: var(--tenon-color-blue-450);
     --tl-sub-2: var(--tenon-color-orange-450);
     --tl-sub-3: var(--tenon-color-purple-450);
