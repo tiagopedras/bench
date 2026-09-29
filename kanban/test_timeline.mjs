@@ -462,6 +462,94 @@ await new Promise(r => setTimeout(r, 80))
 check("clicking a sub-task's title opens its own panel", await evalJS(`state.openTask === 'sb0001' && subPanelOpen()`))
 await evalJS(`closeDrawer && closeDrawer()`)
 
+/* ---- a task with no dates of its own, drawn from its sub-tasks ----
+
+   The span runs from the earliest to the latest step date (a step with one
+   date gives that one), only while the task has neither date itself. Dragging
+   it writes the task's own start and due, both, and never a step. */
+const spanFixture = () => evalJS(`(() => {
+  load([
+    '# To-do', '', '## 1. Tasks', '',
+    '### To do', '',
+    '- [ ] Span parent \`id:tlspn1\` [bucket:: People] [impact:: high] [effort:: S]',
+    '  - [ ] Both dates \`id:sp0001\` \`start:2026-09-12\` [due:: 2026-09-14]',
+    '  - [ ] Due only \`id:sp0002\` [due:: 2026-09-18]',
+    '  - [ ] Start only \`id:sp0003\` \`start:2026-09-10\`',
+    '  - [ ] No dates \`id:sp0004\`',
+    '- [ ] Has a due \`id:tlspn2\` [bucket:: People] [impact:: high] [effort:: S] [due:: 2026-09-25]',
+    '  - [ ] Dated step \`id:sp0005\` [due:: 2026-09-20]',
+    ''
+  ].join('\\n'), 'demo.md', {});
+  state.view = 'timeline'; renderView();
+})()`)
+const spanIds = () => evalJS(`(() => {
+  const items = allItems().filter(i => !i.sub);
+  return { span: items.find(i => i.title === 'Span parent').id, due: items.find(i => i.title === 'Has a due').id };
+})()`)
+const stepDates = id => evalJS(`splitBody(locate('${id}').task).steps.map(s => (s.start || '') + '/' + (s.due || '')).join(' ')`)
+await spanFixture()
+{
+  const S = await spanIds()
+  const before = await stepDates(S.span)
+  check('a dateless task with dated sub-tasks draws a span from the earliest to the latest step date', await evalJS(`(() => {
+    const bar = document.querySelector('.tlbar.tlspan[data-tlrow="${S.span}"]');
+    const sc = timelineScale(timelineTasks().dated);
+    return !!bar && parseInt(bar.style.left) === tlOffset(sc, '2026-09-10') * TL_DAY_PX &&
+      parseInt(bar.style.width) === (tlOffset(sc, '2026-09-18') - tlOffset(sc, '2026-09-10') + 1) * TL_DAY_PX;
+  })()`))
+  check('a task with a due date of its own draws no span', await evalJS(`
+    !document.querySelector('.tlspan[data-tlrow="${S.due}"]') && !!document.querySelector('.tlmilestone[data-tlrow="${S.due}"]')`))
+  check('and the span is the only one', await evalJS(`document.querySelectorAll('.tlspan').length`) === 1)
+  const s0 = await offsetOf('2026-09-10')
+  const p = await dayX(S.span, s0 + 1)
+  check('the press lands on the span itself', await evalJS(`document.elementFromPoint(${p.x}, ${p.y})?.dataset.tldrag`) === 'move')
+  await mouse('mousePressed', p.x, p.y)
+  await mouse('mouseMoved', p.x + 10, p.y)
+  await mouse('mouseMoved', p.x + 3 * 28, p.y)
+  await mouse('mouseReleased', p.x + 3 * 28, p.y)
+  await new Promise(r => setTimeout(r, 50))
+  const d = await taskDates(S.span)
+  check('dragging the span three days right writes both dates onto the task',
+    d.start === '2026-09-13' && d.due === '2026-09-21', JSON.stringify(d))
+  check('and leaves every sub-task date alone', await stepDates(S.span) === before, await stepDates(S.span))
+  check('and it now draws as a plain bar', await evalJS(`
+    !document.querySelector('.tlspan[data-tlrow="${S.span}"]') && !!document.querySelector('.tlbar[data-tlrow="${S.span}"]')`))
+}
+await spanFixture()
+{
+  const S = await spanIds()
+  const before = await stepDates(S.span)
+  const h = await evalJS(`(() => {
+    const el = document.querySelector('.tlbar.tlspan[data-tlrow="${S.span}"] .tlhandle-r');
+    el.scrollIntoView({ block: 'center', inline: 'nearest' });
+    document.querySelector('.tlscroll').scrollLeft = 0;
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  })()`)
+  const to = await dayX(S.span, await offsetOf('2026-09-20'))
+  await mouse('mousePressed', h.x, h.y)
+  await mouse('mouseMoved', h.x + 10, h.y)
+  await mouse('mouseMoved', to.x, h.y)
+  await mouse('mouseReleased', to.x, h.y)
+  await new Promise(r => setTimeout(r, 50))
+  const d = await taskDates(S.span)
+  check('dragging the right handle writes both dates onto the task, the far edge moved',
+    d.start === '2026-09-10' && d.due === '2026-09-20', JSON.stringify(d))
+  check('and leaves every sub-task date alone', await stepDates(S.span) === before)
+}
+await spanFixture()
+{
+  const S = await spanIds()
+  const p = await dayX(S.span, await offsetOf('2026-09-10') + 1)
+  await mouse('mousePressed', p.x, p.y)
+  await mouse('mouseReleased', p.x, p.y)
+  await new Promise(r => setTimeout(r, 50))
+  const d = await taskDates(S.span)
+  check('a click on the span opens the task and writes nothing',
+    await evalJS(`state.openTask`) === S.span && d.start === null && d.due === null, JSON.stringify(d))
+  await evalJS(`closeDrawer()`)
+}
+
 /* ---- an undated sub-task, under an undated parent ----
 
    Neither carries a date anywhere. Both still get a row (goal 2), and

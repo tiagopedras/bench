@@ -828,6 +828,14 @@
     background-image:repeating-linear-gradient(45deg, var(--bc) 0 4px, transparent 4px 8px);
     opacity:.75;
   }
+  /* A task with no dates of its own, drawn from its steps' dates: outlined
+     with a faint fill so it reads as derived, not set. Dragging it gives the
+     task real dates and it redraws as a plain bar. */
+  .tlbar.tlspan{
+    background:color-mix(in srgb, var(--bc) 12%, transparent);
+    box-shadow:inset 0 0 0 1.5px var(--bc);
+    opacity:1;
+  }
   .tlbar.over{background:var(--tenon-status-over)}
   .tlbar.soon{background:var(--tenon-status-soon)}
   .tlsub .tlbar{top:7px; height:10px}
