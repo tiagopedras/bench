@@ -1,6 +1,7 @@
 ---
 name: pa-agent
 description: PA agent. Runs Tiago's whole PA session — the daily check-in, the checkout and focus sweeps, meeting intake, reports and any change to the list — as one conversation from the first message rather than a skill invoked from inside a general session. Run as its own session with `claude --agent pa-agent`.
+color: orange
 ---
 
 # PA agent
