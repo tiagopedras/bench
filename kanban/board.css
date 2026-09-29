@@ -2229,18 +2229,24 @@
      happens to be rendering it — these classes come from cardHTML off t.done
      and the task's real tier, so a card fades the same way in the board, the
      matrix hover preview or anywhere else cardHTML is used. */
-  .tenon-card.done{opacity:.3}
+  .tenon-card.done{opacity:.6}
   .tenon-card.done:hover{opacity:1}
   .tenon-card.done .title{text-decoration:line-through}
   /* Work waiting on someone else is finished but not filed away, so it sits
      halfway between a live card and a done one — dimmed enough to read as
      off your plate, present enough to keep chasing. */
-  .tenon-card.waiting{opacity:.6}
+  .tenon-card.waiting{opacity:.7}
   .tenon-card.waiting:hover{opacity:1}
-  /* Backlog fades the most: nothing in it is something to act on right now,
-     because there's no pressure to. */
-  .tenon-card.backlog{opacity:.9}
+  /* Backlog fades more than To do: nothing in it is something to act on
+     right now, because there's no pressure to. To do is next up, so it only
+     just steps back from Doing, the one column at full strength. */
+  .tenon-card.backlog{opacity:.8}
   .tenon-card.backlog:hover{opacity:1}
+  .tenon-card.todo{opacity:.9}
+  .tenon-card.todo:hover{opacity:1}
+  /* Hovering a column lifts every card in it, so a faded column can be read
+     whole without hovering card by card. */
+  .tenon-column:hover .tenon-card:is(.done,.waiting,.backlog,.todo){opacity:1}
   .tenon-card .tenon-card__eyebrow{display:flex; align-items:center; gap:6px; margin-bottom:5px}
   .bucket{font-size: var(--tenon-typography-size-xs); font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--bc)}
   .tenon-card .tenon-card__eyebrow .right{margin-left:auto; display:flex; gap:5px; align-items:center}

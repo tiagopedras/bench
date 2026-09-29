@@ -428,7 +428,8 @@ function cardModel(t, opts){
 
   const statusClass = t.done ? ' done' :
     opts.tier === WAIT_COL ? ' waiting' :
-    opts.tier === BACKLOG_TIER ? ' backlog' : '';
+    opts.tier === BACKLOG_TIER ? ' backlog' :
+    opts.tier === TODO_TIER ? ' todo' : '';
 
   /* Held for a bulk action, board or not — see state.selectedIds (02-state.js)
      and renderBulkBar() (19-drawer.js). Read here rather than passed in opts

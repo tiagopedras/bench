@@ -48,7 +48,7 @@ export interface CardRunStatus { text: string, tone: string, title?: string }
 
 export interface TaskCardModel {
   id: string
-  /** `done`, `waiting` or `backlog`, plus `onething` for the headline and
+  /** `done`, `waiting`, `backlog` or `todo`, plus `onething` for the headline and
    *  `selected` while it's held for a bulk action (state.selectedIds,
    *  02-state.js) — cardModel() decides all of these, this just draws them. */
   cls: string
