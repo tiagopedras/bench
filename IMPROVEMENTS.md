@@ -18,6 +18,82 @@ needs a decision, a new tag, or a new piece of the board before it can be built.
 
 ## Small
 
+- **The timeline folds one bucket lane and one task's sub-tasks at a time, so
+  getting a compact view of the whole plan takes a click per row.** Each lane
+  is a `<details>` (`Lane()` in `kanban/ui/TimelineBody.tsx:243`) whose open
+  state goes through `setSectionCollapsed()` under `data-tlcollapse`
+  (`kanban/js/19-drawer.js:2355`, stored in `todo-board-collapsed`), and each
+  task's sub-tasks fold through the `data-tltoggle` chevron into
+  `tlCollapsed` (`kanban/js/18-timeline.js:1246`, toggled in
+  `kanban/js/25-archiving.js:215`), which is not persisted. Two controls in
+  the timeline's header cell (`Header()`, `TimelineBody.tsx:267`) would cover
+  it: expand or collapse every lane at once by writing every lane's key in one
+  pass, and show or hide sub-tasks across the whole view by filling or
+  clearing `tlCollapsed` from the rows `timelineTasks()` returns.
+  Build: Sonnet. Id `timeline-collapse-all`.
+  Files: `kanban/js/18-timeline.js`, `kanban/js/19-drawer.js`, `kanban/js/25-archiving.js`, `kanban/ui/TimelineBody.tsx`, `kanban/board.css`, `kanban/test_timeline.mjs`.
+  Tests: `scripts/test-board.sh test_timeline.mjs test_timeline_reorder.mjs test_board.mjs`.
+  Open: timeline only, or the board's columns too? Default: timeline only, since that is where sub-tasks draw as rows. Should the show/hide sub-tasks choice survive a reload? Default: yes, as one flag in localStorage rather than per-task ids, which change on every reparse.
+
+- **The timeline's No date tray lists tasks that already have a row in the
+  lanes above it, so every undated task shows twice.** Since undated tasks got
+  their own empty lane rows, `timelineSection()`
+  (`kanban/js/18-timeline.js:249`) feeds `undated` into both `rows` and
+  `tray`, and its own comment calls them two ways to date the same task.
+  Dropping the tray means removing `tray` from the model, `Tray()` in
+  `kanban/ui/TimelineBody.tsx:330` and its props, the tray card drop onto the
+  scale along with `showTlTargetLine()` (`:448`) and its comments, the tray
+  rules in `kanban/board.css` (~:871-883), and the tray checks in
+  `kanban/test_timeline.mjs`. Dating an undated task then goes only through
+  its empty row, by click or drag, which already works.
+  Build: Sonnet. Id `timeline-drop-tray`.
+  Files: `kanban/js/18-timeline.js`, `kanban/ui/TimelineBody.tsx`, `kanban/board.css`, `kanban/test_timeline.mjs`.
+  Tests: `scripts/test-board.sh test_timeline.mjs test_timeline_reorder.mjs test_board.mjs`.
+  Open: none.
+
+- ~~**A task with no dates of its own draws an empty track on the timeline even
+  when its sub-tasks are dated, so the row that heads the work shows nothing.**~~
+  **Done, 29 Sep 2026.** A `span` mark (`tlSpanOf()`, `.tlspan`) runs from the
+  earliest to the latest open sub-task date when the task has neither date;
+  dragging it writes both dates onto the task, which then draws as a bar.
+  `timelineRowModel()` (`kanban/js/18-timeline.js:170`) builds a mark only from
+  the row's own `start` and `due`, so a dateless task under dated steps gets
+  `mark: null` and `Mark()` in `kanban/ui/TimelineBody.tsx:135` draws nothing.
+  `timelineTasks()` (`:53`) already has the steps' dates on `row.steps`, and
+  `timelineScale()` (`:92`) already takes their min and max for the range, so
+  the same fold on one row gives a span from the earliest step date to the
+  latest. It would be a fourth mark kind beside `bar`, `trail` and `milestone`,
+  drawn differently (an outline or hatched fill in `.tlbar`'s colour,
+  `kanban/board.css:810`) so it reads as derived. The file header's rule that
+  the view never invents a date holds as long as the span writes nothing: no
+  `data-tldrag`, no handles, click opens the task as `data-open` does now.
+  Build: Sonnet. Id `timeline-subtask-span`.
+  Files: `kanban/js/18-timeline.js`, `kanban/ui/TimelineBody.tsx`, `kanban/board.css`.
+  Tests: `scripts/test-board.sh test_timeline.mjs`.
+  Open: does the span also show when the task has one date but not the other? Default: only when it has neither, since a single date already draws a diamond or a trail. Should dragging the span set real dates on the task? Default: no, it is read-only.
+
+- **A plan or a finished build only shows once the right sub-task is opened, so
+  the task's own drawer never says an agent has brought something back.** The
+  task drawer's side column is `sideFields`
+  (`kanban/js/19-drawer.js:1506`): project, chats, dependencies, agenda,
+  suggestions, Jira and history, and nothing from the agents. The only agent
+  mark there is the status line `mountRunBlock()` puts at the top of the main
+  column (`kanban/js/28-agent-runs.js:179`). The plan itself is reachable only
+  through Read the plan on the Review the plan sub-task's own panel
+  (`#f-readplan`, `19-drawer.js:1930`, with the `/plans.json` fallback through
+  `planForTask()` at `:1996`), and the work only through the activity feed at the
+  foot of each handover sub-task (`mountSubRun()`, `28-agent-runs.js:248`). A
+  Plans section first in `sideFields`, built from `handoverSteps(t)` and
+  `planRelFor()` (`28-agent-runs.js:65` and `:305`), would list the plan and the
+  build output for the task with a line each saying what came back and when,
+  opening the plan reader or the sub-task it belongs to, and saying "Nothing
+  back yet" on a task handed over with no output, like the other sections'
+  empty states.
+  Build: Sonnet. Id `drawer-plans-section`.
+  Files: `kanban/js/19-drawer.js`, `kanban/js/28-agent-runs.js`, `kanban/board.css`.
+  Tests: `scripts/test-board.sh test_agent_runs.mjs test_subtasks.mjs`.
+  Open: none. Settled 29 Sep 2026: the section shows only on a task with handover sub-tasks, and covers plans and builds both, headed "Plans and work".
+
 - ~~**The Agents tab shows the Plan and Implement agents but none of the
   bucket planners that do the planning, and it still draws the bucket filters,
   which mean nothing there.**~~ **Done, 27 Sep 2026.** A Bucket planners section under the cards, from `/agents-planners.json`, and the bucket strip is hidden on the Agents view only. `renderAgentsView()` (`kanban/js/27-agents.js:100`)
@@ -659,6 +735,92 @@ they settled is written up in the README rather than left here:
   frozen table, so the JavaScript third copy cannot drift either.
 
 ## Big
+
+- **The drawer's Project panel lists a folder's files as plain name-and-size
+  text rows, with no icon, no type and nothing about what a file is for.**
+  `loadProjectFiles()` (`kanban/js/19-drawer.js`, around :2229) paints each
+  entry from `project_entries()` (`kanban/server.py:524`) as a `.projfile`
+  string row of name plus size or child count, under the blurb that
+  `projectAboutHTML()` reads from the folder's `CLAUDE.md`; the header half
+  is `DrawerProjectSection` (`kanban/ui/DrawerProjectSection.tsx`) and the
+  rows are styled at `kanban/board.css:442`. A redesign of the whole panel
+  would give each file a row with an icon by kind (folder, Markdown, HTML,
+  image, PDF, code), its modified date, which `project_entries()` already
+  returns and the row drops, and a first line or title read from the file.
+  That last part is new server work: `project_entries()` stops at `os.stat`
+  today, so reading a heading out of each Markdown or HTML file is a new,
+  bounded read per row. Doing it on the React side means the file list
+  leaves the string drawer first.
+  Build: Opus. After `drawer-header-modal-to-react`. Id `project-panel-redesign`.
+  Files: `kanban/js/19-drawer.js`, `kanban/ui/DrawerProjectSection.tsx`, `kanban/board.css`, `kanban/server.py`, `kanban/test_projects.mjs`.
+  Tests: `scripts/test-board.sh test_projects.mjs test_board.mjs`, `python3 kanban/test_project_folders.py`.
+  Open: what does "more information" cover? Default: kind icon, modified date, and the first heading of a Markdown or HTML file. Where do the icons come from? Default: Tenon's icon set if it has file kinds, otherwise a small inline SVG set in the bundle. Is this a design pass first? Default: yes, a mock of the panel for his OK before any build, since the brief is a redesign.
+
+- **The matrix shows unscored and Backlog tasks as bare dots in two trays under
+  the grid, and nothing on the page can be dragged, so scoring a task means
+  opening it and moving two sliders.** `MatrixBody()`
+  (`kanban/ui/MatrixBody.tsx:114-135`) draws `unplaced` and `held` from
+  `matrixSection()` (`kanban/js/17-matrix.js:228`) as `Dot`s, a click away
+  from the drawer's `f-impact` and `f-effort` sliders
+  (`kanban/js/19-drawer.js:1594`). A bottom drawer of real cards (`TaskCard`,
+  the way the timeline's No date tray draws them) would replace the two trays,
+  and dropping a card on a cell of `.mgrid` would write that cell's impact and
+  effort onto the task and mark it dirty. The matrix has no drag code of its
+  own; the timeline tray's card drag onto the scale (`18-timeline.js`, around
+  `showTlTargetLine()`) is the nearest pattern, and `timeline-drop-tray` would
+  delete it, so read it from git history if that lands first.
+  Build: Opus. Id `matrix-card-drawer`.
+  Files: `kanban/js/17-matrix.js`, `kanban/ui/MatrixBody.tsx`, `kanban/board.css`, `kanban/test_matrix.mjs`.
+  Tests: `scripts/test-board.sh test_matrix.mjs test_board.mjs`.
+  Open: can the dots already on the grid be dragged to another cell too? Default: yes, through the same drop, since it is the same write. Does dropping a Backlog card on a cell also move it out of Backlog? Default: no, it only sets the scores and the card stays in the drawer, since Backlog is kept off the grid on purpose.
+
+- **The app is still called "My To-Do list" and "To-Do Board" everywhere it
+  shows a name, though the product is Bench.** The UX reviews and personas
+  under `AGENTS/ux_agent/clients/tiago/products/bench/` already call it Bench,
+  but the tab title and header read `My To-Do list` (`kanban/index.html:6` and
+  `:48`), the Dock launcher is `To-Do Board.app` (`CFBundleName` and
+  `CFBundleDisplayName` in its `Contents/Info.plist`), `run.command:12` and
+  `CLAUDE.md` name that launcher, `stream.json` names the stream `My to-do
+  list`, and `package.json` is `todo-board-ui`. The visible name is a sitting
+  change; the scope is what needs settling first. The ten `todo-board-*`
+  localStorage keys (`19-drawer.js:2314`, `21-datasets.js:302`,
+  `26-projects.js:40` and the rest) would drop every saved preference if
+  renamed without a read-old-write-new step, and the `to-dos` folder and
+  `tiagopedras/to-dos` repo are wired by path into `~/Code/CLAUDE.md`,
+  `ai_canvas`, `agents-dashboard`, the launchd plists and every skill that
+  names `Code/to-dos/data/`, so moving those is a rename on the scale of the
+  agent-names one struck through below.
+  Build: Opus. Id `rename-to-bench`.
+  Files: `kanban/index.html`, `To-Do Board.app/Contents/Info.plist`, `run.command`, `stream.json`, `package.json`, `CLAUDE.md`, `README.md`, `kanban/js/19-drawer.js`, `kanban/js/21-datasets.js`, `kanban/js/26-projects.js`, `kanban/js/10-reference-sections.js`, `kanban/js/12-reports.js`.
+  Tests: `scripts/test-board.sh --all`.
+  Open: how far does the rename go? Default: visible name only (tab title, header, the `.app` bundle renamed to `Bench.app`, docs that name the launcher), leaving the folder, repo, package name and storage keys as they are.
+
+- **Dependencies between tasks can only be read one card at a time, in the
+  drawer, so there is no page that shows how the work hangs together.** The
+  grammar is already there: `blocked-by:` is parsed in `parseTaskLine()`
+  (`core/todo.js:127`) and written back at `:279`, and `taskDependencies()`
+  (`kanban/js/19-drawer.js:408`) turns it into the drawer's Waiting on and
+  Blocks lists. A dependency map would be a new view in `viewDefs()`
+  (`kanban/js/11-chat-cards.js:426`), dispatched from `renderView()`
+  (`kanban/js/18-timeline.js:845`): a free canvas where tasks are cards placed
+  by hand, `blocked-by:` drawn as links between them, groups drawn as sections
+  that drag and resize, and a side panel that searches the list and adds a task
+  to the canvas or takes it off. The canvas itself does not exist as a package.
+  The closest code is `ai_canvas`'s pan, drag, resize and section handling in
+  `src/renderer/src/App.tsx` and `CanvasSections.tsx`, plus the placement and
+  section-box arithmetic in `PACKAGES/ai_chat_engine/interface/cards.js`;
+  those would be lifted into a new package under `PACKAGES/` and made to draw
+  any card rather than a Claude session. `ai_canvas` is frozen and may not
+  build against current Tenon or the chat engine, so the code is copied out
+  rather than changed there. `PACKAGES/graph-engine` is not a fit: it lays
+  nodes out automatically with ELK and draws them through Cytoscape, with no
+  free placement, groups or HTML cards. Positions and groups are canvas state
+  rather than task data, so they belong in a file of their own beside
+  `todo.md`, not in it.
+  Build: Opus. Id `dependency-map-canvas`.
+  Files: `kanban/js/11-chat-cards.js`, `kanban/js/18-timeline.js`, `kanban/js/19-drawer.js`, `core/todo.js`, `PACKAGES/ai_chat_engine/interface/cards.js`, `/Users/tiagopedras/Code/ai_canvas/src/renderer/src/App.tsx`, `/Users/tiagopedras/Code/ai_canvas/src/renderer/src/CanvasSections.tsx`.
+  Tests: `scripts/test-board.sh test_dependencies.mjs test_board.mjs`.
+  Open: none. Settled 29 Sep 2026: a group is only a box on the canvas, stored with the positions; drawing a link between two cards writes `blocked-by:` through the same path the drawer's Waiting on uses; the canvas file is `data/<dataset>/dependency-map.json`, private like the list.
 
 - ~~**The board edits one task at a time, so moving or deleting ten cards is ten
   trips through the drawer.**~~ **Done, 27 Sep 2026.** Shift-, ⌘- or Ctrl-click selects cards on the Board view, and a bar moves them to a column or bucket or deletes them, as one undo step. Moving to Done does not tick them. Every change goes through the open task:
@@ -1311,7 +1473,7 @@ they settled is written up in the README rather than left here:
   state. The drawer has no `.err` box, and `#drawer`/`#scrim` are a docked
   panel that 31 places query, so Tenon's centred `Modal` does not fit them.
   The project section went on 27 Sep 2026 (`kanban/ui/DrawerProjectSection.tsx`, `renderProjectSection()`). Still strings: the steps, date pickers, dependency picker and sub-task list.
-  Build: Sonnet. Id `drawer-header-modal-to-react`.
+  Build: Sonnet. Id `drawer-header-modal-to-react`. Unblocks `project-panel-redesign`.
   Files: `kanban/js/18-timeline.js`, `kanban/js/07-render-board.js`, `kanban/js/19-drawer.js`, `kanban/js/23-conflict-modal.js`, `kanban/ui/BoardModal.tsx`.
   Tests: `scripts/test-board.sh test_board.mjs`, `node kanban/ui/test_primitives.mjs`.
   Open: none.
