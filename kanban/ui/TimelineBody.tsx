@@ -28,7 +28,7 @@ import { InlineMd } from './InlineMd'
 export type TimelineDragKind = 'move' | 'start' | 'due'
 
 export interface TimelineMark {
-  kind: 'bar' | 'trail' | 'milestone'
+  kind: 'bar' | 'trail' | 'milestone' | 'span'
   left: number
   /** On a milestone, the width of its day column, where its edge handles sit. */
   width?: number
@@ -160,7 +160,7 @@ function Mark({ row, h }: { row: TimelineRow, h: TimelineHandlers | null }) {
     )
   }
   return (
-    <div className={'tlbar' + (m.kind === 'trail' ? ' tltrail' : '') + (m.dueCls ? ' ' + m.dueCls : '')}
+    <div className={'tlbar' + (m.kind === 'trail' ? ' tltrail' : '') + (m.kind === 'span' ? ' tlspan' : '') + (m.dueCls ? ' ' + m.dueCls : '')}
       style={bc(row.color, { left: m.left + 'px', width: m.width + 'px' })}
       data-open={row.id} {...dragAttrs} title={m.title}>
       {m.handles ? (

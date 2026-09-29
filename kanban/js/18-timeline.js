@@ -7,7 +7,11 @@
    dates, not one" in the README) — this view is the first thing to draw both
    of them at once rather than reading one and ignoring the other.
 
-   Nothing here invents a date the file doesn't have. A task with both draws
+   Nothing here invents a date the file doesn't have. (One exception, drawn
+   and not written: a task with neither date but a dated open step draws a
+   span from the earliest to the latest step date, outlined rather than
+   filled. It writes nothing until it is dragged, which gives the task its
+   own start and due.) A task with both draws
    as a bar; a task with only `due:` — most of the list — draws as a diamond
    on that date rather than a bar backed by a start date nobody set; a task
    with only `start:` draws as a bar out to today, since "started, no
@@ -74,7 +78,8 @@ function timelineTasks(){
         .map(s => ({ id: s.stableId || t.id, sub: !!s.stableId, title: s.clean, color: subBarColor(color),
                      start: laterOf(s.start, t.start), due: s.due || t.due }));
       const row = { id: t.id, title: t.title, bucket: b.name, color,
-                    start: t.start, due: t.due, blocked, steps, tlrank: t.tlrank };
+                    start: t.start, due: t.due, blocked, steps, tlrank: t.tlrank,
+                    span: (t.start || t.due) ? null : tlSpanOf(steps) };
       // Whether the task itself carries a date, or a step does — same test as
       // before, just no longer readable off steps.length now that a dateless
       // step is kept too. This is what still decides the tray, not the lane:
@@ -84,6 +89,19 @@ function timelineTasks(){
     }));
   });
   return { dated, undated };
+}
+
+/* The earliest and latest date across a list of steps, folding every start
+   and due (a step with one date gives that one). Null when none has a date.
+   Dates are YYYY-MM-DD, so a plain compare is a chronological one. */
+function tlSpanOf(steps){
+  let lo = null, hi = null;
+  steps.forEach(s => [s.start, s.due].forEach(v => {
+    if (!v) return;
+    if (lo == null || v < lo) lo = v;
+    if (hi == null || v > hi) hi = v;
+  }));
+  return lo == null ? null : { start: lo, due: hi };
 }
 
 /* The day range every lane draws against, padded a few days either side so a
@@ -187,6 +205,10 @@ function timelineRowModel(row, scale, sub){
     const di = dueInfo(row.due);
     mark = { kind: 'milestone', left: d * scale.dayPx, width: scale.dayPx, dueCls: di ? di.cls : undefined,
              title: row.title, drag: drag ? 'due' : null, handles: drag };
+  } else if (row.span && !sub) {
+    const a = tlOffset(scale, row.span.start), z = tlOffset(scale, row.span.due);
+    mark = { kind: 'span', left: a * scale.dayPx, width: Math.max(1, z - a + 1) * scale.dayPx,
+             title: row.title + ' — spans its steps', drag: 'move', handles: true };
   }
   // A step carries no colour of its own (see timelineTasks), and never has.
   return { id: row.id, title: row.title, sub: !!sub, draggable: drag,
@@ -474,10 +496,16 @@ function tlTarget(id){
   const loc = locate(id);
   if (loc) {
     const t = loc.task;
-    return { start: t.start, due: t.due,
+    // A task with neither date drawn as a span starts its drag from the span's
+    // dates; write() below still lands on the task, both dates at once.
+    const span = (t.start || t.due) ? null : tlSpanOf(splitBody(t).steps.filter(s => !s.done));
+    return { start: span ? span.start : t.start, due: span ? span.due : t.due,
              write(start, due){
-               if (start != null) t.start = start;
-               if (due != null) t.due = due;
+               if (span) { t.start = start != null ? start : span.start; t.due = due != null ? due : span.due; }
+               else {
+                 if (start != null) t.start = start;
+                 if (due != null) t.due = due;
+               }
                t.dirty = true;
              } };
   }
