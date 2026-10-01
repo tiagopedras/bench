@@ -29,7 +29,7 @@ When something in a handover cannot be expressed in the conventions, say so rath
 
 A message that ends "(Sent from the to-do board's PA chat…)" came from the board's PA panel. That chat runs in Ask mode and cannot write `todo.md`, and must not try: the board holds the file and autosaves it. Instead, end the reply with the changes as one fenced `pa-changes` block, and the board applies them itself as a single undo step. Write nothing to the file, don't run the checker, and don't tell him to Reload. Every other session keeps editing `todo.md` directly, as the rest of this skill says.
 
-The block is a JSON list. `task` is the task's `id:` (preferred) or its exact title, top-level tasks only. Five kinds:
+The block is a JSON list. `task` is the task's `id:` (preferred) or its exact title. Ten kinds:
 
 | kind | fields |
 | --- | --- |
@@ -38,6 +38,11 @@ The block is a JSON list. `task` is the task's `id:` (preferred) or its exact ti
 | `date` | `task`, `due` and/or `start` as `YYYY-MM-DD`, `""` clears |
 | `add` | `title`, optional `bucket` (default the first), `column` (default `To do`), `impact`, `effort`, `due`, `start`, `to`, `theme`, `urgent`, `week`, and a one-line `note` |
 | `edit` | `task`, `field` (one of `title`, `impact`, `effort`, `due`, `start`, `to`, `theme`, `urgent`, `week`), `value` |
+| `step` | `action` (`tick`, `date`, `add` or `edit`). `tick` and `date` and `edit` name the step with `step` (its `id:` or its text), and `task` too unless `step` is an id. `tick` takes optional `done: false`; `date` takes `due` and/or `start`; `add` and `edit` take `text`, and `add` also takes `task` and optional `due`/`start`. Step text carries no tags or backticks, dates go in their own fields |
+| `note` | `task`, `text` (one line, added after the task's existing notes), optional `replaces` (the exact text of one existing note line, which is swapped for `text`) |
+| `open` | `task` (or a step's `id:`): opens its card on the board |
+| `view` | `view`: the id of a view tab, e.g. `board`, `timeline` |
+| `filter` | `bucket` (a name, or `"all"`), or `buckets` as a list: the bucket tabs |
 
 Values are the ones the file already uses: impact `low|med|high`, effort `S|M|L`, `urgent`/`week` as `true`/`false`, `""` to clear.
 
@@ -51,7 +56,7 @@ Values are the ones the file already uses: impact `low|med|high`, effort `S|M|L`
 ```
 ````
 
-Say the changes in plain words above the block as well; he reads the reply, and the board shows what it applied and refused on the chat's header. Anything these kinds cannot express (sub-tasks, notes on an existing task, agendas, handovers, a restructure) needs a `pa` session away from the board, so say that rather than bending a kind to fit. Only the last `pa-changes` block in a reply is read.
+`open`, `view` and `filter` change what the board shows and nothing in the file, and work even when the board is locked. They run after the edits in the same block. Say the changes in plain words above the block as well; he reads the reply, and the board shows what it applied and refused on the chat's header. Anything these kinds cannot express (removing a step or a task, agendas, handovers, a restructure) needs a `pa` session away from the board, so say that rather than bending a kind to fit. Only the last `pa-changes` block in a reply is read.
 
 ## How to report back
 

@@ -1027,7 +1027,7 @@ async function paAfterReply(inst, sent){
      ```
 
    and the board reads it out of the reply, checks every request against the
-   five kinds below, and applies what passes through its own edit path as one
+   kinds below, and applies what passes through its own edit path as one
    undo step. The block stays in the reply as written, so what was asked for is
    on screen next to what the board says it did. The format is documented for
    the skill in agents/pa_agent/skills/pa/SKILL.md, "From a board chat"; change
@@ -1038,7 +1038,12 @@ async function paAfterReply(inst, sent){
    the time this runs, but the CLI's last write can trail it, so it asks a few
    times, and only takes a turn whose ask is the one just sent. A turn applied
    once is remembered and never applied again. */
-const PA_CHANGE_KINDS = ['move', 'tick', 'date', 'add', 'edit'];
+const PA_CHANGE_KINDS = ['move', 'tick', 'date', 'add', 'edit', 'step', 'note', 'open', 'view', 'filter'];
+/* Requests that change what the board shows and nothing in the file. They run
+   even on a locked tab, and after every edit in the block, so an `open` lands
+   on the card as it now is. */
+const PA_ACTION_KINDS = ['open', 'view', 'filter'];
+const PA_STEP_ACTIONS = ['tick', 'date', 'add', 'edit'];
 const PA_EDIT_FIELDS = ['title', 'impact', 'effort', 'due', 'start', 'to', 'theme', 'urgent', 'week'];
 const PA_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const paApplied = new Set();
@@ -1147,12 +1152,177 @@ function paMoveTo(t, column, bucket){
   return '';
 }
 
+/* A step by its `id:` or its text, under one task. */
+function paFindStep(t, ref){
+  const want = String(ref == null ? '' : ref).replace(/\s+/g, ' ').trim();
+  if (!want) return { error: 'no step named' };
+  const lower = want.toLowerCase();
+  const steps = subSteps(t);
+  const tries = [
+    steps.filter(s => s.stableId && s.stableId === lower),
+    steps.filter(s => s.clean === want),
+    steps.filter(s => s.clean.toLowerCase() === lower),
+  ];
+  for (const hits of tries) {
+    if (hits.length === 1) return { step: hits[0] };
+    if (hits.length > 1) return { error: 'more than one step under "' + t.title + '" is called "' + want + '"' };
+  }
+  return { error: 'no step "' + want + '" under "' + t.title + '"' };
+}
+
+/* Text that goes onto a line the file reads tags and boxes out of. A tag typed
+   into it would be read as one, so dates go in their own fields. */
+function paPlainLine(v, what){
+  if (!paOneLine(v) || !v.trim()) return { error: what + ' must be one non-empty line' };
+  if (/`|\[[A-Za-z-]+::/.test(v)) return { error: what + ' cannot carry tags or backticks' };
+  return { value: v.trim() };
+}
+
+/* One step: tick it, date it, add one under a task, or reword one. The step is
+   named by `step` (its `id:` or its text), and `task` narrows it; a step's
+   `id:` alone is enough. */
+function paApplyStep(req){
+  const action = String(req.action || '');
+  if (!PA_STEP_ACTIONS.includes(action)) return { error: 'step needs an action: ' + PA_STEP_ACTIONS.join(', ') };
+  let t = null, step = null;
+  if (req.task !== undefined && req.task !== '') {
+    const found = paFindTask(req.task);
+    if (found.error) return { error: found.error };
+    t = found.task;
+  }
+  if (action === 'add') {
+    if (!t) return { error: 'adding a step needs the task' };
+    const text = paPlainLine(req.text, 'a step');
+    if (text.error) return { error: text.error };
+    const dates = {};
+    for (const f of ['due', 'start']) {
+      if (req[f] === undefined) continue;
+      const v = paFieldValue(f, req[f]);
+      if (v.error) return { error: v.error };
+      dates[f] = v.value;
+    }
+    const p = bodyParts(t);
+    p.subs.push('  - [ ] ' + text.value + ' `id:' + mintId(idsInDoc(state.doc)) + '`');
+    rebuildBody(t, p.notes, p.subs, p.subsAt);
+    const line = t.body.findIndex(l => l.indexOf(text.value + ' `id:') > -1);
+    if (Object.keys(dates).length) {
+      const f = readSub(t, line);
+      Object.assign(f, dates);
+      writeSub(t, line, f);
+    }
+    t.dirty = true;
+    return { done: 'added a step "' + text.value + '" to "' + t.title + '"' };
+  }
+  if (t) {
+    const f = paFindStep(t, req.step);
+    if (f.error) return { error: f.error };
+    step = f.step;
+  } else {
+    const hit = locateSub(String(req.step == null ? '' : req.step).trim().toLowerCase());
+    if (!hit || !hit.loc) return { error: 'no step with id "' + (req.step || '') + '"; name the task as well' };
+    t = hit.loc.task; step = hit.step;
+  }
+  const label = '"' + step.clean + '" under "' + t.title + '"';
+  if (action === 'tick') {
+    const on = req.done !== false;
+    if (on && !step.done) {
+      const msg = blockedMessage(allItems(), (step.blockedBy || []).concat(t.blockedBy || []));
+      if (msg) return { error: msg };
+    }
+    if (step.done !== on) toggleSub(t, step.line);
+    t.dirty = true;
+    return { done: (on ? 'ticked ' : 'unticked ') + label };
+  }
+  if (action === 'date') {
+    const f = readSub(t, step.line);
+    const said = [];
+    for (const k of ['due', 'start']) {
+      if (req[k] === undefined) continue;
+      const v = paFieldValue(k, req[k]);
+      if (v.error) return { error: v.error };
+      f[k] = v.value;
+      said.push(k + ' ' + (v.value || 'cleared'));
+    }
+    if (!said.length) return { error: 'a step date needs due or start' };
+    writeSub(t, step.line, f);
+    return { done: 're-dated ' + label + ': ' + said.join(', ') };
+  }
+  const text = paPlainLine(req.text, 'a step');
+  if (text.error) return { error: text.error };
+  const f = readSub(t, step.line);
+  f.title = text.value;
+  writeSub(t, step.line, f);
+  return { done: 'reworded ' + label + ' to "' + text.value + '"' };
+}
+
+/* A note on a task: one line added after the ones already there, or, with
+   `replaces` naming an existing note line's text, that line swapped. */
+function paApplyNote(req, t){
+  const text = paOneLine(req.text) && req.text.trim() ? req.text.trim() : '';
+  if (!text) return { error: 'a note must be one non-empty line' };
+  if (/^\[[ xX]\]/.test(text)) return { error: 'a note cannot start with a tick box' };
+  const p = bodyParts(t);
+  if (req.replaces !== undefined) {
+    const want = String(req.replaces).replace(/^\s*-\s*/, '').trim();
+    const hits = [];
+    p.notes.forEach((l, i) => { if (l.replace(/^\s*-\s*/, '').trim() === want && /^\s{0,2}-\s/.test(l)) hits.push(i); });
+    if (hits.length !== 1) return { error: hits.length ? 'more than one note reads "' + want + '"' : 'no note reads "' + want + '"' };
+    p.notes[hits[0]] = p.notes[hits[0]].replace(/^(\s*-\s*).*$/, '$1' + text);
+    rebuildBody(t, p.notes, p.subs, p.subsAt);
+    t.dirty = true;
+    return { done: 'reworded a note on "' + t.title + '"' };
+  }
+  p.notes.splice(p.subsAt, 0, '  - ' + text);
+  rebuildBody(t, p.notes, p.subs, p.subsAt + 1);
+  t.dirty = true;
+  return { done: 'added a note to "' + t.title + '"' };
+}
+
+/* The three requests that only change what the board shows. Each returns the
+   line to report and a `later` to run once the edits are drawn. */
+function paApplyAction(req){
+  const kind = String(req.kind || '');
+  if (!state.doc) return { error: 'no list is open' };
+  if (kind === 'open') {
+    const ref = req.task !== undefined ? req.task : req.step;
+    const key = String(ref == null ? '' : ref).trim();
+    const sub = key && locateSub(key.toLowerCase());
+    const found = sub ? { task: sub.loc.task } : paFindTask(key);
+    if (found.error) return { error: found.error };
+    const open = sub ? sub.step.stableId : (found.task.stableId || found.task.title);
+    return { done: 'opened "' + (sub ? sub.step.clean : found.task.title) + '"', later: () => openTaskByKey(open) };
+  }
+  if (kind === 'view') {
+    const want = String(req.view || '').trim().toLowerCase();
+    const def = viewDefs().find(d => d.id === want);
+    if (!def) return { error: 'no view "' + (req.view || '') + '"; the views are ' + viewDefs().map(d => d.id).join(', ') };
+    return { done: 'switched to the ' + def.id + ' view', later: () => { state.view = def.id; syncHash(true); renderView(); } };
+  }
+  const raw = req.buckets !== undefined ? req.buckets : req.bucket;
+  const names = (Array.isArray(raw) ? raw : [raw]).map(n => String(n == null ? '' : n).trim()).filter(Boolean);
+  if (!names.length) return { error: 'filter needs a bucket, a list of buckets, or "all"' };
+  const picked = [];
+  if (!(names.length === 1 && names[0].toLowerCase() === 'all')) {
+    for (const n of names) {
+      const b = paBucket(n);
+      if (!b) return { error: 'no bucket "' + n + '"' };
+      picked.push(b.name);
+    }
+  }
+  return {
+    done: picked.length ? 'filtered to ' + picked.join(', ') : 'showing every bucket',
+    later: () => { state.bucketFilter = new Set(picked); renderTabs(); refreshView(); },
+  };
+}
+
 /* One request, applied, or refused with a reason. Returns { done } or
    { error }, where done is a short line saying what happened. */
 function paApplyOne(req){
   if (!req || typeof req !== 'object' || Array.isArray(req)) return { error: 'a request must be an object' };
   const kind = String(req.kind || '');
   if (!PA_CHANGE_KINDS.includes(kind)) return { error: 'unknown kind "' + kind + '"' };
+  if (PA_ACTION_KINDS.includes(kind)) return paApplyAction(req);
+  if (kind === 'step') return paApplyStep(req);
 
   if (kind === 'add') {
     if (!paOneLine(req.title) || !req.title.trim()) return { error: 'add needs a one-line title' };
@@ -1181,6 +1351,7 @@ function paApplyOne(req){
   if (found.error) return { error: found.error };
   const t = found.task;
 
+  if (kind === 'note') return paApplyNote(req, t);
   if (kind === 'move') {
     const column = paColumn(req.column);
     if (!column) return { error: 'no column "' + (req.column || '') + '"' };
@@ -1230,20 +1401,28 @@ function applyPaChanges(reply){
   const out = { found: parsed.found, applied: [], refused: [] };
   if (!parsed.found) return out;
   if (parsed.error) { out.refused.push(parsed.error); return out; }
-  if (state.locked || !state.doc) { out.refused.push('the board is locked'); return out; }
+  if (!state.doc) { out.refused.push('no list is open'); return out; }
 
-  if (undoTimer !== null) { clearTimeout(undoTimer); undoTimer = null; undoBaseline = serializeDoc(state.doc); }
+  const later = [];
+  let edited = false;
+  const edits = parsed.items.filter(r => !(r && PA_ACTION_KINDS.includes(String(r.kind || ''))));
+  if (edits.length && !state.locked && undoTimer !== null) { clearTimeout(undoTimer); undoTimer = null; undoBaseline = serializeDoc(state.doc); }
   for (const req of parsed.items) {
+    const isAction = req && PA_ACTION_KINDS.includes(String(req.kind || ''));
+    if (!isAction && state.locked) { if (!out.refused.includes('the board is locked')) out.refused.push('the board is locked'); continue; }
     const r = paApplyOne(req);
-    if (r.error) out.refused.push(r.error);
-    else out.applied.push(r.done);
+    if (r.error) { out.refused.push(r.error); continue; }
+    out.applied.push(r.done);
+    if (r.later) later.push(r.later);
+    else edited = true;
   }
-  if (out.applied.length) {
+  if (edited) {
     markDirty();
     clearTimeout(undoTimer); undoTimer = null; undoBaseline = serializeDoc(state.doc);
     refreshView();
     if (state.openTask && locate(state.openTask)) openDrawer(state.openTask);
   }
+  later.forEach(fn => fn());
   return out;
 }
 

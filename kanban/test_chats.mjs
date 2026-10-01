@@ -551,6 +551,56 @@ check('  so is a bad value on a known kind', paApply.out.refused.some(r => /impa
 check('the whole block is one undo step', paApply.stepsAdded === 1 && paApply.dirty, `${paApply.stepsAdded} steps`)
 check('  and one undo takes all of it back', paApply.undone)
 
+// ---- pa-changes: steps, notes and board actions ----
+const paReach = await evalJS(`(() => {
+  state.locked = false;
+  const before = serializeDoc(state.doc);
+  const steps = undoStack.length;
+  const fence = String.fromCharCode(96).repeat(3);
+  let host = null;
+  for (const b of state.doc.buckets) for (const ti of b.tiers) for (const t of ti.tasks) if (!host && subSteps(t).length) host = t;
+  const first = subSteps(host)[0];
+  const reply = fence + 'pa-changes\\n' + JSON.stringify([
+    { kind: 'step', task: host.title, step: first.clean, action: 'date', due: '2026-10-09' },
+    { kind: 'step', task: host.title, action: 'add', text: 'Send the recap', due: '2026-10-12' },
+    { kind: 'step', task: host.title, step: 'Send the recap', action: 'edit', text: 'Send the recap to the team' },
+    { kind: 'step', task: host.title, step: 'Send the recap to the team', action: 'tick' },
+    { kind: 'note', task: host.title, text: 'Raised from the PA panel.' },
+    { kind: 'note', task: host.title, text: 'Raised from the board.', replaces: 'Raised from the PA panel.' },
+    { kind: 'step', task: host.title, action: 'add', text: 'has a [due:: 2026-01-01] tag' },
+    { kind: 'step', task: host.title, step: 'no such step', action: 'tick' },
+    { kind: 'note', task: host.title, text: '[ ] looks like a step' },
+    { kind: 'filter', bucket: state.doc.buckets[0].name },
+    { kind: 'view', view: 'timeline' },
+    { kind: 'view', view: 'nonsense' },
+    { kind: 'open', task: host.title }
+  ]) + '\\n' + fence;
+  const out = applyPaChanges(reply);
+  const now = subSteps(host);
+  const added = now.find(s => s.clean === 'Send the recap to the team');
+  const res = {
+    out, stepsAdded: undoStack.length - steps,
+    firstDue: now.find(s => s.line === first.line || s.clean === first.clean).due,
+    addedDue: added && added.due, addedDone: added && added.done, addedId: added && !!added.stableId,
+    notes: host.body.filter(l => /Raised from/.test(l)),
+    notesBeforeSteps: host.body.findIndex(l => /Raised from/.test(l)) < host.body.findIndex(l => /Send the recap/.test(l)),
+    filter: [...state.bucketFilter], view: state.view, open: state.openTask === host.id,
+    taggedStep: subSteps(host).some(s => /2026-01-01/.test(s.text)),
+  };
+  undo();
+  res.undone = serializeDoc(state.doc) === before;
+  state.bucketFilter = new Set(); state.view = 'board'; renderView();
+  if (state.openTask) closeDrawer && closeDrawer();
+  return res;
+})()`)
+check('step requests date, add, reword and tick a step', paReach.firstDue === '2026-10-09' && paReach.addedDue === '2026-10-12' && paReach.addedDone === true && paReach.addedId, JSON.stringify(paReach))
+check('  a note is added after the existing notes and before the steps', paReach.notes.length === 1 && /Raised from the board/.test(paReach.notes[0]) && paReach.notesBeforeSteps, JSON.stringify(paReach.notes))
+check('  tags in step text, an unknown step and a tick-box note are refused',
+  paReach.out.refused.some(r => /cannot carry tags/.test(r)) && paReach.out.refused.some(r => /no step "no such step"/.test(r)) && paReach.out.refused.some(r => /tick box/.test(r)) && !paReach.taggedStep, JSON.stringify(paReach.out.refused))
+check('board actions filter the view, switch it and open the card', JSON.stringify(paReach.filter).length > 2 && paReach.view === 'timeline' && paReach.open, JSON.stringify([paReach.filter, paReach.view, paReach.open]))
+check('  an unknown view is refused with the list of views', paReach.out.refused.some(r => /no view "nonsense"/.test(r)))
+check('the edits are still one undo step, and one undo takes them back', paReach.stepsAdded === 1 && paReach.undone, `${paReach.stepsAdded} steps`)
+
 const paFlow = await evalJS(`(async () => {
   const real = { diskVersion, fetch: window.fetch };
   diskVersion = async () => ({ stamp: '', hash: '' });   // todo.md did not move on disk
