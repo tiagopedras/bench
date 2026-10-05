@@ -1,11 +1,11 @@
 ---
 name: pa-board
-description: Read one column of one of the owner's boards, at Code/to-dos/data/<board>/todo.md, as a numbered list of task names, optionally narrowed to one bucket, and then show the full properties of any task he picks by number. Asks which board, which column and whether to show one bucket, as multiple choice. Use whenever he asks to see, read, list or show a board or a column, "what's in Doing", "show me the Backlog on personal", "what's in To do for DS", "list my pet-projects Reviewing", "read me a column", or picks a number from that list and asks for the detail of the task. Reads only. Do not use it for the daily check-in, which is pa-checkin, for walking Doing and Reviewing to decide what moves, which is pa-checkout, or for any change to a task, which is pa.
+description: Read one column of one of the owner's boards, at Code/bench/data/<board>/todo.md, as a numbered list of task names, optionally narrowed to one bucket, and then show the full properties of any task he picks by number. Asks which board, which column and whether to show one bucket, as multiple choice. Use whenever he asks to see, read, list or show a board or a column, "what's in Doing", "show me the Backlog on personal", "what's in To do for DS", "list my pet-projects Reviewing", "read me a column", or picks a number from that list and asks for the detail of the task. Reads only. Do not use it for the daily check-in, which is pa-checkin, for walking Doing and Reviewing to decide what moves, which is pa-checkout, or for any change to a task, which is pa.
 ---
 
 # Reading a board, one column at a time
 
-**Read `~/Code/to-dos/agents/pa_agent/PA.md` first.** It holds the tone and the
+**Read `~/Code/bench/agents/pa_agent/PA.md` first.** It holds the tone and the
 standing rules, which are not repeated here.
 
 This skill reads and never writes. Everything goes through one script, which
@@ -13,7 +13,7 @@ uses the shared parser in `core/todo.py`, so it reads the file the way the board
 does:
 
 ```
-S=~/Code/to-dos/agents/pa_agent/skills/pa-board/scripts/board.py
+S=~/Code/bench/agents/pa_agent/skills/pa-board/scripts/board.py
 python3 $S boards
 python3 $S buckets --board <board> --column <column>
 python3 $S list    --board <board> --column <column> [--bucket <bucket>]

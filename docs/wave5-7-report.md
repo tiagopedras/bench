@@ -4,7 +4,7 @@ Waves 5 and 6 landed on main: 11 backlog entries done and one moved forward. Wav
 
 ## Do these first
 
-1. **Restart the board server.** `lsof -ti tcp:8765 | xargs kill`, then open To-Do Board.app. Two changes need it: chat write mode, and the brief template the agent setup reads.
+1. **Restart the board server.** `lsof -ti tcp:8765 | xargs kill`, then open Bench.app. Two changes need it: chat write mode, and the brief template the agent setup reads.
 2. **After the restart, open your own lists.** Delegate to should still offer the agents, and Overview should still have its Delegate to Claude column. All three of your lists pass the new "is an agent set up" test, so nothing should hide.
 
 ## Questions for you

@@ -193,7 +193,7 @@ two ends.
   as the hook for surfacing a window-reached-the-archive-point warning somewhere
   smaller.
 - Both fold under `ov:Tasks finished`/`ov:Written reports` in
-  `todo-board-overview-closed`.
+  `bench-overview-closed`.
 - `/reports.json` is read once per arrival at Overview, not once per render:
   `renderView()` compares against `lastRenderedView` and calls
   `forgetWrittenReports()`; `renderSections()` calls `ensureWrittenReports()`

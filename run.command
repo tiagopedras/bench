@@ -9,7 +9,7 @@ cd "$(dirname "$0")" || exit 1
 # an edit to a .tsx is live the next time the board is opened with nothing to
 # remember. It costs a couple of seconds each morning.
 #
-# To-Do Board.app execs this file, so the Dock launcher gets the build too and
+# Bench.app execs this file, so the Dock launcher gets the build too and
 # there is only one place that knows about it.
 if [ ! -d node_modules ]; then
   echo "The board needs its dependencies before it can build:"

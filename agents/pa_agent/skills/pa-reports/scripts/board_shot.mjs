@@ -32,7 +32,7 @@ const PORT = 9480 + Math.floor(Math.random() * 15)
 if (!from || !out) { console.error('need --from and --out'); process.exit(2) }
 
 try { await fetch(`http://127.0.0.1:${BOARD}/kanban/index.html`) } catch {
-  console.error(`The board server is not running on port ${BOARD}. Open To-Do Board.app first.`)
+  console.error(`The board server is not running on port ${BOARD}. Open Bench.app first.`)
   process.exit(3)
 }
 

@@ -1,13 +1,13 @@
 ---
 name: pa
-description: The PA. Every change to the owner's master to-do list at Code/to-dos/data/<dataset>/todo.md (<dataset> named by data/.current, currently "twinkl") goes through this skill, and nothing else writes that file. Use it whenever he adds a task, ticks one off, moves a date, changes a state or a bucket, re-scores something, sets or clears the headline, asks for the message, email, Slack note or Claude prompt that goes with a task, wants an agenda written for one of his standing meetings, or asks to tidy up, optimise, streamline, cut down or automate his workload. Phrasings include "add this to my list", "I finished X", "move that to Friday", "put that in Backlog", "write me the message for that", "write the agenda for my 1:1", "what should I be working on", "re-prioritise these", "can any of this be handed to Claude", and "tidy this up". Also use it whenever another pa-* skill has finished its conversation and hands over what he agreed to: pa-checkin, pa-retrieve-tasks, pa-checkout, pa-focus, pa-review-plans and pa-mobile all end that way. Do not use it to run the daily check-in, which is pa-checkin, or to work through IMPROVEMENTS.md, which is a different file with its own skills.
+description: The PA. Every change to the owner's master to-do list at Code/bench/data/<dataset>/todo.md (<dataset> named by data/.current, currently "twinkl") goes through this skill, and nothing else writes that file. Use it whenever he adds a task, ticks one off, moves a date, changes a state or a bucket, re-scores something, sets or clears the headline, asks for the message, email, Slack note or Claude prompt that goes with a task, wants an agenda written for one of his standing meetings, or asks to tidy up, optimise, streamline, cut down or automate his workload. Phrasings include "add this to my list", "I finished X", "move that to Friday", "put that in Backlog", "write me the message for that", "write the agenda for my 1:1", "what should I be working on", "re-prioritise these", "can any of this be handed to Claude", and "tidy this up". Also use it whenever another pa-* skill has finished its conversation and hands over what he agreed to: pa-checkin, pa-retrieve-tasks, pa-checkout, pa-focus, pa-review-plans and pa-mobile all end that way. Do not use it to run the daily check-in, which is pa-checkin, or to work through IMPROVEMENTS.md, which is a different file with its own skills.
 ---
 
 # The PA
 
 This skill owns the to-do list. Everything that changes the file happens here, whether he asked for it directly or another `pa-*` skill asked on his behalf.
 
-**Read `~/Code/to-dos/agents/pa_agent/PA.md` first, every session, then `~/Code/to-dos/CONVENTIONS.md`.** The first holds who he is, where the list lives, how he prioritises, the standing rules and the tone. The second holds the file format. Everything below assumes both have been read, and does not repeat them.
+**Read `~/Code/bench/agents/pa_agent/PA.md` first, every session, then `~/Code/bench/CONVENTIONS.md`.** The first holds who he is, where the list lives, how he prioritises, the standing rules and the tone. The second holds the file format. Everything below assumes both have been read, and does not repeat them.
 
 ## The one writer
 
@@ -90,7 +90,7 @@ print(render.render('agents/pa_agent/skills/pa/templates/change-report.md', ctx)
 "
 ```
 
-run from `~/Code/to-dos`, with `ctx` built from what you actually decided.
+run from `~/Code/bench`, with `ctx` built from what you actually decided.
 What comes back is the reply, verbatim — send it as it stands.
 
 Nothing else reaches him. No preamble, no restating what he just told you, no
@@ -287,7 +287,7 @@ Only ever propose one. Offering three candidates hands the decision back to him,
 Run the checker before delivering, every time there was a write:
 
 ```bash
-python3 ~/Code/to-dos/agents/pa_agent/skills/pa/scripts/check_todo.py ~/Code/to-dos/data/<dataset>/todo.md
+python3 ~/Code/bench/agents/pa_agent/skills/pa/scripts/check_todo.py ~/Code/bench/data/<dataset>/todo.md
 ```
 
 Fix anything it flags, since handing over a file with a Saturday deadline in it wastes his time and undermines the point of the list. Do not report a flag that was already there when you arrived unless he asked; flags matter when your own edit caused one.
@@ -352,8 +352,8 @@ template that tried to would be a second copy of them.
 - `data/<dataset>/todo.md` — the list. `data/` holds every dataset and everything derived from each, and is the whole of what git ignores. The four buckets, and the `## Context` section holding standing facts about people and dates. The only source of truth for both.
 - `kanban/index.html` plus `kanban/server.py`, launched by `board.command` at the root — the board. It reads and writes the current dataset's todo.md, and works out This week, Quick wins, Big rocks, Dependency chain and Delegate to Claude from the tags. Those five exist nowhere else.
 - `data/<dataset>/projects/<name>/` — one folder per project, holding the background in a `CLAUDE.md` and the source documents beside it, for work carrying more context than a task line can hold. Private like everything else in `data/`. The tasks stay in todo.md and point at the folder; the folder never holds a task list.
-- `~/Code/to-dos/agents/pa_agent/PA.md` — standing behaviour: who he is, where the list lives, the two tiers of prioritisation, the standing rules and the tone. Read every session, before the conventions.
-- `~/Code/to-dos/CONVENTIONS.md` — the file format: buckets, states, tags, date rules, suggested messages, meeting agendas, capacity ceiling. Read this every session.
+- `~/Code/bench/agents/pa_agent/PA.md` — standing behaviour: who he is, where the list lives, the two tiers of prioritisation, the standing rules and the tone. Read every session, before the conventions.
+- `~/Code/bench/CONVENTIONS.md` — the file format: buckets, states, tags, date rules, suggested messages, meeting agendas, capacity ceiling. Read this every session.
 - `references/audit-checklist.md` — what to check by hand that the script cannot, mostly dependency and state logic.
 - `references/templates.md` — the report template syntax and every field available, shared by every skill that renders one.
 - `scripts/check_todo.py` — the mechanical checker. Run it before delivering.

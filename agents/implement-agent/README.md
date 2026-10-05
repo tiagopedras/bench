@@ -76,6 +76,34 @@ One writer is the only rule the board's autosave survives, and the implementing 
 is the wrong one to be it because it is the one running unattended stretches. Its
 runner asks for its tick through `core/tick_queue.py` like every other agent.
 
+## The rules under every plan type
+
+Each type in `core/plan_types.py` has its own guard rails, but they all come
+from the same eight rules. A new type should follow them without needing any
+new ones.
+
+1. **The bigger the consequence, the more of him it needs.** Work that only adds
+   files runs without him. Work that touches existing things waits for his
+   review. Work that needs live conditions or judgement waits until he is in
+   the session.
+2. **It adds and never overwrites.** It writes new files or saves a new version
+   beside the old one, and code goes on a new branch. Whatever was there before
+   can always be got back.
+3. **It stays inside one boundary.** That is one project folder or one branch in
+   one repo. Its tool list grants nothing outside that.
+4. **It proposes, and he commits.** It never merges, pushes, sends or raises
+   anything, so nothing reaches another person without passing through him.
+5. **Every file has one writer.** It never writes `todo.md`. It asks `pa` for
+   changes and queues its ticks for the board to apply.
+6. **It checks afterwards instead of trusting its own permissions.** `guard.py`
+   puts back anything it was not allowed to change, the same way the Plan agent
+   checks `todo.md` is unchanged after every task in a run.
+7. **When it is unsure, it stops rather than guesses.** An unknown type counts as
+   `other`, and a condition it cannot check means it refuses. A failed run
+   leaves a reason in the log and ticks nothing.
+8. **It starts clean or not at all.** A repo with uncommitted changes means no
+   run.
+
 ## How work reaches it
 
 Through the card. Handing a task to an agent lays sub-tasks out on it (Plan, Review the

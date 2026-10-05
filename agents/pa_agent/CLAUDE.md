@@ -81,7 +81,7 @@ second copy that goes stale the moment the folder is edited, and every one of
 them had. Add a skill by linking it:
 
 ```sh
-ln -s ~/Code/to-dos/agents/pa_agent/skills/<name> ~/.claude/skills/<name>
+ln -s ~/Code/bench/agents/pa_agent/skills/<name> ~/.claude/skills/<name>
 ```
 
 The folder is the source, so an edit takes effect the next time the skill fires.

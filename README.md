@@ -1,4 +1,4 @@
-# to-dos
+# Bench
 
 A personal task system made of two halves: a Kanban board that reads and writes a
 single markdown file, and a skill that runs a review session over that same file.
@@ -181,7 +181,7 @@ translated on the way in to the current data set's own file.
 
 Start it by double-clicking `run.command`.
 
-There is also a Dock launcher, **To-Do Board.app**, which does nothing but hand
+There is also a Dock launcher, **Bench.app**, which does nothing but hand
 off to `run.command` — the board still opens in a Terminal window, because that
 window is where Ctrl-C lives. The bundle itself is gitignored: it is three small
 files and an icon rebuilt from `kanban/icon.svg`, so keeping the recipe is worth
@@ -1455,7 +1455,7 @@ script cannot.
 Symlink, and nothing else:
 
 ```sh
-ln -s ~/Code/to-dos/agents/pa_agent/skills/<name> ~/.claude/skills/<name>
+ln -s ~/Code/bench/agents/pa_agent/skills/<name> ~/.claude/skills/<name>
 ```
 
 The folder is the installed skill, so an edit takes effect the next time it

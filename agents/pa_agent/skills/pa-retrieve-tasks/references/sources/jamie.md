@@ -17,7 +17,7 @@ ToolSearch("select:mcp__jamie__list_meetings,mcp__jamie__list_tasks,mcp__jamie__
 If that returns nothing, the tools are not published to the session and no amount
 of retrying will change it. MCP servers are enumerated when a session starts, so a
 server added mid-session never appears in it. Check `claude mcp list` and start a
-fresh session in `~/Code/to-dos`, since the server is registered at local scope and
+fresh session in `~/Code/bench`, since the server is registered at local scope and
 does not exist in other directories.
 
 **`claude mcp list` saying "Connected" is not proof the tools are usable.** It went

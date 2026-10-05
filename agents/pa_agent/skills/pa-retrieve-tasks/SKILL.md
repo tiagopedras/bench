@@ -1,11 +1,11 @@
 ---
 name: pa-retrieve-tasks
-description: Pull the action items captured from the owner's meetings by whatever recorder was in the room, review them with him one by one, and add the ones he keeps to his master to-do list at Code/to-dos/data/todo.md. Jamie is the source configured today. Use whenever he asks what came out of his calls, what he was actioned with, what the recorder picked up, or asks to check today's, yesterday's or this week's meetings for tasks. Phrasings include "check my Jamie calls", "any tasks from today's meetings", "what did I get actioned with", "pull my action items", "what came out of that working group", "did I pick anything up in that call", and "add my meeting tasks to my list". Also use when he names one meeting and wants its actions. Do not use it to summarise a meeting he just wants to read, to create new action items in the recorder, or to review the to-do list itself, which is pa-checkin. pa-checkin no longer calls it by default (since 22 Sep 2026); it runs only when he asks.
+description: Pull the action items captured from the owner's meetings by whatever recorder was in the room, review them with him one by one, and add the ones he keeps to his master to-do list at Code/bench/data/todo.md. Jamie is the source configured today. Use whenever he asks what came out of his calls, what he was actioned with, what the recorder picked up, or asks to check today's, yesterday's or this week's meetings for tasks. Phrasings include "check my Jamie calls", "any tasks from today's meetings", "what did I get actioned with", "pull my action items", "what came out of that working group", "did I pick anything up in that call", and "add my meeting tasks to my list". Also use when he names one meeting and wants its actions. Do not use it to summarise a meeting he just wants to read, to create new action items in the recorder, or to review the to-do list itself, which is pa-checkin. pa-checkin no longer calls it by default (since 22 Sep 2026); it runs only when he asks.
 ---
 
 # Meeting actions into the to-do list
 
-**Read `~/Code/to-dos/agents/pa_agent/PA.md` first, then `~/Code/to-dos/CONVENTIONS.md`.** The first holds who he is, where the list lives, how he prioritises, the standing rules and the tone. The second holds the file format. Neither is repeated below.
+**Read `~/Code/bench/agents/pa_agent/PA.md` first, then `~/Code/bench/CONVENTIONS.md`.** The first holds who he is, where the list lives, how he prioritises, the standing rules and the tone. The second holds the file format. Neither is repeated below.
 
 Something sits in his meetings and writes down who agreed to do what. This skill
 moves the ones that are his onto the list and closes them where they came from, so
@@ -103,7 +103,7 @@ and the same holds for the Tuesday after a bank holiday Monday.
 Business day here means what it means everywhere else in this system: weekends
 are out and UK bank holidays are out, since the team is UK-based. The England and
 Wales dates for 2026 and 2027 are in
-`~/Code/to-dos/agents/pa_agent/skills/pa/scripts/check_todo.py`, which is the
+`~/Code/bench/agents/pa_agent/skills/pa/scripts/check_todo.py`, which is the
 authority when a date is borderline.
 
 **When he names a window, his wins.** "This week" means Monday to today. "Go back
@@ -289,6 +289,6 @@ in front of him twice with different wording.
 
 ## Tone
 
-See `~/Code/to-dos/agents/pa_agent/PA.md`.
+See `~/Code/bench/agents/pa_agent/PA.md`.
 
 The review message is the one place a numbered list is right, since he is answering it with numbers.

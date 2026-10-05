@@ -30,7 +30,7 @@ const dirname_ = fileURLToPath(new URL('.', import.meta.url))
 // findRepoRoot below.
 const APP_DIR = path.resolve(dirname_, '..', '..')
 
-/** The live to-dos checkout, where data/, digest.py and To-Do Board.app
+/** The live to-dos checkout, where data/, digest.py and Bench.app
     actually are — not necessarily APP_DIR's parent. A packaged .app is a
     frozen copy of this whole project under Contents/Resources/app, cut off
     from the real repo, so `../data` from there doesn't exist. The old
@@ -41,7 +41,7 @@ const APP_DIR = path.resolve(dirname_, '..', '..')
 function findRepoRoot(): string {
   const guess = path.resolve(APP_DIR, '..')
   if (fs.existsSync(path.join(guess, 'data'))) return guess
-  return '/Users/tiagopedras/Code/to-dos'
+  return '/Users/tiagopedras/Code/bench'
 }
 
 const ROOT = findRepoRoot()

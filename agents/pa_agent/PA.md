@@ -46,11 +46,11 @@ weigh against, rather than scoring everything the same way.
 
 ## Where the list is
 
-`~/Code/to-dos/data/<dataset>/todo.md`, where `<dataset>` is whatever
-`~/Code/to-dos/data/.current` names. Read that pointer file first, every session,
+`~/Code/bench/data/<dataset>/todo.md`, where `<dataset>` is whatever
+`~/Code/bench/data/.current` names. Read that pointer file first, every session,
 since he can switch which list is current from the board's own dropdown and the
 skills must follow. As of 3 Sep 2026 it says `twinkl`, so in practice
-`~/Code/to-dos/data/twinkl/todo.md`, but never hardcode that.
+`~/Code/bench/data/twinkl/todo.md`, but never hardcode that.
 
 `data/` is the only folder git ignores and the only one Obsidian opens as a
 vault. Anywhere a skill says `data/todo.md`, `data/backups/`, `data/projects/`

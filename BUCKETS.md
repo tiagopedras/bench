@@ -84,7 +84,7 @@ still the source and Claude still reads through the link. Moving one means
 repointing its link:
 
 ```bash
-ln -sfn ~/Code/to-dos/data/<dataset>/buckets/<stream>/skills/<name> ~/.claude/skills/<name>
+ln -sfn ~/Code/bench/data/<dataset>/buckets/<stream>/skills/<name> ~/.claude/skills/<name>
 ```
 
 One thing that does not follow the dataset: `~/.claude/skills/` is flat and

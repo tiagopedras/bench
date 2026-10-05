@@ -1,4 +1,4 @@
-# to-dos
+# Bench
 
 Read [README.md](README.md) first. Everything in `data/` is private and
 gitignored.
@@ -157,10 +157,10 @@ what a card shows in `cardModel()` (`09-columns.js`), and how it's drawn in both
 The board's own "the board helper needs restarting" error is the symptom.
 
 ```
-lsof -ti tcp:8765 | xargs kill      # then open To-Do Board.app
+lsof -ti tcp:8765 | xargs kill      # then open Bench.app
 ```
 
-`run.command`/`To-Do Board.app` rebuild `kanban/ui/` via `npm run build` before
+`run.command`/`Bench.app` rebuild `kanban/ui/` via `npm run build` before
 starting the server, so opening the board normally is never stale. Editing a
 `.tsx` against a server already running needs a manual build:
 

@@ -214,7 +214,7 @@ sub-step has no state of its own" rule. All three go in `PA.md`.
 
 ## What this costs, honestly
 
-The four skills live in `~/Code/to-dos/agents/pa_agent/` today and are symlinked into
+The four skills live in `~/Code/bench/agents/pa_agent/` today and are symlinked into
 `~/.claude/skills/`. Moving them to `~/Code/agents/pa/` means the symlinks change,
 the `.skill` archives in `to-dos/agents/pa_agent/dist/` move or go, and three files that name
 the checker's path have to be updated: `to-dos/CLAUDE.md`, `Code/CLAUDE.md` and the

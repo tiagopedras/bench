@@ -134,7 +134,7 @@ def main():
         except OSError:
             running = ""
         if running:
-            sys.exit("\nREFUSED: the board helper is running. Quit To-Do Board.app and kill it first.\n")
+            sys.exit("\nREFUSED: the board helper is running. Quit Bench.app and kill it first.\n")
 
     bdir = os.path.join(os.path.dirname(target), "backups")
     os.makedirs(bdir, exist_ok=True)

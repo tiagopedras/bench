@@ -18,6 +18,58 @@ needs a decision, a new tag, or a new piece of the board before it can be built.
 
 ## Small
 
+- **A task ticked into Done stays the one thing.** `setDone()` in
+  `kanban/js/04-tier-two-the-one-thing.js:627` is the single way a tick changes,
+  and it dates the tick, moves the card and ticks the sub-steps, but never
+  touches `t.headline`. So the headline bar keeps pointing at finished work
+  until it is cleared by hand. Clearing `t.headline` inside `setDone()` when
+  `on` is true covers every path to Done at once: a drop on the column, the
+  drawer's Column field and the fourteen other callers. Unticking leaves it
+  cleared, since it can be set again from the drawer's headline button
+  (`19-drawer.js:1322`).
+  Build: Sonnet. Id `done-clears-one-thing`.
+  Files: `kanban/js/04-tier-two-the-one-thing.js`.
+  Tests: `scripts/test-board.sh test_board.mjs test_recurring_roll.mjs`.
+  Open: should a recurring task that `rollRecurring()` (`:172`) ticks and rolls on keep the headline? Default: yes, skip the clear when the task has `repeat` set. Should the `pa` skill clear it too when it ticks one off in `todo.md`? Default: no, board only.
+
+- **The PA bar in the bottom right is titled "New chat", asks "Ask Claude…",
+  sets its title in a different font from the other modals and the sidebar, and
+  keeps its minimise button left of expand.** `ensurePaBar()` in
+  `kanban/js/10-reference-sections.js:979` calls `inst.openNew(PA_KEY, PA_KEY, '')`
+  with an empty title, so the engine falls back to `'New chat'`
+  (`PACKAGES/ai_chat_engine/src/controller.ts:671`), and `makeChatWin()` (`:814`)
+  passes no `placeholder`, so it gets the engine's `'Ask Claude…'` (`:703`). Both
+  are one-line fixes in the board: pass `'PA Agent'` as the title and
+  `placeholder: 'Ask PA…'` only when `o.pinned` is set, so task chats keep theirs.
+  The title is Tenon's Window head, which uses the heading-5 style, a serif in the
+  1984 theme, where the sidebar and drawer read as sans. A `.aic-pinned` rule in
+  `kanban/board.css` setting the title to the body family fixes it without
+  touching Tenon. The buttons come from `dockEnd` in
+  `PACKAGES/ai_chat_engine/src/ChatWindow.tsx:184`, drawn as minimise then expand,
+  and the pinned bar has no close button, so a CSS `order` on `.aic-pinned
+  .aic-minimise` puts minimise at the far right from the board as well.
+  Build: Sonnet. Id `pa-bar-labels-font`.
+  Files: `kanban/js/10-reference-sections.js`, `kanban/board.css`.
+  Tests: `scripts/test-board.sh test_chats.mjs test_board.mjs`.
+  Open: move minimise in the engine so every docked chat gets it? Default: no, board only via `order`, since only the PA bar asked for it. Should task chats also take the sans title? Default: yes, the rule targets `.aic-docked` rather than `.aic-pinned` if the builder finds task chats show the same serif.
+
+- **A task card with a bucket colour draws a grey left border and the coloured
+  stripe side by side.** `.tenon-card` in `kanban/board.css:2184` gives every
+  card `border-left:4px solid var(--bc,var(--tenon-stroke-default))`, but
+  `TaskCard` (`kanban/ui/TaskCard.tsx:134`) passes its colour as Tenon's
+  `accent` prop and never sets `--bc`, so the border falls back to the line
+  grey. Tenon then paints its own stripe as `.tenon-card--accent::before`
+  (`PACKAGES/tenon/src/components/Card/Card.css:45`) inside that border,
+  leaving a 4px grey band beside the coloured one. The 1984 theme's lighter
+  `stroke.default` in Tenon v0.12.0 makes the grey band easier to see. The fix
+  is a `.tenon-card--accent` rule in `board.css` that drops the left border to
+  1px, or to none, with the padding adjusted so the text keeps its 12px from
+  the stripe. Cards without a colour keep the grey border as they are.
+  Build: Sonnet. Id `card-double-left-border`.
+  Files: `kanban/board.css`.
+  Tests: `scripts/test-board.sh test_board.mjs`, then `node kanban/ui/test_primitives.mjs`.
+  Open: fix it in Tenon's `Card.css` so every consumer gets it? Default: no, board only, since the 4px border is the board's own rule.
+
 - **The timeline folds one bucket lane and one task's sub-tasks at a time, so
   getting a compact view of the whole plan takes a click per row.** Each lane
   is a `<details>` (`Lane()` in `kanban/ui/TimelineBody.tsx:243`) whose open
@@ -736,6 +788,126 @@ they settled is written up in the README rather than left here:
 
 ## Big
 
+- **The PA never says which open tasks run on a process a bucket agent already
+  knows, so help that exists goes unoffered until he thinks to ask.** Each
+  bucket brief (`data/<dataset>/buckets/<stream>/<stream>.md`, found by
+  `brief_path()` in `agents/plan-agent/plan.py:182`) lists the processes he
+  runs in that bucket and which skill already does each one, and the six
+  per-bucket planners and `implement-agent` read it. `pa-checkin`
+  (`agents/pa_agent/skills/pa-checkin/SKILL.md`) never opens it, so its brief
+  and its question stay about dates and state. The change is a match step
+  between the brief and the day's open tasks: for each task in Doing and To do,
+  read its bucket's brief, and where the task reads as one of the listed
+  processes, name the process, the planner or skill that already covers it, and
+  offer to hand it over or run it in the session. It belongs in `core/aggregate.py`
+  as a field the morning brief can render, with `pa-checkin` asking one question
+  about the matches rather than listing them all, and any hand-over still going
+  through `pa` and the board's Delegate to. Matching on prose is a judgement, so
+  a wrong match has to cost him one line to dismiss.
+  Build: Opus. Id `pa-process-match`.
+  Files: `agents/pa_agent/skills/pa-checkin/SKILL.md`, `core/aggregate.py`, `agents/plan-agent/plan.py`.
+  Tests: `python3 core/test_todo.py`, `python3 agents/plan-agent/test_planning_agent.py`.
+  Open: match on every open task or only Doing and To do? Default: Doing and To do, since Backlog help is not wanted yet.
+  Open: does a match run every morning or only when asked? Default: only in `pa-checkin`, capped at three offers, so the brief stays short.
+
+- **The drawer's Dependencies section lists the same task once per link, so a
+  task that blocks two sub-steps shows as two cards and nothing draws which
+  way the dependency runs.** `taskDependencies()`
+  (`kanban/js/19-drawer.js:408`) builds one group for the task and one per
+  sub-step that has a link, and `depGroupHTML()` (`:458`) paints each group as
+  its own Waiting on and Blocks columns of `depLink()` cards (`:432`), so any
+  task linked to more than one line of this card is drawn again in every group
+  that names it. The redraw is one small diagram per drawer: each task or
+  sub-step involved drawn once as a `chaincard`, the card's own task and
+  sub-steps in the middle, what they wait on to the left and what they block
+  to the right, and one arrow per `blocked-by:` link, so a card with three
+  links gets three arrows rather than three copies. That means collecting the
+  groups into one set of cards and one set of edges before drawing, then
+  drawing the arrows in an SVG laid over the cards, measured after layout and
+  redrawn when the drawer resizes. Add and × per link have to survive it,
+  since `bindDependencySection()` (`:608`) reads their `data-dep-*`
+  attributes, and people notes from `waitingNotes()` stay as dashed cards
+  with an arrow in. Only direct links are drawn, capped at a few cards a side,
+  with a link to the rest on the dependency map (`dependency-map-canvas`) once
+  that exists. Done tasks are hidden by default behind a show/hide switch in
+  the section. The current Add button per column and × per card are not kept
+  as they are: the redraw needs a cleaner way to add and remove a link.
+  Build: Opus. Id `drawer-dependency-arrows`.
+  Files: `kanban/js/19-drawer.js`, `kanban/board.css`.
+  Tests: `scripts/test-board.sh test_dependencies.mjs test_board.mjs`.
+  Open: how are links added and removed? Default: one Add in the section header that opens the existing picker with a Waiting on / Blocks choice, and remove from a small menu on each linked card. How many cards a side before the cap? Default: four, then "+n more" linking to the map, or to the Matrix chain view until the map exists.
+
+- **Every chat on the board is plain Claude hung off a task, so there is no
+  one place to start a conversation with a particular agent, the PA, Plan,
+  Implement or a bucket planner, and see every conversation already open with
+  each.** The chat engine starts every run the same way: `engine.py`
+  (`PACKAGES/ai_chat_engine/engine.py:492`) builds `claude -p` with a model,
+  a resume and a permission mode, and never `--agent`, so the six bucket
+  planners in `agents/plan-agent/<dataset>-<stream>-agent.md` can only be
+  reached from a terminal. Sessions are filed by owner key (`record()`,
+  `engine.py:109`), which the board sets to a task id or `board-pa`
+  (`PA_KEY`, `kanban/js/10-reference-sections.js:957`). A Slack-like page would
+  be a new view in `viewDefs()` (`kanban/js/11-chat-cards.js:426`) beside
+  Agents: a left rail with one row per agent, read from `AGENT_CARDS`
+  (`kanban/js/02-state.js:369`) plus the bucket planners, each opening its
+  list of past chats and a composer, all drawn with the engine's existing
+  window and transcript. It needs an agent-per-owner key (something like
+  `agent:<id>`) and the engine passing `--agent <id>` when a run starts under
+  one, which is the second-repo part.
+  Build: Opus. Id `agent-chats-page`. With `chat-task-mentions`.
+  Files: `../PACKAGES/ai_chat_engine/engine.py`, `kanban/js/11-chat-cards.js`, `kanban/js/10-reference-sections.js`, `kanban/js/02-state.js`, `kanban/js/18-timeline.js`.
+  Tests: `npm test` in `PACKAGES/ai_chat_engine`, then `scripts/test-board.sh test_chats.mjs test_agents.mjs`.
+  Open: can a bucket planner chat write anything? Default: read-only, like every chat until the write switch is on. Do chats already hung off tasks show on this page too? Default: yes, grouped under the agent they ran as, plain Claude as its own row. Its own tab or a panel inside Agents? Default: its own tab, Chats.
+
+- **A chat can only point at a task by pasting its link, so there is no way to
+  type `@` and pick a card, and a task added to a chat shows nowhere in it.**
+  The composer is a plain `Textarea` in `ChatWindow.tsx`
+  (`PACKAGES/ai_chat_engine/src/ChatWindow.tsx:86`) whose `onKeyDown` knows
+  only Enter, and `controller.send()` takes the draft as flat text. Building it
+  means three pieces. In the engine, a picker that opens on `@` over the
+  composer and filters a list the host hands in, a new option beside
+  `ownerLabel` in `src/types.ts:140` (something like `mentions(query)`
+  returning id and title), and a chip row under the user's message reading
+  "<task> added to context", drawn in `Transcript.tsx`. On the board,
+  `makeChatWin()` (`kanban/js/10-reference-sections.js:814`) supplies that
+  list from `state.doc`: every task on the current list, all buckets, Done
+  included, matched on its text. The reference works like an attachment. The
+  window shows only a small tag, and the agent gets the whole card (notes,
+  sub-tasks, dates, links) sent with the message, plus the `#!task=<id>` link
+  that opens the card. The second route is a button on the drawer, beside
+  Delegate to (`kanban/js/19-drawer.js:1413`), that always opens a new chat
+  with that task already attached, for the case where the chat is the
+  handover. The engine half needs `npm run build` there, and `ai_canvas`
+  gets the picker for free with nothing to offer until it passes a list.
+  Build: Opus. Id `chat-task-mentions`. With `agent-chats-page`.
+  Files: `../PACKAGES/ai_chat_engine/src/ChatWindow.tsx`, `../PACKAGES/ai_chat_engine/src/Transcript.tsx`, `../PACKAGES/ai_chat_engine/src/controller.ts`, `../PACKAGES/ai_chat_engine/src/types.ts`, `kanban/js/10-reference-sections.js`, `kanban/js/19-drawer.js`.
+  Tests: `npm test` in `PACKAGES/ai_chat_engine`, then `scripts/test-board.sh test_chats.mjs test_board.mjs`.
+  Open: which agent is the chat from the drawer button for? Default: the ordinary board chat, the same one `+ New chat` opens.
+
+- **When `pa` changes the list, the board redraws every card in its final
+  place at once, so nothing shows which cards `pa` touched or where they went.**
+  `watchTick()` (`kanban/js/24-autosave-watching.js:56`) notices the file moved,
+  calls `load()` (`kanban/js/20-loading-saving.js:7`) to rebuild the whole
+  board, and says only "reloaded — the file changed on disk (n tasks)". The
+  per-task detail already exists: `describeChanges()`
+  (`kanban/js/22-telling-him-what-changed.js:50`) returns each task as added,
+  moved, ticked or edited, with its old and new column. The move half is a
+  sitting change on top of that: record each card's position before `load()`,
+  then play the difference afterwards (a FLIP animation, each moved card
+  sliding from its old spot to its new one), and give edited or added cards a
+  brief glow. The glow while `pa` is still working is the part that needs a
+  new piece: the board only sees the file after `pa` has written it, so
+  something has to say "`pa` is working on these tasks" beforehand, most
+  likely a small file `pa` writes before its edit and clears after, which
+  `watchTick()` would read alongside `diskVersion()`. `pa-panel-chat` would
+  give the board that signal for free when `pa` runs from the board's own
+  panel, but not when it runs from a terminal session. Both need a
+  reduced-motion fallback, like the ones already in `kanban/board.css`.
+  Build: Opus. Id `pa-change-animation`.
+  Files: `kanban/js/24-autosave-watching.js`, `kanban/js/20-loading-saving.js`, `kanban/js/22-telling-him-what-changed.js`, `kanban/board.css`.
+  Tests: `scripts/test-board.sh test_board.mjs test_save_guard.mjs`.
+  Open: how does the board know `pa` is mid-change? Default: a `pa-working.json` beside `todo.md` listing the task titles, written by the `pa` skill before its edit and deleted after. Should the glow also cover the Plan and Implement agents' queued ticks? Default: no, `pa` only.
+
 - **The drawer's Project panel lists a folder's files as plain name-and-size
   text rows, with no icon, no type and nothing about what a file is for.**
   `loadProjectFiles()` (`kanban/js/19-drawer.js`, around :2229) paints each
@@ -774,8 +946,8 @@ they settled is written up in the README rather than left here:
   Tests: `scripts/test-board.sh test_matrix.mjs test_board.mjs`.
   Open: can the dots already on the grid be dragged to another cell too? Default: yes, through the same drop, since it is the same write. Does dropping a Backlog card on a cell also move it out of Backlog? Default: no, it only sets the scores and the card stays in the drawer, since Backlog is kept off the grid on purpose.
 
-- **The app is still called "My To-Do list" and "To-Do Board" everywhere it
-  shows a name, though the product is Bench.** The UX reviews and personas
+- ~~**The app is still called "My To-Do list" and "To-Do Board" everywhere it
+  shows a name, though the product is Bench.**~~ **Done, 1 Oct 2026.** The folder is `~/Code/bench` and the repo `tiagopedras/bench` (GitHub redirects the old name), the launcher is `Bench.app`, the ten `todo-board-*` localStorage keys became `bench-*` with a copy-across on first load (`migrateStorageKeys()` in `02-state.js`, old keys left in place), `stream.json` and `package.json` say Bench. The IndexedDB name `todo-board-folder` was left alone. The UX reviews and personas
   under `AGENTS/ux_agent/clients/tiago/products/bench/` already call it Bench,
   but the tab title and header read `My To-Do list` (`kanban/index.html:6` and
   `:48`), the Dock launcher is `To-Do Board.app` (`CFBundleName` and
@@ -788,7 +960,7 @@ they settled is written up in the README rather than left here:
   renamed without a read-old-write-new step, and the `to-dos` folder and
   `tiagopedras/to-dos` repo are wired by path into `~/Code/CLAUDE.md`,
   `ai_canvas`, `agents-dashboard`, the launchd plists and every skill that
-  names `Code/to-dos/data/`, so moving those is a rename on the scale of the
+  names `Code/bench/data/`, so moving those is a rename on the scale of the
   agent-names one struck through below.
   Build: Opus. Id `rename-to-bench`.
   Files: `kanban/index.html`, `To-Do Board.app/Contents/Info.plist`, `run.command`, `stream.json`, `package.json`, `CLAUDE.md`, `README.md`, `kanban/js/19-drawer.js`, `kanban/js/21-datasets.js`, `kanban/js/26-projects.js`, `kanban/js/10-reference-sections.js`, `kanban/js/12-reports.js`.
@@ -1457,6 +1629,32 @@ they settled is written up in the README rather than left here:
   `renderFilterBar()` is those tabs plus the score chip, an on/off toggle, so it
   stays too, as does the Reports window picker on `.tabs.small`. Moving those
   needs a multi-select toggle group in Tenon first.
+
+  The header bars went to React on 1 Oct 2026 (`kanban/ui/HeaderBars.tsx`): the
+  headline, the bucket and theme tabs, the two filter chips and the phone's
+  column strip. The orchestration stays in `renderHeadline()`, `renderTabs()`,
+  `renderThemeTabs()`, `renderFilterChips()` and `renderColTabs()`, which pass
+  props and take callbacks. The headline's tags are Tenon's `Tag` and its
+  Remove is Tenon's `Button`. Tenon v0.13.0 added `ToggleGroup` (several on at
+  once, with a dot and a count) and `ToggleChip` (one on/off filter), and the
+  bucket tabs, theme tabs and the two chips are those. The column strip is still
+  the board's own `.coltab`. `test_header_bars.mjs` covers all five.
+
+  The drawer started on 1 Oct 2026. Tenon v0.14.1 added `StepSlider` and
+  `TagChip`, and the panel's Impact, Effort, Column and sub-task State sliders
+  and its Tags section are those, mounted into hosts the string leaves behind
+  (`kanban/ui/DrawerFields.tsx`, `stepSliderHTML()` and `wireTagChips()` in
+  `19-drawer.js`). `test_drawer_fields.mjs` covers them. What is left in the
+  drawer is everything else, below. The date pickers and the Delegate to and
+  Assigned to dropdowns followed the same day, on Tenon v0.15.0's `Calendar`,
+  `DateButton` and `Dropdown`. The Column and State sliders now slide too:
+  a pick rebuilds the panel, so the next build starts the handle where it was
+  (`STEP_FROM` in `19-drawer.js`). The Bucket menu and the Theme select are
+  `Dropdown` as well (`PickField`, `PICK_SPECS` in `19-drawer.js`), the Theme
+  one over a hidden select like Delegate to. The sub-task list is `SubRows`
+  (Tenon's `useReorder` and `DragHandle`, `mountSubRows()` in `19-drawer.js`),
+  including typing a run of new steps. Still strings: the chats and suggestion
+  lists, and the `openDrawer()` shell itself.
 
   What remains is the drawer, as a job of its own, because `openDrawer()` is
   reached from every view. After

@@ -46,7 +46,7 @@ __pycache__/
 *.py[cod]
 
 # Dock launcher, rebuilt from kanban/icon.svg rather than committed.
-To-Do Board.app/
+Bench.app/
 
 # The companion's bundle — a symlink since 10 Sep 2026, not a directory, so no
 # trailing slash: `companion/package.command` points it at whatever it just

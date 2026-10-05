@@ -69,14 +69,14 @@ function followBoard(task?: string | null, view?: string | null): void {
 
 /** Open the board, starting the server first if nothing is listening — same
     contract as app.py's open_board(). `root` is the to-dos repo root, where
-    "To-Do Board.app" lives. */
+    "Bench.app" lives. */
 export function openBoard(root: string, task?: string | null, view?: string | null): void {
   void boardUp().then((up) => {
     if (up) {
       open(boardUrl(task, view))
       return
     }
-    open(path.join(root, 'To-Do Board.app'))
+    open(path.join(root, 'Bench.app'))
     if (task || view) followBoard(task, view)
   })
 }

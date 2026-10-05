@@ -46,7 +46,7 @@ const ok = m => console.log(`  ok   ${m}`)
 console.log(`\n${dry ? 'DRY RUN' : 'MIGRATING'} ${target}\n`)
 if (!dry) {
   const running = cmd => { try { return execSync(cmd, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() } catch { return '' } }
-  if (running('pgrep -f "kanban/server.py"')) die('the board helper is running. Quit To-Do Board.app and kill it first.')
+  if (running('pgrep -f "kanban/server.py"')) die('the board helper is running. Quit Bench.app and kill it first.')
   if (running('pgrep -f "To-Do Companion"')) die('the companion is running. Quit it first.')
   // One planning lock per list since 19 Sep 2026, so the name is matched rather
   // than spelled out — a lock held for any list is a run that may be writing.

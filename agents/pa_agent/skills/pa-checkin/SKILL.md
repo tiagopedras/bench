@@ -1,13 +1,13 @@
 ---
 name: pa-checkin
-description: Run the daily check-in over the owner's master to-do list, at Code/to-dos/data/<dataset>/todo.md (<dataset> named by data/.current, currently "twinkl"). It reads the list, gives him the brief for the day and the week rendered from a template he edits, asks what has moved, and hands the writing to the pa skill. Use it whenever he asks for a check-in or a status read on the list, including phrasings like "let's do a check-in", "morning check-in", "let's do a todo meeting", "brief me", "what's on my plate", "what's due this week", "what am I doing today", "where am I", "what did I miss", or "let's go through my buckets". Do not use it for a change he has already decided on, which is the pa skill on its own, for the backlog sweeps, which are pa-checkout and pa-focus, or from a phone, which is pa-mobile.
+description: Run the daily check-in over the owner's master to-do list, at Code/bench/data/<dataset>/todo.md (<dataset> named by data/.current, currently "twinkl"). It reads the list, gives him the brief for the day and the week rendered from a template he edits, asks what has moved, and hands the writing to the pa skill. Use it whenever he asks for a check-in or a status read on the list, including phrasings like "let's do a check-in", "morning check-in", "let's do a todo meeting", "brief me", "what's on my plate", "what's due this week", "what am I doing today", "where am I", "what did I miss", or "let's go through my buckets". Do not use it for a change he has already decided on, which is the pa skill on its own, for the backlog sweeps, which are pa-checkout and pa-focus, or from a phone, which is pa-mobile.
 ---
 
 # The daily check-in
 
 The morning session over the list: what came in overnight, what today and this week look like, what has moved, and whether the one thing still holds.
 
-**Read `~/Code/to-dos/agents/pa_agent/PA.md` first, every session, then `~/Code/to-dos/CONVENTIONS.md`.** The first holds who he is, where the list lives, how he prioritises, the standing rules and the tone. The second holds the file format. Everything below assumes both have been read, and does not repeat them.
+**Read `~/Code/bench/agents/pa_agent/PA.md` first, every session, then `~/Code/bench/CONVENTIONS.md`.** The first holds who he is, where the list lives, how he prioritises, the standing rules and the tone. The second holds the file format. Everything below assumes both have been read, and does not repeat them.
 
 **This skill does not write `todo.md`.** It reads, it reports, it asks, and it hands what he agreed to `pa`. That skill owns the tag syntax, the scores, the agendas, the checker and the Reload line, in one copy, so there is one place a convention can be wrong. Invoke it with the Skill tool at the end of the session and let it finish before you close.
 
@@ -28,7 +28,7 @@ Read `data/.current`, then that dataset's `todo.md`, including the `## Context` 
 Then run the checker:
 
 ```bash
-python3 ~/Code/to-dos/agents/pa_agent/skills/pa/scripts/check_todo.py ~/Code/to-dos/data/<dataset>/todo.md
+python3 ~/Code/bench/agents/pa_agent/skills/pa/scripts/check_todo.py ~/Code/bench/data/<dataset>/todo.md
 ```
 
 **Do not ask whether the board is open.** Start straight away. The risk that question is aimed at is closed off by the Reload line `pa` gives him at the end.
@@ -52,11 +52,11 @@ print(render.render('agents/pa_agent/skills/pa-checkin/templates/<name>.md', ctx
 "
 ```
 
-run from `~/Code/to-dos`, with `<dataset>` and `<name>` filled in. What comes back is the brief, verbatim — send it as it stands rather than editing it, the same way `pa`'s own writing rules never apply to something rendered.
+run from `~/Code/bench`, with `<dataset>` and `<name>` filled in. What comes back is the brief, verbatim — send it as it stands rather than editing it, the same way `pa`'s own writing rules never apply to something rendered.
 
 Three fields still come back empty on every template — `checker_flags`, `slipped` and `context_dates` — because nothing computes them yet. Treat that the way a template treats any other empty field: the line or section drops, and nothing here should try to fill the gap by re-reading the file for them. What the checker flagged and what has slipped since `Last updated` are still worth knowing, so read them yourself from the checker's own output above and from Context's dates, and say them separately if they matter — just not as though the template rendered them.
 
-The syntax and every field available are in `~/Code/to-dos/agents/pa_agent/skills/pa/references/templates.md`, worth reading before the first render of a session if it has been a while.
+The syntax and every field available are in `~/Code/bench/agents/pa_agent/skills/pa/references/templates.md`, worth reading before the first render of a session if it has been a while.
 
 Send the brief on its own. No preamble in front of it and no summary after it, since the brief already is the summary.
 
@@ -103,4 +103,4 @@ Do not write anything yourself first, including `Last updated` and the watermark
 
 ## Tone
 
-See `~/Code/to-dos/agents/pa_agent/PA.md`. The brief is rendered rather than written, so the tone that matters here is everything around it: the question in move 4, the headline line in move 5. Keep both to one line each.
+See `~/Code/bench/agents/pa_agent/PA.md`. The brief is rendered rather than written, so the tone that matters here is everything around it: the question in move 4, the headline line in move 5. Keep both to one line each.
