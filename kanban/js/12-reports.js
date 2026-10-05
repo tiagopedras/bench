@@ -48,7 +48,7 @@ const REPORT_WINDOWS = [
      different question and a slower one — it always reads the archive. */
   { id:'all',  label:'All',          short:'All' }
 ];
-const REPORT_WINDOW_KEY = 'todo-board-report-window';
+const REPORT_WINDOW_KEY = 'bench-report-window';
 function readReportWindow(){
   try {
     const saved = localStorage.getItem(REPORT_WINDOW_KEY);

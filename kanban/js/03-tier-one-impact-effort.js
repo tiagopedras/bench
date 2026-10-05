@@ -18,7 +18,7 @@ const IMPACT_EMOJI = { high:'🔥', med:'🌤️', low:'🍃' };
 /* Sorting is a way of looking at a column, not a change to the file. His own
    order is the file order and it means something, so priority sort never
    rewrites it — which is also why hand-reordering is off while it is on. */
-const SORT_KEY = 'todo-board-sort';
+const SORT_KEY = 'bench-sort';
 function sortMode(col){ return state.sort[col] === 'priority' ? 'priority' : 'manual'; }
 function setSortMode(col, mode){
   if (mode === 'priority') state.sort[col] = 'priority'; else delete state.sort[col];

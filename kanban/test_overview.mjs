@@ -222,7 +222,7 @@ await evalJS(`(() => {
 })()`)
 await new Promise(r => setTimeout(r, 150))
 check('shutting one writes it to the same key Overview has always used', await evalJS(`
-  JSON.parse(localStorage.getItem('todo-board-overview-closed') || '{}')['ov:Big rocks'] === true
+  JSON.parse(localStorage.getItem('bench-overview-closed') || '{}')['ov:Big rocks'] === true
 `))
 
 await evalJS(`state.view = 'board'; renderView(); state.view = 'overview'; renderView()`)
@@ -232,7 +232,7 @@ check('and it stays shut across a re-render', await evalJS(`(() => {
 })()`))
 
 // Cleaned up so this suite leaves no mark on a machine it runs on twice.
-await evalJS(`localStorage.removeItem('todo-board-overview-closed')`)
+await evalJS(`localStorage.removeItem('bench-overview-closed')`)
 
 /* ---- Quick wins' own sort control, and Delegate to Claude's ranked rows ---- */
 

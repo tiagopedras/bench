@@ -37,7 +37,7 @@ const PROJECT_SORTS = [
   { id:'name-desc', label:'Name (Z–A)',    cmp:(a, b) => b.name.localeCompare(a.name) },
   { id:'edited',    label:'Last edited',   cmp:(a, b) => (b.modified || '').localeCompare(a.modified || '') },
 ];
-const PROJECT_SORT_KEY = 'todo-board-project-sort';
+const PROJECT_SORT_KEY = 'bench-project-sort';
 function readProjectSort(){
   try {
     const saved = localStorage.getItem(PROJECT_SORT_KEY);

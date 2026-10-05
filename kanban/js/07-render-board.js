@@ -127,28 +127,26 @@ function renderTabs(){
   const wrap = $('#bucketFilters');
   const openIn = b => b.tiers.reduce((m, t) => m + t.tasks.filter(x => !x.done && matches(x, t.name)).length, 0);
   const total = state.doc.buckets.reduce((m, b) => m + openIn(b), 0);
-  const all = '<button class="tab taball' + (allMode() ? ' on' : '') + '" data-bucket="' + ALL_BUCKETS + '"' +
-    ' title="every bucket at once" aria-pressed="' + allMode() + '">All' +
-    '<span class="n">' + total + '</span></button>';
-  wrap.innerHTML = all + state.doc.buckets.map((b, i) => {
-    const on = state.bucketFilter.has(b.name);
-    return '<button class="tab' + (on ? ' on' : '') + '" data-bucket="' + esc(b.name) + '"' +
-      ' title="open tasks — click to toggle, several can be on at once" aria-pressed="' + on + '"' +
-      ' style="--bc:' + bucketColor(b.name, i) + '">' +
-      '<i class="dot"></i>' + esc(b.name) + '<span class="n">' + openIn(b) + '</span></button>';
-  }).join('');
   // Toggled independently, same as the Status pills: All clears the set,
   // anything else adds or removes just itself rather than replacing the
   // whole value the way a single-select tab strip would.
-  wrap.querySelectorAll('.tab').forEach(el => {
-    el.onclick = () => {
-      const name = el.dataset.bucket;
+  const tabs = [{
+    key: ALL_BUCKETS, label: 'All', on: allMode(), count: total, className: 'taball',
+    title: 'every bucket at once'
+  }].concat(state.doc.buckets.map((b, i) => ({
+    key: b.name, label: b.name, on: state.bucketFilter.has(b.name), count: openIn(b),
+    color: bucketColor(b.name, i),
+    title: 'open tasks — click to toggle, several can be on at once'
+  })));
+  BoardUI.mountFlushed(wrap, BoardUI.h(BoardUI.FilterTabs, {
+    tabs, label: 'Buckets',
+    onToggle: name => {
       if (name === ALL_BUCKETS) state.bucketFilter.clear();
       else if (state.bucketFilter.has(name)) state.bucketFilter.delete(name);
       else state.bucketFilter.add(name);
       renderTabs(); refreshView();
-    };
-  });
+    }
+  }));
   $('#editBuckets').onclick = openBucketEditor;
   $('#editTiers').onclick = openTierEditor;
   renderThemeTabs();
@@ -176,24 +174,25 @@ function renderThemeTabs(){
   [...state.themeFilter].forEach(name => { if (!themes.includes(name)) state.themeFilter.delete(name); });
   if (!themes.length) {
     bar.classList.add('hidden');
+    BoardUI.unmount(wrap);
     wrap.innerHTML = '';
     return;
   }
   bar.classList.remove('hidden');
-  wrap.innerHTML = themes.map((name, i) => {
-    const on = state.themeFilter.has(name);
-    return '<button class="tab' + (on ? ' on' : '') + '" data-theme="' + esc(name) + '"' +
-      ' title="tasks under this theme — click to toggle, several can be on at once" aria-pressed="' + on + '"' +
-      ' style="--bc:' + BUCKET_COLOR[i % BUCKET_COLOR.length] + '">' +
-      '<i class="dot"></i>' + esc(name) + '</button>';
-  }).join('');
-  wrap.querySelectorAll('.tab').forEach(el => {
-    el.onclick = () => {
-      const name = el.dataset.theme;
+  BoardUI.mountFlushed(wrap, BoardUI.h(BoardUI.FilterTabs, {
+    tabs: themes.map((name, i) => ({
+      key: name, label: name, on: state.themeFilter.has(name),
+      color: BUCKET_COLOR[i % BUCKET_COLOR.length],
+      title: 'tasks under this theme — click to toggle, several can be on at once'
+    })),
+    label: 'Themes',
+    onToggle: name => {
       if (state.themeFilter.has(name)) state.themeFilter.delete(name);
       else state.themeFilter.add(name);
       renderThemeTabs(); refreshView();
-    };
-  });
+    }
+  }));
 }
+
+
 

@@ -357,7 +357,7 @@ async function fetchList(method){
   }
 }
 
-const crashKey = () => 'todo-board-crash:' + (listFolder ? listFolder.name : '');
+const crashKey = () => 'bench-crash:' + (listFolder ? listFolder.name : '');
 function keepCrashCopy(text){ try { localStorage.setItem(crashKey(), text); } catch (err) {} }
 function dropCrashCopy(){ try { localStorage.removeItem(crashKey()); } catch (err) {} }
 
@@ -598,7 +598,7 @@ async function saveFile(auto, forceBackup){
       $('#status').textContent = 'not saved — the board helper has stopped';
       alert('Nothing was saved, because the board helper is not running.\n\n' +
             'Your changes are still here in this tab, so do not close it.\n\n' +
-            'Open To-Do Board.app again, or double-click run.command in the to-dos folder. It saves on ' +
+            'Open Bench.app again, or double-click run.command in the bench folder. It saves on ' +
             'its own every few seconds once it can reach the file again.\n\n' +
             'If you cannot restart it, use “Download copy” to get the changes out.');
     } else {

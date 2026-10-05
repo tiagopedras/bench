@@ -397,7 +397,7 @@ function weekSection(items){
    already gives the board's own columns — needing a key of its own since
    "Quick wins" is not a board column name, the same reason PROJECT_SORT_KEY
    exists rather than sharing state.sort. Grouped/priority is the default. */
-const QUICK_SORT_KEY = 'todo-board-quickwins-sort';
+const QUICK_SORT_KEY = 'bench-quickwins-sort';
 function readQuickSortMode(){
   try { return localStorage.getItem(QUICK_SORT_KEY) === 'due' ? 'due' : 'priority'; }
   catch (e) { return 'priority'; }
@@ -768,12 +768,12 @@ function onChatStatusChanged(cfg){
    once should not repeat itself. Every chat opens at the last rect saved. */
 function loadChatRect(){
   try {
-    const raw = localStorage.getItem('todo-board-chat-rect');
+    const raw = localStorage.getItem('bench-chat-rect');
     return raw ? JSON.parse(raw) : null;
   } catch (e) { return null; }
 }
 function saveChatRect(rect){
-  try { localStorage.setItem('todo-board-chat-rect', JSON.stringify(rect)); } catch (e) {}
+  try { localStorage.setItem('bench-chat-rect', JSON.stringify(rect)); } catch (e) {}
 }
 
 /* One AIChat instance per open chat, the way ai_canvas keeps one per card, so

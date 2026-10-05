@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="1984">
+<html lang="en"><!-- data-theme="1984">-->
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>My To-Do list</title>
+<title>Bench</title>
 <link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48dGV4dCB5PSIuOWVtIiBmb250LXNpemU9IjkwIj7inIU8L3RleHQ+PC9zdmc+">
 <!-- Tenon, the design system. Copied out of the installed package into
      kanban/dist/ by the vite build, beside board-ui.js, so the one path works
@@ -45,30 +45,35 @@
 </div>
 
 <header id="hdr" class="hidden">
-  <h1>My To-Do list</h1>
+  <h1>Bench</h1>
   <span id="viewToggle"></span>
   <span class="spacer"></span>
   <span class="status" id="status">read only</span>
   <button class="btn hidden" id="archiveBtn"></button>
   <span class="menugroup dropdown" id="dataMenu">
     <button class="btn" id="dataMenuBtn" aria-haspopup="true" aria-expanded="false">Data ▾</button>
+
     <div class="dropdown-panel alignright hidden" id="dataMenuPanel" role="menu" aria-label="Data actions">
-      <button class="dropdown-item" id="undo" disabled role="menuitem" title="Undo the last change (⌘Z)">Undo</button>
-      <button class="dropdown-item" id="download" role="menuitem">Download copy</button>
-      <button class="dropdown-item" id="backupsBtn" role="menuitem">Backups</button>
-      <button class="dropdown-item hidden" id="closeFolder" role="menuitem">Close this folder</button>
-      <!-- The Plan agent: what it has cost and what runs on a clock, and a button to
-           start it now. They were reached from the Plans view until it went. -->
-      <button class="dropdown-item" id="refCardsBtn" role="menuitem">Spend and schedules</button>
-      <button class="dropdown-item" id="runAgentBtn" role="menuitem">Run the Plan agent now</button>
-      <!-- Which private folder under data/ the board is pointed at. Hidden
-           until loadDatasets() hears back from /datasets.json — an older
-           server with no such route leaves the board exactly as it was
-           before this existed. -->
+
       <div class="dropdown-divider hidden" id="datasetMenu">
         <span class="dropdown-label">Lists</span>
         <div id="datasetList"></div>
       </div>
+
+      <div class="dropdown-divider" id="datasetMenu">
+        <span class="dropdown-label">Options</span>
+        <button class="dropdown-item" id="undo" disabled role="menuitem" title="Undo the last change (⌘Z)">Undo</button>
+        <button class="dropdown-item" id="download" role="menuitem">Download copy</button>
+        <button class="dropdown-item" id="backupsBtn" role="menuitem">Backups</button>
+        <!-- The Plan agent: what it has cost and what runs on a clock, and a button to
+             start it now. They were reached from the Plans view until it went. -->
+        <button class="dropdown-item" id="refCardsBtn" role="menuitem">Spend and schedules</button>
+        <!-- Which private folder under data/ the board is pointed at. Hidden
+             until loadDatasets() hears back from /datasets.json — an older
+             server with no such route leaves the board exactly as it was
+             before this existed. -->
+      </div>
+
     </div>
   </span>
 </header>
@@ -80,13 +85,14 @@
      a horizontal scroll container — anything sticky inside it measures its top
      against main and never tracks the page (see .tlscroll in board.css). -->
 <div class="bucketbar hidden" id="bucketBar">
-  <span class="tabs" id="bucketFilters"></span>
+  <span id="bucketFilters" style="display:contents"></span>
   <button class="iconbtn" id="editBuckets" aria-label="Edit buckets"
           title="Rename, reorder, add or remove the buckets">
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
   </button>
-  <button class="scorechip hidden" id="scoreChip"></button>
-  <button class="scorechip hidden" id="agentFilterChip"></button>
+  <!-- The two chips are drawn here by React (HeaderBars.tsx), display:contents
+       so they sit in this row as if they were its own children. -->
+  <span id="filterChips" style="display:contents"></span>
   <span class="spacer"></span>
   <!-- Hidden on every view. The column set is settled and shared by every
        bucket, so editing it is a rare, wide-reaching change that does not
@@ -110,7 +116,7 @@
      [theme:: ] on the task line. Built by renderThemeTabs() (07-render-board.js),
      which is also what keeps this hidden the rest of the time. -->
 <div class="bucketbar themebar hidden" id="themeBar">
-  <span class="tabs" id="themeFilters"></span>
+  <span id="themeFilters" style="display:contents"></span>
 </div>
 
 <!-- Which column is on screen, and how many there are. Phone only: at that

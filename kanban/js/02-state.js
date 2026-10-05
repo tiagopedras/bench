@@ -4,6 +4,20 @@
    2. State
    ========================================================================= */
 
+/* The board was called todo-board until 1 Oct 2026, and every preference it
+   keeps in localStorage was filed under that prefix. Copy each across to the
+   Bench name the first time it loads, so nothing saved is lost. The old keys
+   are left where they are, so going back costs nothing. */
+(function migrateStorageKeys(){
+  try {
+    Object.keys(localStorage).forEach(k => {
+      if (k.indexOf('todo-board-') !== 0) return;
+      const next = 'bench-' + k.slice('todo-board-'.length);
+      if (localStorage.getItem(next) === null) localStorage.setItem(next, localStorage.getItem(k));
+    });
+  } catch (e) {}
+})();
+
 const state = {
   doc: null,
   /* The Jira boards read from data/jira.json, or null when there is no such
@@ -105,7 +119,7 @@ const state = {
   selectedIds: new Set(),
   /* Width of the timeline's frozen title column. Remembered the same way the
      drawer's own width is — a drag he does once should not repeat itself. */
-  tlLabelWidth: (+localStorage.getItem('todo-board-tl-label')) || 200,
+  tlLabelWidth: (+localStorage.getItem('bench-tl-label')) || 200,
   sort: {},           /* column name -> 'priority'; absent means his own order */
   view: 'overview',   /* the view the file opens on */
   openTask: null,
@@ -124,7 +138,7 @@ const state = {
      second, so a write landing inside the same second as the read looks
      unchanged to it; this does not. Sent back as If-Match on every save. */
   diskHash: null,
-  drawerWidth: (+localStorage.getItem('todo-board-drawer')) || 400,
+  drawerWidth: (+localStorage.getItem('bench-drawer')) || 400,
   /* Backup Preview: state.doc holds an old backup instead of the live file, and
      nothing may write to it. Every mutation path checks this before touching
      anything; see updateLockUI for what it hides. */

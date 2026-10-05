@@ -144,23 +144,23 @@ async function run (label, width, height) {
   await new Promise(r => setTimeout(r, 200))
 
   check(at('the Column field carries both a slider and a select'),
-    await evalJS(`!!document.querySelector('#f-tier.stepslider') && !!document.querySelector('#f-tier-sel')`))
+    await evalJS(`!!document.querySelector('#f-tier .tenon-step-slider') && !!document.querySelector('#f-tier .tenon-step-slider__select')`))
   check(at('and the width picks which one shows'),
-    await evalJS(`getComputedStyle(document.querySelector('#f-tier-sel')).display`) === (phone ? 'block' : 'none') &&
-    (await evalJS(`getComputedStyle(document.querySelector('#f-tier.stepslider')).display`) === 'none') === phone)
+    await evalJS(`getComputedStyle(document.querySelector('#f-tier .tenon-step-slider__select')).display`) === (phone ? 'block' : 'none') &&
+    (await evalJS(`getComputedStyle(document.querySelector('#f-tier .tenon-step-slider')).display`) === 'none') === phone)
   check(at('the select offers the same stops as the slider, in the same order'),
     await evalJS(`
-      [...document.querySelectorAll('#f-tier-sel option')].map(o => o.textContent).join('|') ===
-      [...document.querySelectorAll('#f-tier .stepstop')].map(o => o.textContent).join('|')
+      [...document.querySelectorAll('#f-tier .tenon-step-slider__select option')].map(o => o.textContent).join('|') ===
+      [...document.querySelectorAll('#f-tier .tenon-step-slider__stop')].map(o => o.textContent).join('|')
     `))
   check(at('and it opens on the column the task is in'),
-    await evalJS(`document.querySelector('#f-tier-sel').selectedOptions[0].textContent`) === 'To do')
+    await evalJS(`document.querySelector('#f-tier .tenon-step-slider__select').selectedOptions[0].textContent`) === 'To do')
   // A read-only tab disables both halves, the same as every other field.
-  check(at('a locked tab disables it'), await evalJS(`document.querySelector('#f-tier-sel').disabled === true`))
+  check(at('a locked tab disables it'), await evalJS(`document.querySelector('#f-tier .tenon-step-slider__select').disabled === true`))
   /* Impact and Effort are scales rather than picks from a list, so they keep
      their sliders at every width and get no select of their own. */
   check(at('Impact and Effort keep their sliders and gain no select'),
-    await evalJS(`!document.querySelector('#f-impact-sel') && !document.querySelector('#f-effort-sel')`))
+    await evalJS(`!document.querySelector('#f-impact .tenon-step-slider__select') && !document.querySelector('#f-effort .tenon-step-slider__select')`))
   await evalJS(`closeDrawer()`)
 
   /* ---- the header and the bucket strip are not pinned on a phone ----

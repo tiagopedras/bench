@@ -98,7 +98,7 @@ const STALE_HELPER = (
     <code style={{ display: 'inline-block', marginTop: 7, fontSize: 12 }}>
       lsof -ti tcp:8765 | xargs kill
     </code><br /><br />
-    Then open <strong>To-Do Board.app</strong> again, or double-click <strong>run.command</strong>.
+    Then open <strong>Bench.app</strong> again, or double-click <strong>run.command</strong>.
   </Alert>
 )
 

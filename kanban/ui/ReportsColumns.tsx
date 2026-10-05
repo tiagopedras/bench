@@ -76,7 +76,7 @@ export interface ReportsColumnsProps {
   writtenError?: { kind: 'stale-helper' | 'unreadable'; detail?: string } | null
   onOpen: (r: WrittenReport) => void
   /** Whether each column is folded, the same per-column memory Overview's own
-   *  five keep under `todo-board-overview-closed`. */
+   *  five keep under `bench-overview-closed`. */
   finishedOpen?: boolean
   writtenOpen?: boolean
 }

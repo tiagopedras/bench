@@ -180,7 +180,7 @@ try {
     document.querySelector('#subpanel').classList.contains('open') && state.openSubParent === __parent.id && document.querySelector('#f-title').value === 'Write the handover'`))
   check('one with a date of its own does not fade it', await evalJS(`
     ![...document.querySelectorAll('#sbody .field.inherited')].some(f => f.querySelector('span').textContent === 'Due')`))
-  check('and the state shows Doing', await evalJS(`document.querySelector('#s-substate').getAttribute('aria-valuetext')`) === 'Doing')
+  check('and the state shows Doing', await evalJS(`document.querySelector('#s-substate [role=slider]').getAttribute('aria-valuetext')`) === 'Doing')
 
   await evalJS(`document.querySelector('#subscrim').click()`)
   check('a click on the faded area closes only the panel', await evalJS(`

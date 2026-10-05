@@ -128,28 +128,31 @@ try {
   })()`))
   check('an ordinary sub-task shows none', await evalJS(`
     !document.querySelectorAll('#f-subs .sub')[1].querySelector('.avatar')`))
-  const pick = v => evalJS(`(() => {
-    document.querySelector('[data-delegate-btn="f-to"]').click();
-    document.querySelector('[data-delegate-menu="f-to"] [data-delegate-value="${v}"]').click();
-  })()`)
+  const pick = async v => {
+    await evalJS(`document.querySelector('#f-to-dd .tenon-dropdown__button').click()`)
+    await wait(50)
+    await evalJS(`document.querySelector('#f-to-dd [data-value="${v}"]').click()`)
+  }
   check('the Delegate to field shows no avatar while it is set to a person', await evalJS(`
-    !document.querySelector('[data-delegate-btn="f-to"] .avatar')`))
+    !document.querySelector('#f-to-dd .tenon-dropdown__button .avatar')`))
+  await evalJS(`document.querySelector('#f-to-dd .tenon-dropdown__button').click()`)
   check('each agent in the Delegate to dropdown carries its avatar', await evalJS(`(() => {
     const d = document.createElement('div'); d.innerHTML = avatarSvg('Plan agent', 18);
-    const svg = document.querySelector('[data-delegate-menu="f-to"] [data-delegate-value="Plan agent"] svg');
+    const svg = document.querySelector('#f-to-dd [data-value="Plan agent"] svg');
     return !!svg && svg.outerHTML === d.firstElementChild.outerHTML &&
-      !document.querySelector('[data-delegate-menu="f-to"] [data-delegate-value=""] svg');
+      !document.querySelector('#f-to-dd [data-value=""] svg');
   })()`))
+  await evalJS(`document.querySelector('#f-to-dd .tenon-dropdown__button').click()`)
   await pick('Plan agent')
   check('choosing an agent draws its avatar on the field', await evalJS(`(() => {
-    const svg = document.querySelector('[data-delegate-btn="f-to"] svg');
+    const svg = document.querySelector('#f-to-dd .tenon-dropdown__button svg');
     const d = document.createElement('div'); d.innerHTML = avatarSvg('Plan agent', 18);
     return !!svg && svg.outerHTML === d.firstElementChild.outerHTML && document.querySelector('#f-to').value === 'Plan agent';
   })()`))
   await pick('')
   check('and choosing Nobody again clears it, without closing the drawer', await evalJS(`
-    !document.querySelector('[data-delegate-btn="f-to"] .avatar') && !!document.querySelector('#f-to') &&
-    document.querySelector('[data-delegate-btn="f-to"]').textContent === 'Nobody'`))
+    !document.querySelector('#f-to-dd .tenon-dropdown__button .avatar') && !!document.querySelector('#f-to') &&
+    document.querySelector('#f-to-dd .tenon-dropdown__button').textContent === 'Nobody'`))
   await evalJS(`closeDrawer()`)
 
   /* ---- the filter ---- */
@@ -165,7 +168,7 @@ try {
     return JSON.stringify(shown) === JSON.stringify([__task('Alpha').id, __task('Beta').id].sort());
   })()`))
   check('the chip on the filter strip says so', await evalJS(`
-    document.querySelector('#agentFilterChip').classList.contains('on') &&
+    document.querySelector('#agentFilterChip').getAttribute('aria-pressed') === 'true' &&
     document.querySelector('#agentFilterChip').textContent.includes('2')`))
   await evalJS(`(() => { state.agentFilter = false; refreshView(); })()`)
   await wait(200)

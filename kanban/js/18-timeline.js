@@ -706,7 +706,7 @@ function tlTrackPointerDown(e, id){
    offset instead, so a resize can reposition them without a full re-render. */
 function setTlLabelWidth(px){
   state.tlLabelWidth = Math.round(Math.min(Math.max(px, 120), 400));
-  try { localStorage.setItem('todo-board-tl-label', state.tlLabelWidth); } catch (e) {}
+  try { localStorage.setItem('bench-tl-label', state.tlLabelWidth); } catch (e) {}
   const body = $('.tlbody');
   if (!body) return;
   body.style.setProperty('--tllabelw', state.tlLabelWidth + 'px');
@@ -950,9 +950,7 @@ function renderHeadline(){
   bar.classList.toggle('hidden', state.view !== 'board' || state.locked);
   bar.classList.toggle('set', !!hl);
   if (!hl) {
-    bar.innerHTML = '<span class="hllabel">The one thing</span>' +
-      '<span class="hlempty">Nothing set. Drag a card here, or open a task and press ' +
-      '<strong>Make this the headline</strong>.</span>';
+    BoardUI.mountFlushed(bar, BoardUI.h(BoardUI.HeadlineBar, { model: null, onClear: () => clearHeadline(false) }));
     // Nothing to open, so the bar goes back to being a strip of text. Left set,
     // the old role and handler would survive the removal and open a stale task.
     bar.removeAttribute('role');
@@ -967,28 +965,22 @@ function renderHeadline(){
   const set = parseDue(t.headline);
   const age = set ? Math.round((today() - set) / 86400000) : null;
 
-  let tags = '';
-  if (t.impact) tags += '<span class="tag impact-' + esc(t.impact) + '" title="' + esc(t.impact) + ' impact">' + (IMPACT_EMOJI[t.impact] || esc(t.impact)) + '</span>';
-  if (t.effort) tags += '<span class="tag">' + esc(t.effort) + '</span>';
-  if (di) tags += '<span class="tag due ' + di.cls + '">' + esc(di.label) +
-                  (di.note ? ' · ' + esc(di.note) : '') + '</span>';
-  if (blocks) tags += '<span class="tag unblocks">frees up ' + blocks +
-                      ' other task' + (blocks > 1 ? 's' : '') + '</span>';
+  const chips = [];
+  if (t.impact) chips.push({ text: IMPACT_EMOJI[t.impact] || t.impact, title: t.impact + ' impact' });
+  if (t.effort) chips.push({ text: t.effort });
+  if (di) chips.push({ tone: DUE_TONE[di.cls] || 'neutral', text: di.label + (di.note ? ' · ' + di.note : '') });
+  if (blocks) chips.push({ tone: 'success', text: 'frees up ' + blocks + ' other task' + (blocks > 1 ? 's' : '') });
 
-  bar.innerHTML = '<span class="hllabel">The one thing</span>' +
-    '<div class="hlmain">' +
-      '<div class="hltitle">' + mdInline(t.title) + '</div>' +
-      '<div class="hlmeta">' +
-        '<span class="hlwhere">' + esc(hl.bucket.name) + ' · ' +
-          esc(t.done ? DONE_COL : hl.tier.name) + '</span>' + tags +
-      '</div>' +
-    '</div>' +
-    '<div class="hlright">' +
-      (age === null ? '' : '<span class="hlage">' +
-        (age <= 0 ? 'set today' : 'set ' + age + ' day' + (age > 1 ? 's' : '') + ' ago') + '</span>') +
-      (t.done ? '<span class="hldone">solved — pick the next one</span>' : '') +
-      '<button class="hlclear" id="hlClear">Remove</button>' +
-    '</div>';
+  BoardUI.mountFlushed(bar, BoardUI.h(BoardUI.HeadlineBar, {
+    model: {
+      title: t.title,
+      where: hl.bucket.name + ' · ' + (t.done ? DONE_COL : hl.tier.name),
+      chips,
+      age: age === null ? null : (age <= 0 ? 'set today' : 'set ' + age + ' day' + (age > 1 ? 's' : '') + ' ago'),
+      solved: !!t.done
+    },
+    onClear: () => clearHeadline(false)
+  }));
 
   /* The whole bar opens the task, like a card. Only the Remove button is carved
      out of that, or the one gesture that gets rid of the headline would open it. */
@@ -999,7 +991,6 @@ function renderHeadline(){
     if (e.target.closest('.hlclear')) return;
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDrawer(t.id); }
   };
-  $('#hlClear').onclick = e => { e.stopPropagation(); clearHeadline(false); };
 }
 
 /* The bucket tabs and the score chip, and the rule that widens both past a
@@ -1040,19 +1031,9 @@ function renderColTabs(columns){
   const strip = $('#colTabs');
   if (!strip) return;
   strip.classList.remove('hidden');
-  strip.innerHTML = columns.map((name, i) =>
-    '<button type="button" class="coltab' + (i === 0 ? ' on' : '') +
-    '" data-coli="' + i + '">' + esc(tierLabel(name)) + '</button>').join('');
 
   const main = $('#main');
-  const tabs = Array.from(strip.querySelectorAll('.coltab'));
   const cols = () => Array.from($('#board').children);
-
-  const light = i => {
-    tabs.forEach((t, j) => t.classList.toggle('on', j === i));
-    const on = tabs[i];
-    if (on) on.scrollIntoView({ inline:'nearest', block:'nearest' });
-  };
   /* Nearest left edge rather than scrollLeft divided by a column's width: the
      columns are one width today and the arithmetic would be wrong the moment
      that stops being true, and a measurement costs nothing at six columns. */
@@ -1066,14 +1047,22 @@ function renderColTabs(columns){
     });
     return best;
   };
-
-  tabs.forEach((t, i) => {
-    t.onclick = () => {
-      const c = cols()[i];
-      if (c) c.scrollIntoView({ inline:'start', block:'nearest', behavior:'smooth' });
-      light(i);
-    };
-  });
+  const names = columns.map(tierLabel);
+  let shown = -1;
+  const light = i => {
+    if (i === shown) return;
+    shown = i;
+    BoardUI.mountFlushed(strip, BoardUI.h(BoardUI.ColTabs, {
+      names, active: i,
+      onPick: n => {
+        const c = cols()[n];
+        if (c) c.scrollIntoView({ inline:'start', block:'nearest', behavior:'smooth' });
+        light(n);
+      }
+    }));
+    const on = strip.querySelector('.coltab.on');
+    if (on) on.scrollIntoView({ inline:'nearest', block:'nearest' });
+  };
   /* One listener, replaced on every render rather than added to — renderBoard
      runs on every edit and addEventListener would stack them up. */
   main.onscroll = () => light(current());
@@ -1205,45 +1194,46 @@ function renderBoard(){
 /* The intake queue. Counts across every bucket whatever the tabs say, because
    a task with no scores is not in a bucket's flow yet — it is waiting to enter
    one. Clicking it shows exactly those. */
-function renderScoreChip(){
-  const chip = $('#scoreChip');
-  if (!state.doc) { chip.classList.add('hidden'); return; }
-  let n = 0;
-  state.doc.buckets.forEach(b => b.tiers.forEach(ti => ti.tasks.forEach(t => {
-    if (!t.done && unscored(t)) n++;
-  })));
-  chip.classList.toggle('hidden', n === 0 && !state.unscoredOnly);
-  chip.classList.toggle('on', state.unscoredOnly);
-  chip.textContent = state.unscoredOnly
-    ? 'Showing ' + n + ' unscored · show all'
-    : n + ' need scoring';
-  chip.title = state.unscoredOnly
-    ? 'Back to the whole list'
-    : 'Tasks with no impact or no effort score yet. Click to see just those.';
-  chip.onclick = () => { state.unscoredOnly = !state.unscoredOnly; refreshView(); };
-}
+function renderScoreChip(){ renderFilterChips(); }
 
 /* Next to the unscored chip: how many open tasks are delegated to an agent —
    on the task itself or on any of its sub-tasks (delegatedToAgent(),
    07-render-board.js) — across every bucket the tabs say, same reasoning as
-   renderScoreChip() above. Clicking it narrows to just those. */
-function renderAgentFilterChip(){
-  const chip = $('#agentFilterChip');
-  if (!chip) return;
-  if (!state.doc) { chip.classList.add('hidden'); return; }
-  let n = 0;
-  state.doc.buckets.forEach(b => b.tiers.forEach(ti => ti.tasks.forEach(t => {
-    if (!t.done && delegatedToAgent(t)) n++;
+   the score chip above. Clicking it narrows to just those. */
+function renderAgentFilterChip(){ renderFilterChips(); }
+
+function renderFilterChips(){
+  const host = $('#filterChips');
+  if (!host) return;
+  let unscoredN = 0, agentN = 0;
+  if (state.doc) state.doc.buckets.forEach(b => b.tiers.forEach(ti => ti.tasks.forEach(t => {
+    if (t.done) return;
+    if (unscored(t)) unscoredN++;
+    if (delegatedToAgent(t)) agentN++;
   })));
-  chip.classList.toggle('hidden', n === 0 && !state.agentFilter);
-  chip.classList.toggle('on', state.agentFilter);
-  chip.textContent = state.agentFilter
-    ? 'Showing ' + n + ' delegated to an agent · show all'
-    : n + ' delegated to an agent';
-  chip.title = state.agentFilter
-    ? 'Back to the whole list'
-    : 'Tasks handed to an agent, or with a sub-task handed to one. Click to see just those.';
-  chip.onclick = () => { state.agentFilter = !state.agentFilter; refreshView(); };
+  const noDoc = !state.doc;
+  BoardUI.mountFlushed(host, BoardUI.h(BoardUI.FilterChips, { chips: [
+    {
+      id: 'scoreChip',
+      hidden: noDoc || (unscoredN === 0 && !state.unscoredOnly),
+      on: state.unscoredOnly,
+      text: state.unscoredOnly ? 'Showing ' + unscoredN + ' unscored · show all' : unscoredN + ' need scoring',
+      title: state.unscoredOnly
+        ? 'Back to the whole list'
+        : 'Tasks with no impact or no effort score yet. Click to see just those.',
+      onClick: () => { state.unscoredOnly = !state.unscoredOnly; refreshView(); }
+    },
+    {
+      id: 'agentFilterChip',
+      hidden: noDoc || (agentN === 0 && !state.agentFilter),
+      on: state.agentFilter,
+      text: state.agentFilter ? 'Showing ' + agentN + ' delegated to an agent · show all' : agentN + ' delegated to an agent',
+      title: state.agentFilter
+        ? 'Back to the whole list'
+        : 'Tasks handed to an agent, or with a sub-task handed to one. Click to see just those.',
+      onClick: () => { state.agentFilter = !state.agentFilter; refreshView(); }
+    }
+  ] }));
 }
 
 let dragId = null;

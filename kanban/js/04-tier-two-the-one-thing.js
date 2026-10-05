@@ -481,7 +481,7 @@ const HANDOVER_LEVELS = {
 };
 const HANDOVER_LEVEL_LABEL = { 'plan-first': 'Plan first', 'just-do-it': 'Just do it', 'off': 'Off' };
 const JUST_DO_IT_NOTE = '- Handover: just do it';
-function handoverLevelsKey(){ return 'todo-board-handover:' + (state.dataset || ''); }
+function handoverLevelsKey(){ return 'bench-handover:' + (state.dataset || ''); }
 function handoverLevels(){
   try { const got = JSON.parse(localStorage.getItem(handoverLevelsKey()) || '{}'); return got && typeof got === 'object' ? got : {}; }
   catch (err) { return {}; }

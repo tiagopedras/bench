@@ -78,6 +78,16 @@ export { ColumnFilter } from './ColumnFilter'
 /* The header's view tabs, on Tenon's SegmentedControl since 26 Sep 2026. */
 export { ViewTabs } from './ViewTabs'
 export type { ViewTabsProps, ViewTabDef } from './ViewTabs'
+/* The headline, bucket and theme strips, filter chips and the phone's column
+   strip, drawn by React since 1 Oct 2026. */
+export { HeadlineBar, FilterTabs, FilterChips, ColTabs } from './HeaderBars'
+export type { HeadlineModel, HeadlineChip, FilterTab, FilterChip } from './HeaderBars'
+/* The task panel's Impact, Effort and Column sliders and its tag chips, on
+   Tenon's StepSlider and TagChip. */
+export { StepField, TagsField, DateFields, PickField, SubRows } from './DrawerFields'
+export type {
+  StepFieldProps, TagModel, TagsFieldProps, DateFieldModel, DateFieldsProps, PickOption, PickFieldProps, SubRowModel, SubRowsProps,
+} from './DrawerFields'
 /* The Agents view, which is the agents dashboard's own page, from
    PACKAGES/agents-engine/react. See kanban/js/27-agents.js. */
 export { AgentsApp } from '@tiagopedras/agents-engine/react'

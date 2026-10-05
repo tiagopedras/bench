@@ -297,7 +297,7 @@ check('and clicking it still opens the editor', empty.opened === true && empty.c
    rather than off a flag of its own. */
 const heights = await evalJS(`
   (() => {
-    localStorage.removeItem('todo-board-note-height');
+    localStorage.removeItem('bench-note-height');
     window.__t.body = ${JSON.stringify(NOTE)}.split(String.fromCharCode(10));
     openDrawer(window.__t.id);
     const view = document.querySelector('#f-body-view'), ta = document.querySelector('#f-body');
@@ -309,10 +309,10 @@ const heights = await evalJS(`
     ta.dispatchEvent(new KeyboardEvent('keydown', { key:'Escape', bubbles:true }));
     grow.onclick({ preventDefault(){}, stopPropagation(){} });
     const big = { view: view.offsetHeight, ta: parseInt(ta.style.height, 10), label: grow.textContent,
-                  stored: +localStorage.getItem('todo-board-note-height') };
+                  stored: +localStorage.getItem('bench-note-height') };
     grow.onclick({ preventDefault(){}, stopPropagation(){} });
     const back = { view: view.offsetHeight, label: grow.textContent,
-                   stored: +localStorage.getItem('todo-board-note-height') };
+                   stored: +localStorage.getItem('bench-note-height') };
     return { start, editing, big, back, open: document.querySelector('[data-collapse="notes"]').open };
   })()
 `)
@@ -336,7 +336,7 @@ const dragged = await evalJS(`
     view.style.height = '310px';
     await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
     return { view: view.offsetHeight, ta: parseInt(ta.style.height, 10), label: grow.textContent,
-             stored: +localStorage.getItem('todo-board-note-height') };
+             stored: +localStorage.getItem('bench-note-height') };
   })()
 `)
 check('a drag on the corner is heard', dragged.stored === 310, JSON.stringify(dragged))
@@ -349,7 +349,7 @@ const reopened = await evalJS(`
   })()
 `)
 check('and the next task opens at that height', reopened === 310, String(reopened))
-await evalJS(`localStorage.removeItem('todo-board-note-height')`)
+await evalJS(`localStorage.removeItem('bench-note-height')`)
 
 /* The line about subtasks moved out from under the field and up beside the
    label, where Subtasks' own Complete all already sits. */
