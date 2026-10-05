@@ -14,12 +14,15 @@ fetch('/people.json', { cache: 'no-store' })
   .then(d => { peopleNames = (d && d.people || []).map(p => p.name).filter(Boolean); })
   .catch(() => {});
 
-/* Delegate to, and a sub-task's Assigned to, as a custom dropdown with each
+/* Delegate to, and a sub-task's Assigned to, as Tenon's Dropdown with each
    agent's avatar beside its name, which an <option> cannot hold. The hidden
    <select> underneath stays the field's value: its id is what the change
-   handlers and the suites read, and a pick sets it and fires its onchange,
-   so everything wired to the select works as it did. Same button-and-panel
-   shape as the Bucket field. */
+   handlers and the suites read, and a pick sets it and fires its onchange, so
+   everything wired to the select works as it did. The Dropdown is drawn into a
+   host by mountPickers() once the panel is in the page. */
+/* One host per dropdown: PICK_SPECS says what each draws. `onPick` is the
+   field's own callback where it has no hidden <select> to hand the value to. */
+const PICK_SPECS = {};
 function delegateSelectHTML(value, dis, id){
   id = id || 'f-to';
   const cur = String(value || '').trim();
@@ -37,26 +40,34 @@ function delegateSelectHTML(value, dis, id){
   const any = agentsSetUp() || !!agentOf(cur);
   const offered = AGENT_NAMES.filter(a => agentOf(cur) === a || (any && handoverLevel(a) !== 'off'));
   const agents = offered.map(a => agentOf(cur) === a ? cur : a);
-  const item = (v, label) => '<button type="button" class="dropdown-item delegateopt' + (v === cur ? ' on' : '') +
-    '" role="menuitemradio" aria-checked="' + (v === cur) + '" data-delegate-value="' + esc(v) + '">' +
-    agentAvatarHTML(v, 18) + '<span>' + esc(label || v) + '</span></button>';
-  return '<div class="dropdown bucketfield delegatefield">' +
+  PICK_SPECS[id] = {
+    value: cur, ro: !!dis, label: 'Delegate to',
+    options: [{ value: '', label: 'Nobody' }]
+      .concat(agents.map((v, i) => ({ value: v, label: offered[i], group: 'Agents', iconHtml: agentAvatarHTML(v, 18) })))
+      .concat(people.map(p => ({ value: p, label: p, group: 'People' })))
+  };
+  return '<div class="delegatefield">' +
     '<select id="' + id + '" class="hidden" tabindex="-1" aria-hidden="true"' + dis + '>' + opt('', 'Nobody') +
       (agents.length ? '<optgroup label="Agents">' + agents.map((v, i) => opt(v, offered[i])).join('') + '</optgroup>' : '') +
       (people.length ? '<optgroup label="People">' + people.map(p => opt(p)).join('') + '</optgroup>' : '') +
     '</select>' +
-    '<button type="button" class="bucketbtn delegatebtn" data-delegate-btn="' + id + '"' + dis + '>' +
-      delegateBtnInner(cur) + '</button>' +
-    (dis ? '' : '<div class="dropdown-panel hidden" data-delegate-menu="' + id + '" role="menu">' +
-      item('', 'Nobody') +
-      (agents.length ? '<div class="delegatehead">Agents</div>' + agents.map((v, i) => item(v, offered[i])).join('') : '') +
-      (people.length ? '<div class="delegatehead">People</div>' + people.map(p => item(p)).join('') : '') +
-    '</div>') +
+    '<div data-pick-host="' + id + '"></div>' +
   '</div>';
 }
-function delegateBtnInner(value){
-  const v = String(value || '').trim();
-  return agentAvatarHTML(v, 18) + '<span>' + esc(agentOf(v) || v || 'Nobody') + '</span>';
+function mountPickers(root){
+  root.querySelectorAll('[data-pick-host]').forEach(host => {
+    const id = host.dataset.pickHost, spec = PICK_SPECS[id];
+    if (!spec) return;
+    BoardUI.mountFlushed(host, BoardUI.h(BoardUI.PickField, {
+      id, label: spec.label, options: spec.options, value: spec.value, disabled: spec.ro,
+      onPick: spec.onPick || (v => {
+        const sel = document.getElementById(id);
+        if (!sel) return;
+        sel.value = v;
+        if (sel.onchange) sel.onchange({ target: sel });
+      })
+    }));
+  });
 }
 
 /* The Theme field's dropdown, offered only from the values declared for the
@@ -72,7 +83,12 @@ function themeSelectHTML(value, themes, dis){
   const opt = (v, label) => '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(label || v) + '</option>';
   const list = themes.slice();
   if (cur && !list.includes(cur)) list.unshift(cur);
-  return '<select id="f-theme"' + dis + '>' + opt('', 'None') + list.map(v => opt(v)).join('') + '</select>';
+  PICK_SPECS['f-theme'] = {
+    value: cur, ro: !!dis, label: 'Theme',
+    options: [{ value: '', label: 'None' }].concat(list.map(v => ({ value: v, label: v })))
+  };
+  return '<select id="f-theme" class="hidden" tabindex="-1" aria-hidden="true"' + dis + '>' + opt('', 'None') + list.map(v => opt(v)).join('') + '</select>' +
+    '<div data-pick-host="f-theme"></div>';
 }
 
 function dedent(lines){ return lines.map(l => l.replace(/^ {1,2}/, '')).join('\n').replace(/\n+$/, ''); }
@@ -167,9 +183,6 @@ function noteCaret(view, value, e){
    a small icon and draws a different control in every browser. It opens in the
    flow under the field instead of floating over it: the panel scrolls, and a
    floating calendar gets cut off at the bottom edge. */
-const CAL_DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-const CAL_MONTHS = ['January','February','March','April','May','June',
-                    'July','August','September','October','November','December'];
 function ymd(d){
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') +
          '-' + String(d.getDate()).padStart(2, '0');
@@ -178,32 +191,6 @@ function dueLabel(s){
   const d = parseDue(s);
   if (!d) return 'No date';
   return d.toLocaleDateString(undefined, { weekday:'short', day:'numeric', month:'short', year:'numeric' });
-}
-function calendarHTML(month, selected){
-  const y = month.getFullYear(), m = month.getMonth();
-  const lead = (new Date(y, m, 1).getDay() + 6) % 7;      // weeks start on Monday
-  const days = new Date(y, m + 1, 0).getDate();
-  const now = ymd(today());
-  let cells = '';
-  for (let i = 0; i < lead; i++) cells += '<span class="cd pad"></span>';
-  for (let d = 1; d <= days; d++){
-    const key = ymd(new Date(y, m, d));
-    cells += '<button type="button" class="cd' + (key === selected ? ' sel' : '') +
-      (key === now ? ' now' : '') + '" data-day="' + key + '">' + d + '</button>';
-  }
-  return '<div class="calhead">' +
-      '<button type="button" class="calnav" data-cal="-1" title="Previous month">‹</button>' +
-      '<strong>' + CAL_MONTHS[m] + ' ' + y + '</strong>' +
-      '<button type="button" class="calnav" data-cal="1" title="Next month">›</button>' +
-    '</div>' +
-    '<div class="calgrid">' +
-      CAL_DAYS.map(w => '<span class="cw" title="' + w + '">' + w[0] + '</span>').join('') +
-      cells +
-    '</div>' +
-    '<div class="calfoot">' +
-      '<button type="button" class="calsm" data-day="' + now + '">Today</button>' +
-      '<button type="button" class="calsm" data-day="">Clear</button>' +
-    '</div>';
 }
 /* impact:, effort: and the task's column all pick from a short, known
    set of values, so all three are drawn with the same fixed-stop slider. Each
@@ -227,175 +214,67 @@ const EFFORT_STOPS = [
   { value: 'L', label: 'L', color: 'var(--tenon-text-success)' },
 ];
 
-/* Where a stop sits along the track: evenly spaced, except the first and
-   last are pulled in by --step-inset so the handle parked there doesn't
-   cover the tip (see the CSS comment above .stepslider). Ticks and stop
-   labels use the plain, un-inset fraction instead — they are reference
-   marks, not something a handle has to clear. */
-function stepPos(idx, n){
-  if (n < 2) return '50%';
-  if (idx === 0) return 'var(--step-inset)';
-  if (idx === n - 1) return 'calc(100% - var(--step-inset))';
-  return (idx / (n - 1) * 100) + '%';
+/* The slider is Tenon's StepSlider, drawn by React (kanban/ui/DrawerFields.tsx).
+   The panel is still a string, so these leave a host element behind and keep
+   what to draw in STEP_SPECS; wireStepSlider() mounts it once the string is in
+   the page. A stop's `color` is Tenon's `colour`. */
+const STEP_SPECS = {};
+/* Where each slider's handle was when it was last picked, and for which task.
+   A pick that rebuilds the panel (a column, a sub-task's state) destroys the
+   slider it came from, and the new one would draw at its final stop with
+   nothing to animate. The next build for the same task starts the handle
+   where it was instead, and it slides, the way Impact and Effort always did. */
+const STEP_FROM = {};
+function stepSpec(id, stops, value, ro, label, select){
+  const f = STEP_FROM[id];
+  delete STEP_FROM[id];
+  STEP_SPECS[id] = { stops, value, ro, label, select, from: f && f.task === state.openTask ? f.value : undefined };
 }
-function stepTickPos(idx, n){ return n < 2 ? '50%' : (idx / (n - 1) * 100) + '%'; }
-function stepFillWidth(idx, n){ return idx === 0 ? '0%' : 'calc(' + stepPos(idx, n) + ' + var(--step-cap))'; }
-
 function stepSliderHTML(id, stops, value, ro, ariaLabel){
-  const n = stops.length;
-  let idx = stops.findIndex(s => s.value === value);
-  if (idx < 0) idx = 0;
-  const color = stops[idx].color ? ';--step-color:' + stops[idx].color : '';
-  return '<div class="stepslider' + (ro ? ' disabled' : '') + '" id="' + id + '" data-idx="' + idx + '"' +
-      (ro ? '' : ' tabindex="0"') +
-      ' role="slider" aria-label="' + esc(ariaLabel) + '" aria-valuemin="0" aria-valuemax="' + (n - 1) + '"' +
-      ' aria-valuenow="' + idx + '" aria-valuetext="' + esc(stops[idx].label) + '">' +
-    '<div class="steptrack">' +
-      '<div class="stepfill" style="width:' + stepFillWidth(idx, n) + color + '"></div>' +
-      stops.map((s, i) => '<span class="steptick" style="left:' + stepTickPos(i, n) + '"></span>').join('') +
-      '<div class="stephandle" style="left:' + stepPos(idx, n) + color + '"></div>' +
-    '</div>' +
-    /* Capped to its own fair share of the width (100/n%) rather than left to
-       size itself: an even split is the one guarantee that holds regardless
-       of stop count or label length, so a wide one wraps onto a second line
-       under .stepstop's line-height instead of running into its neighbour —
-       which a name like "Reviewing" otherwise does at 5 stops. */
-    '<div class="stepstops">' +
-      stops.map((s, i) => '<span class="stepstop' + (i === idx ? ' on' : '') + '" data-i="' + i +
-        '" style="left:' + stepTickPos(i, n) + ';max-width:' + (100 / n).toFixed(3) + '%">' + esc(s.label) + '</span>').join('') +
-    '</div>' +
-  '</div>';
+  stepSpec(id, stops, value, ro, ariaLabel, false);
+  return '<div class="stepfield" id="' + id + '"></div>';
 }
-/* The same set of stops as a native <select>, for the phone. Drawn beside the
-   slider rather than instead of it — which one shows is a CSS decision at the
-   640px breakpoint, so nothing here has to know the width. A column is a pick
-   from a list rather than a scale, and at 400px six .stepstop labels share
-   340px and touch each other, with a tap area no bigger than the word; the OS
-   draws its own list at its own size and the pick is one tap. Impact and
-   Effort keep their sliders at every width — those are scales. */
-function stepSelectHTML(id, stops, value, ro, ariaLabel){
-  let idx = stops.findIndex(s => s.value === value);
-  if (idx < 0) idx = 0;
-  return '<select class="stepselect" id="' + id + '-sel" aria-label="' + esc(ariaLabel) + '"' +
-      (ro ? ' disabled' : '') + '>' +
-    stops.map((s, i) => '<option value="' + i + '"' + (i === idx ? ' selected' : '') + '>' +
-      esc(s.label) + '</option>').join('') +
-  '</select>';
-}
-
-/* Slider and select in one wrapper, one of them showing. */
+/* The Column field is a pick from a list rather than a scale, so on a phone it
+   is a native <select> instead: six labels across 340px touch each other, and
+   the OS list is one tap. Impact and Effort keep their sliders at every width. */
 function stepPickerHTML(id, stops, value, ro, ariaLabel){
-  return '<div class="steppick">' +
-    stepSliderHTML(id, stops, value, ro, ariaLabel) +
-    stepSelectHTML(id, stops, value, ro, ariaLabel) +
-  '</div>';
+  stepSpec(id, stops, value, ro, ariaLabel, true);
+  return '<div class="stepfield" id="' + id + '"></div>';
 }
-
-/* Drag the handle, click a stop label, or arrow-key it once focused — three
-   ways into the same fixed set of positions. posToIdx() always rounds to the
-   nearest stop, so a drag can only ever land on one of them, never between.
-   onCommit(value) is the only thing that varies by field — everything above
-   it is just moving the handle and painting the result. */
+/* onCommit(value) is the only thing that varies by field. */
 function wireStepSlider(id, stops, onCommit){
-  const el = $('#' + id);
-  if (!el || el.classList.contains('disabled')) return;
-  const track = el.querySelector('.steptrack');
-  const n = stops.length;
-
-  const paint = idx => {
-    const s = stops[idx];
-    el.dataset.idx = idx;
-    el.setAttribute('aria-valuenow', idx);
-    el.setAttribute('aria-valuetext', s.label);
-    const fill = el.querySelector('.stepfill'), handle = el.querySelector('.stephandle');
-    fill.style.width = stepFillWidth(idx, n);
-    handle.style.left = stepPos(idx, n);
-    if (s.color) { fill.style.setProperty('--step-color', s.color); handle.style.setProperty('--step-color', s.color); }
-    el.querySelectorAll('.stepstop').forEach((stop, i) => stop.classList.toggle('on', i === idx));
-  };
-  const posToIdx = clientX => {
-    const r = track.getBoundingClientRect();
-    const frac = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
-    return Math.round(frac * (n - 1));
-  };
-
-  el.querySelectorAll('.stepstop').forEach(stop => {
-    stop.onclick = () => { const i = +stop.dataset.i; paint(i); onCommit(stops[i].value); };
+  const host = $('#' + id), spec = STEP_SPECS[id];
+  if (!host || !spec) return;
+  BoardUI.mountFlushed(host, BoardUI.h(BoardUI.StepField, {
+    steps: stops.map(s => ({ value: s.value, label: s.label, colour: s.color })),
+    value: spec.value, label: spec.label, disabled: spec.ro, select: spec.select, from: spec.from,
+    onCommit: v => { STEP_FROM[id] = { task: state.openTask, value: spec.value }; spec.value = v; onCommit(v); }
+  }));
+}
+const wireStepPicker = wireStepSlider;
+/* Draws every slider in a freshly built panel, read-only ones included: a
+   backup preview wires nothing, so a slider left to wireStepSlider() would
+   never appear there. The wiring that follows redraws the same host with the
+   real onCommit. */
+function mountStepFields(root){
+  root.querySelectorAll('.stepfield').forEach(el => {
+    const spec = STEP_SPECS[el.id];
+    if (spec) wireStepSlider(el.id, spec.stops, () => {});
   });
-  el.onkeydown = e => {
-    const cur = +el.dataset.idx;
-    let next = null;
-    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') next = Math.min(cur + 1, n - 1);
-    else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') next = Math.max(cur - 1, 0);
-    else if (e.key === 'Home') next = 0;
-    else if (e.key === 'End') next = n - 1;
-    if (next === null) return;
-    e.preventDefault();
-    paint(next); onCommit(stops[next].value);
-  };
-  let dragging = false;
-  track.onpointerdown = e => {
-    dragging = true;
-    el.classList.add('dragging');
-    el.focus();
-    track.setPointerCapture(e.pointerId);
-    paint(posToIdx(e.clientX));
-  };
-  track.onpointermove = e => { if (dragging) paint(posToIdx(e.clientX)); };
-  const finish = () => {
-    if (!dragging) return;
-    dragging = false;
-    el.classList.remove('dragging');
-    onCommit(stops[+el.dataset.idx].value);
-  };
-  track.onpointerup = finish;
-  track.onpointercancel = finish;
 }
-
-/* Wires both halves of stepPickerHTML() to the same onCommit. The select is
-   wired whether or not it is showing — every commit re-renders the drawer, so
-   the two can never disagree about where the card is. */
-function wireStepPicker(id, stops, onCommit){
-  wireStepSlider(id, stops, onCommit);
-  const sel = $('#' + id + '-sel');
-  if (!sel || sel.disabled) return;
-  sel.onchange = () => onCommit(stops[+sel.value].value);
+/* Can start and Due, drawn by Tenon's DateButton and Calendar (DateFields in
+   kanban/ui/DrawerFields.tsx). `item` is whatever holds the two dates, read
+   when the calendar is picked from; `after` runs once one is chosen. */
+function mountDateFields(hostId, prefix, ro, fields, onPick){
+  BoardUI.mountFlushed($('#' + hostId), BoardUI.h(BoardUI.DateFields, {
+    idPrefix: prefix, fields, disabled: ro, today: ymd(today()), onPick
+  }));
 }
-/* One picker per date field, so `field` says which one is being edited. Both
-   dates use the same calendar; only the value they write differs. */
-const calMonth = {};
-function wireDatePicker(t, touch, field, prefix){
-  const pre = prefix || 'f';
-  const btn = $('#' + pre + '-' + field), cal = $('#' + pre + '-cal-' + field);
-  if (!btn || !cal) return;
-  const draw = () => { cal.innerHTML = calendarHTML(calMonth[field], parseDue(t[field]) ? t[field] : ''); };
-  btn.onclick = () => {
-    const closed = cal.classList.toggle('hidden');
-    if (closed) return;
-    const from = parseDue(t[field]) || today();
-    calMonth[field] = new Date(from.getFullYear(), from.getMonth(), 1);
-    draw();
-    cal.scrollIntoView({ block:'nearest' });
-  };
-  cal.onclick = e => {
-    const nav = e.target.closest('[data-cal]');
-    if (nav) {
-      const m = calMonth[field];
-      calMonth[field] = new Date(m.getFullYear(), m.getMonth() + (+nav.dataset.cal), 1);
-      draw();
-      return;
-    }
-    const day = e.target.closest('[data-day]');
-    if (!day) return;
-    t[field] = day.dataset.day;
-    cal.classList.add('hidden');
-    btn.textContent = dueLabel(t[field]);
-    btn.classList.toggle('empty', !t[field]);
-    touch();
-    // The two dates constrain each other, so a change can make the other one
-    // wrong. Re-open so the warning appears or clears straight away.
-    openDrawer(state.openTask);
-  };
+function dateFieldModels(start, due, inheritedDue){
+  return [
+    { key: 'start', label: 'Can start', value: start, text: start ? dueLabel(start) : 'Any time', empty: !parseDue(start) },
+    { key: 'due', label: 'Due', value: due, text: dueLabel(due), empty: !parseDue(due), inherited: !!inheritedDue }
+  ];
 }
 
 /* ---- Dependencies, both directions, in the panel ----
@@ -972,129 +851,58 @@ function taskTagChips(t){
 function tagsSection(t){
   const chips = taskTagChips(t);
   const ro = state.locked;
-  if (!chips.length && ro) return sideSection('Tags', 'tags',
+  const head = '<span>Tags' + (chips.length > 1 ? ' <em class="sublabel">' + chips.length + '</em>' : '') + '</span>';
+  if (!chips.length && ro) return '<div class="field">' + head +
     emptyState('No tags beyond the fields above. Anything written as '
-             + '`[key:: value]` in the task line shows up here.'));
-  const body = chips.map((c, i) => {
-    const cls = 'tagchip' + (c.unrecognised ? ' tagchip-extra' : '') + (!c.editable || ro ? ' tagchip-ro' : '');
-    const text = c.value ? esc(c.label) + ': ' + esc(c.value) : esc(c.label);
-    return '<button type="button" class="' + cls + '" data-chip="' + i + '"' +
-      (c.editable && !ro ? '' : ' disabled') + '>' + text + '</button>';
-  }).join('');
+             + '`[key:: value]` in the task line shows up here.') + '</div>';
   const hasExtra = chips.some(c => c.unrecognised && c.editable);
   // The one control that writes a new tag rather than editing or clearing an
   // existing one — a plain-text key and value on click, the same way editing
   // an existing chip swaps it for an input, so a tag never has to be typed
   // into the raw task line by hand.
-  const addChip = ro ? '' :
-    '<button type="button" class="tagchip tagchip-add" data-chip="add">+ Add tag</button>';
-  return sideSection('Tags', 'tags', '<div class="tagchips">' + body + addChip + '</div>' +
-    (hasExtra ? '<span class="help">Amber ones are tags nothing else on the board reads — click to edit or clear.</span>' : ''),
-    chips.length);
+  return '<div class="field">' + head + '<div class="tagchips"></div>' +
+    (hasExtra ? '<span class="help">Amber ones are tags nothing else on the board reads — click to edit or clear.</span>' : '') +
+    '</div>';
 }
-/* Swaps one chip for a text input, commits on Enter or blur, cancels on
-   Escape. Rebuilding the whole drawer on every keystroke would lose focus, so
-   this edits the DOM directly and only calls back into the task/refresh once,
-   on commit. */
+/* Mounts the chips: Tenon's TagChip swaps itself for an input on click, commits
+   on Enter or blur and cancels on Escape. Rebuilding the whole panel on every
+   keystroke would lose focus, so the page only hears once, on commit.
+
+   The "+ Add tag" chip pushes `[key:: value]` onto t.extra, the exact syntax
+   readTags() (core/todo.js) already reads back into an amber chip, so nothing
+   here needs its own reader. A key that collides with a field the board already
+   parses is refused rather than written, since a second copy in t.extra would
+   sit beside the real field and never be read. */
 function wireTagChips(t){
   const wrap = $('#drawer').querySelector('.tagchips');
   if (!wrap) return;
   const chips = taskTagChips(t);
-  wireAddTagChip(wrap, t);
-  wrap.querySelectorAll('.tagchip:not(.tagchip-add)').forEach(btn => {
-    if (btn.disabled) return;
-    const c = chips[+btn.dataset.chip];
-    btn.onclick = () => {
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.value = c.value;
-      input.setAttribute('aria-label', c.label);
-      const label = document.createTextNode(c.label + ': ');
-      btn.textContent = '';
-      btn.appendChild(label);
-      btn.appendChild(input);
-      input.focus();
-      input.select();
-      const commit = () => {
-        const v = input.value.trim();
-        if (c.field) {
-          if (c.field === 'rank' || c.field === 'tlrank') t[c.field] = v ? parseInt(v, 10) : null;
-          else t[c.field] = v;
-        } else if (c.extraIndex != null) {
-          if (!v) t.extra.splice(c.extraIndex, 1);
-          else if (c.form === 'bracket') t.extra[c.extraIndex] = '[' + c.label + ':: ' + v + ']';
-          else t.extra[c.extraIndex] = '`' + c.label + ':' + v + '`';
-        }
-        t.dirty = true;
-        markDirty(); refreshView(); openDrawer(t.id);
-      };
-      input.onblur = commit;
-      input.onkeydown = e => {
-        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-        else if (e.key === 'Escape') { e.preventDefault(); input.onblur = null; openDrawer(t.id); }
-      };
-    };
-  });
-}
-
-/* The one control on the section that writes a tag rather than editing one
-   already there. Swaps itself for a key field and a value field, the same
-   in-place shape an existing chip takes when clicked, and pushes
-   `[key:: value]` onto t.extra on commit — the exact syntax readTags()
-   (core/todo.js) already reads back into an amber chip, so nothing here
-   needs its own reader. A key that collides with a field the board already
-   parses is refused rather than written, since a second copy in t.extra
-   would sit beside the real field and never be read. */
-function wireAddTagChip(wrap, t){
-  const btn = wrap.querySelector('.tagchip-add');
-  if (!btn) return;
-  btn.onclick = () => {
-    const key = document.createElement('input');
-    key.type = 'text';
-    key.placeholder = 'key';
-    key.setAttribute('aria-label', 'New tag key');
-    const value = document.createElement('input');
-    value.type = 'text';
-    value.placeholder = 'value';
-    value.setAttribute('aria-label', 'New tag value');
-    btn.textContent = '';
-    btn.appendChild(key);
-    btn.appendChild(document.createTextNode(': '));
-    btn.appendChild(value);
-    key.focus();
-    let done = false;
-    const cancel = () => { done = true; openDrawer(t.id); };
-    const commit = () => {
-      if (done) return;
-      const k = key.value.trim();
-      const v = value.value.trim();
-      if (!k && !v) { cancel(); return; }
-      if (!k || !v) { showToast('A tag needs both a key and a value.', 'bad'); key.focus(); return; }
-      if (RESERVED_TAG_KEYS.includes(k.toLowerCase())) {
-        showToast('“' + k + '” is already a field the board reads on its own — ' +
-          'pick a different key.', 'bad');
-        key.focus();
-        return;
+  const done = () => { t.dirty = true; markDirty(); refreshView(); openDrawer(t.id); };
+  BoardUI.mountFlushed(wrap, BoardUI.h(BoardUI.TagsField, {
+    tags: chips.map(c => ({ label: c.label, value: c.value, editable: c.editable, unrecognised: !!c.unrecognised })),
+    locked: state.locked,
+    onCommit: (i, v) => {
+      const c = chips[i];
+      if (c.field) {
+        if (c.field === 'rank' || c.field === 'tlrank') t[c.field] = v ? parseInt(v, 10) : null;
+        else t[c.field] = v;
+      } else if (c.extraIndex != null) {
+        if (!v) t.extra.splice(c.extraIndex, 1);
+        else if (c.form === 'bracket') t.extra[c.extraIndex] = '[' + c.label + ':: ' + v + ']';
+        else t.extra[c.extraIndex] = '`' + c.label + ':' + v + '`';
       }
-      done = true;
+      done();
+    },
+    onAdd: (k, v) => {
+      if (RESERVED_TAG_KEYS.includes(k.toLowerCase())) {
+        return '“' + k + '” is already a field the board reads on its own — pick a different key.';
+      }
       t.extra = t.extra || [];
       t.extra.push('[' + k + ':: ' + v + ']');
-      t.dirty = true;
-      markDirty(); refreshView(); openDrawer(t.id);
-    };
-    key.onkeydown = value.onkeydown = e => {
-      if (e.key === 'Enter') { e.preventDefault(); commit(); }
-      else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
-    };
-    // Either field losing focus without the other taking it is "done typing",
-    // the same moment an existing chip commits on blur — but not the blur
-    // that happens when focus moves from the key to the value field itself.
-    const onBlur = () => setTimeout(() => {
-      if (document.activeElement !== key && document.activeElement !== value) commit();
-    }, 0);
-    key.onblur = onBlur;
-    value.onblur = onBlur;
-  };
+      done();
+    },
+    onRefuse: msg => showToast(msg, 'bad')
+  }));
 }
 
 /* ---- Messages and prompts written for this task ----
@@ -1171,91 +979,86 @@ function jiraSection(list){
     list.length);
 }
 
-/* Turns one sub-step's text into an editable field in place. The row's drag
-   handle stays put, but the row itself must stop being draggable while an
-   input sits inside it, or selecting text tries to drag the row instead.
-   Clearing the text and leaving removes the step, so there is no separate
-   delete control to add just for this. */
-function editSubtext(span, t, lineIdx, id, opts){
-  if (state.locked) return;
-  const chain = !!(opts && opts.chain);
-  const m = SUB_RE.exec(t.body[lineIdx]);
-  if (!m) return;
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.className = 'subedit';
-  input.value = subEditText(m[3]);
-  span.replaceWith(input);
-  input.focus();
-  input.select();
-  let settled = false;
-  const finish = save => {
-    if (settled) return;
-    settled = true;
-    if (save) {
-      const val = input.value.trim();
-      if (val) setSubText(t, lineIdx, val); else removeSubLine(t, lineIdx);
-    }
-    refreshView();
-    openDrawer(id);
-  };
-  input.onblur = () => finish(true);
-  input.onkeydown = e => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      /* Typing a run of steps. Enter commits this one and opens the next, so a
-         list of five is five lines and four Enters rather than five trips to
-         the Add button. Read before finish(), which takes the input away.
-
-         An empty step ends the run instead of adding another blank one, so
-         Enter on a blank line is how you stop — the same way it works
-         everywhere else that lists are typed. */
-      const more = chain && !!input.value.trim();
-      finish(true);
-      if (more) addStepAndEdit(t, id);
-    }
-    else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
-  };
-}
-
 /* Adds a step and puts the cursor straight in it. Shared by the Add button and
-   by Enter inside a new step, so both arrive in the same state. */
+   by Enter inside a new step, so both arrive in the same state. subEdit tells
+   the list which line to draw as a field when the panel is rebuilt. */
+let subEdit = null;
 function addStepAndEdit(t, id){
   addSub(t);
+  const steps = splitBody(t).steps;
+  subEdit = { task: id, line: steps[steps.length - 1].line };
   refreshView();
   openDrawer(id);
-  const spans = $('#f-subs').querySelectorAll('.subtext');
-  const last = spans[spans.length - 1];
-  if (last) editSubtext(last, t, +last.dataset.line, id, { chain: true });
 }
 
-/* A sub-task row opens that sub-task in the second panel. The checkbox, the
-   drag grip, the delete button, a link in the text and a step being typed
-   into each keep their own click. Wired in a read-only tab as well, since
-   looking at a sub-task changes nothing. */
-function wireSubRows(t){
-  const subsEl = $('#f-subs');
-  if (!subsEl) return;
-  const open = row => {
-    let sid = row.dataset.sub;
-    if (!sid) {
-      sid = ensureSubId(t, +row.dataset.line);
-      if (!sid) return;
-      refreshView();
-    }
-    openDrawer(sid);
-  };
-  subsEl.querySelectorAll('.sub.opens').forEach(row => {
-    row.onclick = e => {
-      if (e.target.closest('input, button, a, [data-tenon-grip], .subedit')) return;
-      open(row);
-    };
-    row.onkeydown = e => {
-      if (e.target !== row || (e.key !== 'Enter' && e.key !== ' ')) return;
-      e.preventDefault();
-      open(row);
-    };
-  });
+/* The sub-task list, drawn by React (SubRows in kanban/ui/DrawerFields.tsx).
+   A row opens that sub-task in the second panel. The tick, the grip, the
+   delete button, a link in the text and a step being typed into each keep
+   their own click. Mounted in a read-only tab as well, since looking at a
+   sub-task changes nothing. A step with no id yet is given one on the click,
+   so every row opens the same way; only a read-only tab, which cannot write
+   one, leaves such a row shut. */
+function mountSubRows(t, id, subs, ro){
+  const host = $('#f-subs-host');
+  if (!host) return;
+  const edit = subEdit && subEdit.task === id ? subEdit : null;
+  subEdit = null;
+  BoardUI.mountFlushed(host, BoardUI.h(BoardUI.SubRows, {
+    rows: subs.map(s => {
+      const sd = dueInfo(s.due);
+      return {
+        line: s.line, done: !!s.done, stableId: s.stableId || '', opens: !!s.stableId || !ro,
+        avatarHtml: agentAvatarHTML(s.to, 16), title: s.clean,
+        due: sd ? { label: sd.label, cls: sd.cls } : undefined,
+        hasNote: !!stepNoteText(t, s.line)
+      };
+    }),
+    locked: ro,
+    editLine: edit ? edit.line : null,
+    editText: edit && SUB_RE.exec(t.body[edit.line]) ? subEditText(SUB_RE.exec(t.body[edit.line])[3]) : '',
+    chain: true,
+    onOpen: row => {
+      let sid = row.stableId;
+      if (!sid) {
+        sid = ensureSubId(t, row.line);
+        if (!sid) return;
+        refreshView();
+      }
+      openDrawer(sid);
+    },
+    onToggle: (lineIdx, checked) => {
+      if (checked) {
+        const step = splitBody(t).steps.find(s => s.line === lineIdx);
+        const msg = blockedMessage(allItems(), (step ? step.blockedBy : []).concat(t.blockedBy || []));
+        if (msg) { showToast(msg, 'blocked'); openDrawer(id); return; }
+      }
+      toggleSub(t, lineIdx); refreshView(); openDrawer(id);
+    },
+    onDelete: lineIdx => {
+      const m = SUB_RE.exec(t.body[lineIdx]);
+      const label = m ? stripTags(m[3]).replace(/\s+/g, ' ').trim() : 'this step';
+      if (!confirm('Delete "' + label + '"? This removes it from todo.md when you save.')) return;
+      removeSubLine(t, lineIdx);
+      refreshView(); openDrawer(id);
+    },
+    onMove: (from, to) => { moveSub(t, from, to); refreshView(); openDrawer(id); },
+    /* Clearing the text and leaving removes the step, so there is no separate
+       delete control to add just for this. Enter on a non-empty step in a run
+       commits it and opens the next, so a list of five is five lines and four
+       Enters rather than five trips to the Add button. */
+    onEditDone: (lineIdx, text, save, more) => {
+      if (save) {
+        const val = text.trim();
+        if (val) setSubText(t, lineIdx, val); else removeSubLine(t, lineIdx);
+      }
+      if (more) { addStepAndEdit(t, id); return; }
+      refreshView(); openDrawer(id);
+    },
+    /* subDrag is the timeline's own flag (18-timeline.js) that a sub-step drag
+       is live somewhere on the page, so its board drop zone knows to ignore it
+       rather than read it as a card. */
+    onDragState: live => { subDrag = live ? 0 : null; }
+  }));
 }
 
 function openDrawer(id, focusTitle){
@@ -1340,6 +1143,26 @@ function openDrawer(id, focusTitle){
     : 'Changes save automatically';
   help.title = help.textContent;
 
+  /* The Bucket field: moving to another keeps the column the task is in. The
+     task is looked up fresh from state.openTask rather than closed over, since
+     the panel can be rebuilt between drawing the field and picking from it. */
+  PICK_SPECS['f-bucket'] = {
+    value: loc.bucket.name, ro, label: 'Bucket',
+    options: state.doc.buckets.map((b, i) => ({ value: b.name, label: b.name, dot: bucketColor(b.name, i) })),
+    onPick: name => {
+      const id = state.openTask;
+      const cur = id && locate(id);
+      const nb = cur && state.doc.buckets.find(b => b.name === name);
+      if (!cur || !nb || nb === cur.bucket) return;
+      const target = ensureTier(nb, cur.tier.name);
+      cur.tier.tasks.splice(cur.index, 1);
+      target.tasks.push(cur.task);
+      // The filter stays put rather than following the task to its new bucket
+      // — moving a card out of the one you're looking at should look like
+      // moving it out, the same as any other edit that drops a task from view.
+      markDirty(); refreshView(); openDrawer(id);
+    }
+  };
   const mainFields =
     '<label class="field"><span>Title</span><input type="text" id="f-title" value="' + esc(t.title) + '"' + dis + '></label>' +
     '<details class="field" data-collapse="notes"' + (sectionCollapsed('notes') ? '' : ' open') + '>' +
@@ -1365,29 +1188,12 @@ function openDrawer(id, focusTitle){
       '<div id="f-body-view" class="repdoc noteview"' + (ro ? '' : ' title="Click to edit"') + '></div>' +
       '<div id="f-body-mount"></div>' +
     '</details>' +
-    tagsSection(t) +
-    /* A custom dropdown rather than a native <select> — an <option> cannot
-       carry the coloured dot the bucket filter pills at the top of the board
-       already draw (see bucketColor()/BUCKET_COLOR in 02-state.js), and this
-       is the one field on the whole card where "which bucket" is exactly the
-       thing that colour already stands for everywhere else. Reuses the
-       header's own .dropdown/.dropdown-panel/.dropdown-item — same
-       toggle-button-plus-popover shape the Data menu already uses — rather
-       than inventing a second popover component. */
-    '<div class="field"><span>Bucket</span>' +
-      '<div class="dropdown bucketfield">' +
-        '<button type="button" class="bucketbtn" id="f-bucket-btn"' + dis + '>' +
-          '<i class="dot" style="background:' + bucketColor(loc.bucket.name, state.doc.buckets.indexOf(loc.bucket)) + '"></i>' +
-          esc(loc.bucket.name) +
-        '</button>' +
-        (ro ? '' : '<div class="dropdown-panel bucketmenu hidden" id="f-bucket-menu" role="menu" aria-label="Choose a bucket">' +
-          state.doc.buckets.map((b, i) => '<button type="button" class="dropdown-item bucketopt' +
-            (b === loc.bucket ? ' on' : '') + '" role="menuitem" data-bucket="' + esc(b.name) + '">' +
-            '<i class="dot" style="background:' + bucketColor(b.name, i) + '"></i>' + esc(b.name) +
-          '</button>').join('') +
-        '</div>') +
-      '</div>' +
-    '</div>' +
+    /* Tenon's Dropdown rather than a native <select> — an <option> cannot carry
+       the coloured dot the bucket filter pills at the top of the board already
+       draw (see bucketColor()/BUCKET_COLOR in 02-state.js), and this is the
+       one field on the whole card where "which bucket" is exactly the thing
+       that colour already stands for everywhere else. */
+    '<div class="field"><span>Bucket</span><div data-pick-host="f-bucket"></div></div>' +
     /* Only when the bucket has declared themes, or the task already carries
        one the bucket no longer does (see themeSelectHTML above) — most
        buckets have none, and a field offering an empty dropdown on every
@@ -1395,6 +1201,7 @@ function openDrawer(id, focusTitle){
     (bucketThemes.length || t.theme
       ? '<div class="field"><span>Theme</span>' + themeSelectHTML(t.theme, bucketThemes, dis) + '</div>'
       : '') +
+    '<details class="field dgroup" data-collapse="details"' + (sectionCollapsed('details') ? '' : ' open') + '><summary>Details</summary>' +
     /* Full width rather than sharing a grid2 with Bucket: a column name like
        "Reviewing" needs the room a slider half that wide wouldn't give
        its label, where the old <select> never had to fit the whole word next
@@ -1404,7 +1211,6 @@ function openDrawer(id, focusTitle){
       '<div class="field"><span>Impact</span>' + stepSliderHTML('f-impact', IMPACT_STOPS, t.impact, ro, 'Impact') + '</div>' +
       '<div class="field"><span>Effort</span>' + stepSliderHTML('f-effort', EFFORT_STOPS, t.effort, ro, 'Effort') + '</div>' +
     '</div>' +
-    '<div class="grid2">' +
       /* One question, one field: who does the work. Left on Nobody for
          anything he is doing himself, which is most of the list. A <select>
          cannot hold an image, so the avatar sits beside it instead — one span
@@ -1416,22 +1222,10 @@ function openDrawer(id, focusTitle){
           ? '<span class="help">The Plan agent plans it and stops. The Implement agent carries it out.</span>'
           : '') +
       '</div>' +
-    '</div>' +
     /* Two dates, because one was doing two jobs. "Can start" is when the work
        becomes possible; "Due" is when it has to be finished. Quick wins reads
        the first and ignores the second. */
-    '<div class="grid2">' +
-      '<div class="field"><span>Can start</span>' +
-        '<button type="button" class="dpbtn' + (parseDue(t.start) ? '' : ' empty') + '" id="f-start"' + dis + '>' +
-          esc(t.start ? dueLabel(t.start) : 'Any time') + '</button>' +
-      '</div>' +
-      '<div class="field"><span>Due</span>' +
-        '<button type="button" class="dpbtn' + (parseDue(t.due) ? '' : ' empty') + '" id="f-due"' + dis + '>' +
-          esc(dueLabel(t.due)) + '</button>' +
-      '</div>' +
-    '</div>' +
-    '<div class="cal hidden" id="f-cal-start"></div>' +
-    '<div class="cal hidden" id="f-cal-due"></div>' +
+    '<div id="f-dates"></div>' +
     /* Read-only — the `repeat:` tag is set by the pa skill, never typed into
        the drawer — so this is the same reading the card's own "Recurring" tag
        tooltip already does, just given room to say it in full. Sits right
@@ -1455,40 +1249,15 @@ function openDrawer(id, focusTitle){
     '<div class="field"><span>Flags</span>' +
       '<label class="toggle"><input type="checkbox" id="f-urgent"' + (t.urgent ? ' checked' : '') + dis + '> urgent</label>' +
     '</div>' +
+    tagsSection(t) +
+    '</details>' +
     '<div class="field"><span class="fieldhead">Subtasks' +
       (subs.length && !ro ? ' <em class="sublabel">drag to reorder, click to open</em>' : '') +
       (!ro && subs.some(s => !s.done)
         ? '<button type="button" class="btn outline small completeall" id="f-completeall">Complete all</button>'
         : '') +
       '</span>' +
-      '<div class="substeps" id="f-subs">' +
-      subs.map((s, i) => {
-        const sd = dueInfo(s.due);
-        /* The whole row opens the sub-task in its own panel, which is where its
-           title, note and everything else are edited. A step with no id yet is
-           given one on the click, so every row opens the same way; only a
-           read-only tab, which cannot write one, leaves such a row shut. */
-        const opens = !!s.stableId || !ro;
-        const hasNote = !!stepNoteText(t, s.line);
-        return '<div class="sub' + (s.done ? ' checked' : '') + (opens ? ' opens' : '') + '" data-tenon-reorder="' + i +
-            '" data-line="' + s.line + '"' + (s.stableId ? ' data-sub="' + esc(s.stableId) + '"' : '') +
-            (opens ? ' role="button" tabindex="0" title="Open this sub-task"' : '') + '>' +
-          (ro ? '' : BoardUI.dragHandleHTML()) +
-          '<input type="checkbox" data-line="' + s.line + '"' + (s.done ? ' checked' : '') + dis + '>' +
-          // A sub-task assigned to an agent gets the same face the card's own
-          // chip does; '' for one assigned to him or nobody.
-          agentAvatarHTML(s.to, 16) +
-          /* Rendered, like the Description above it and like the card titles
-             on the board. A subtask is one line, so this is mdInline rather
-             than the block renderer. */
-          '<span class="subtext" data-line="' + s.line + '">' + mdInline(s.clean) +
-          (sd ? '<em class="mini ' + sd.cls + '">' + esc(sd.label) + '</em>' : '') +
-          (hasNote ? '<em class="subnotemark" title="Has a note">note</em>' : '') + '</span>' +
-          (ro ? '' : '<button type="button" class="subdel" data-line="' + s.line + '" title="Delete this subtask">×</button>') +
-          (opens ? '<span class="subchev" aria-hidden="true">›</span>' : '') +
-          '</div>';
-      }).join('') +
-      '</div>' +
+      '<div id="f-subs-host"></div>' +
       (ro ? '' : '<button type="button" class="btn dashed small addsub" id="f-addsub" title="Enter keeps adding, blank Enter stops">+ Add subtask</button>') +
     '</div>';
 
@@ -1547,7 +1316,12 @@ function openDrawer(id, focusTitle){
   if (proj) loadTaskProject(proj, t.id);
   loadTaskHistory(t);
   bindDependencySection(t);
-  wireSubRows(t);
+  mountSubRows(t, id, subs, ro);
+  mountStepFields($('#dbody'));
+  mountPickers($('#dbody'));
+  let pickDate = () => {};
+  mountDateFields('f-dates', 'f', ro, dateFieldModels(t.start, t.due), (k, v) => pickDate(k, v));
+  wireTagChips(t);
 
   // Every handler below changes the task, so none of them are wired up in a
   // backup preview — the fields are also disabled above, but this is what
@@ -1595,9 +1369,13 @@ function openDrawer(id, focusTitle){
   wireStepSlider('f-effort', EFFORT_STOPS, v => { t.effort = v; touch(); });
   $('#f-urgent').onchange = e => { t.urgent = e.target.checked; touch(); };
   hlBtn.onclick = () => { if (t.headline) clearHeadline(false); else setHeadline(id); };
-  wireDatePicker(t, touch, 'start');
-  wireDatePicker(t, touch, 'due');
-  wireTagChips(t);
+  pickDate = (k, v) => {
+    t[k] = v;
+    touch();
+    // The two dates constrain each other, so a change can make the other one
+    // wrong. Re-open so the warning appears or clears straight away.
+    openDrawer(state.openTask);
+  };
 
   /* Picking Done here ticks the task off, which moves it under the Done heading,
      and picking anything else unticks it into that column — exactly what
@@ -1618,49 +1396,6 @@ function openDrawer(id, focusTitle){
     }
     markDirty(); refreshView(); openDrawer(id);
   });
-  // Wiring for the button and its menu lives once, at module scope, near the
-  // other document-level delegated handlers at the bottom of this file — see
-  // the note there for why (this form is rebuilt on every openDrawer call,
-  // and a persistent ancestor would stack a new listener on every rebuild).
-  const subsEl = $('#f-subs');
-  if (subsEl) {
-    subsEl.querySelectorAll('input').forEach(cb => {
-      cb.onchange = () => {
-        const lineIdx = +cb.dataset.line;
-        if (cb.checked) {
-          const step = splitBody(t).steps.find(s => s.line === lineIdx);
-          const msg = blockedMessage(allItems(), (step ? step.blockedBy : []).concat(t.blockedBy || []));
-          if (msg) { showToast(msg, 'blocked'); openDrawer(id); return; }
-        }
-        toggleSub(t, lineIdx); refreshView(); openDrawer(id);
-      };
-    });
-    subsEl.querySelectorAll('.subdel').forEach(btn => {
-      btn.onclick = e => {
-        e.stopPropagation();
-        const lineIdx = +btn.dataset.line;
-        const m = SUB_RE.exec(t.body[lineIdx]);
-        const label = m ? stripTags(m[3]).replace(/\s+/g, ' ').trim() : 'this step';
-        if (!confirm('Delete "' + label + '"? This removes it from todo.md when you save.')) return;
-        removeSubLine(t, lineIdx);
-        refreshView(); openDrawer(id);
-      };
-    });
-    /* subDrag is the timeline's own flag (18-timeline.js) that a sub-step drag
-       is live somewhere on the page, so its board drop zone knows to ignore
-       it rather than read it as a card. bindReorder doesn't carry that, so it
-       is still set and cleared by hand around the drag it runs. */
-    BoardUI.bindReorder(subsEl, {
-      onMove: (key, beforeKey) => {
-        const from = +key;
-        const to = beforeKey == null ? subsEl.querySelectorAll('.sub').length : +beforeKey;
-        moveSub(t, from, to);
-        refreshView(); openDrawer(id);
-      }
-    });
-    subsEl.addEventListener('dragstart', () => { subDrag = 0; });
-    subsEl.addEventListener('dragend', () => { subDrag = null; });
-  }
   /* Ticks every open subtask in one click — the same blocked check each box
      makes on its own, applied per subtask rather than to the button as a
      whole, since some waiting on a blocker while the rest are free to close
@@ -1948,15 +1683,7 @@ function openSubtaskDrawer(found){
       field('impact', 'Impact', stepSliderHTML('s-impact', IMPACT_STOPS, inh.impact, ro, 'Impact')) +
       '<div class="field"><span>Effort</span>' + stepSliderHTML('s-effort', EFFORT_STOPS, f.effort, ro, 'Effort') + '</div>' +
     '</div>' +
-    '<div class="grid2">' +
-      '<div class="field"><span>Can start</span>' +
-        '<button type="button" class="dpbtn' + (parseDue(f.start) ? '' : ' empty') + '" id="s-start"' + dis + '>' +
-          esc(f.start ? dueLabel(f.start) : 'Any time') + '</button></div>' +
-      field('due', 'Due', '<button type="button" class="dpbtn' + (parseDue(inh.due) ? '' : ' empty') + '" id="s-due"' + dis + '>' +
-          esc(dueLabel(inh.due)) + '</button>') +
-    '</div>' +
-    '<div class="cal hidden" id="s-cal-start"></div>' +
-    '<div class="cal hidden" id="s-cal-due"></div>' +
+    '<div id="s-dates"></div>' +
     '<div class="field' + (took('urgent') || took('week') ? ' inherited' : '') + '"><span>Flags</span>' +
       '<label class="toggle"><input type="checkbox" id="s-urgent"' + (inh.urgent ? ' checked' : '') + dis + '> urgent</label>' +
       '<label class="toggle"><input type="checkbox" id="s-week"' + (inh.week ? ' checked' : '') + dis + '> this week</label>' +
@@ -2012,6 +1739,10 @@ function openSubtaskDrawer(found){
       : 'Here is the work done on "' + t.title + '". Go through what was produced with me before I decide.\n\n', null);
   }
 
+  mountStepFields($('#sbody'));
+  mountPickers($('#sbody'));
+  let pickSubDate = () => {};
+  mountDateFields('s-dates', 's', ro, dateFieldModels(f.start, inh.due, took('due')), (k, v) => pickSubDate(k, v));
   if (!ro) {
     /* One edit: read the line as it is now, change what changed, write it back.
        Read again every time, since another edit may have rewritten it. */
@@ -2053,14 +1784,13 @@ function openSubtaskDrawer(found){
     });
     wireStepSlider('s-impact', IMPACT_STOPS, v => { edit(cur => { cur.impact = v; }); again(); });
     wireStepSlider('s-effort', EFFORT_STOPS, v => { edit(cur => { cur.effort = v; }); again(); });
-    /* The date pickers read and write one field of whatever they are given, and
-       reopen the drawer by state.openTask, which is this sub-task's id. */
+    /* The date pickers write one field of whatever they are given, and reopen
+       the drawer by state.openTask, which is this sub-task's id. */
     const dates = {
       get start(){ return readSub(t, line).start; }, set start(v){ edit(cur => { cur.start = v; }); },
       get due(){ return inh.due; }, set due(v){ edit(cur => { cur.due = v; }); }
     };
-    wireDatePicker(dates, () => {}, 'start', 's');
-    wireDatePicker(dates, () => {}, 'due', 's');
+    pickSubDate = (k, v) => { dates[k] = v; openDrawer(state.openTask); };
     $('#s-urgent').onchange = e => { edit(cur => { cur.urgent = e.target.checked; }); again(); };
     $('#s-week').onchange = e => { edit(cur => { cur.week = e.target.checked; }); again(); };
     const note = $('#s-note');
@@ -2288,7 +2018,7 @@ async function loadProjectFiles(name){
    sized for the long ones pushed Bucket, Column and the dates below the fold
    on every task that wasn't. Expand is there for the long ones, and the
    field's own corner drags to anything in between. */
-const NOTE_H_KEY = 'todo-board-note-height';
+const NOTE_H_KEY = 'bench-note-height';
 const NOTE_H_MIN = 120;
 function noteHeight(){
   let n;
@@ -2311,15 +2041,21 @@ let bodyMountEl = null;
 let subNoteMountEl = null;
 let sendbackMountEl = null;
 
-const SECTION_KEY = 'todo-board-collapsed';
+const SECTION_KEY = 'bench-collapsed';
+// Sections that start shut. Missing from storage means open for every other
+// key, so these two states are stored explicitly: true shut, false open.
+const DEFAULT_CLOSED = { details: true };
 function sectionCollapsed(key){
-  try { return !!(JSON.parse(localStorage.getItem(SECTION_KEY) || '{}') || {})[key]; }
-  catch (e) { return false; }
+  try {
+    const v = (JSON.parse(localStorage.getItem(SECTION_KEY) || '{}') || {})[key];
+    return v === undefined ? !!DEFAULT_CLOSED[key] : !!v;
+  }
+  catch (e) { return !!DEFAULT_CLOSED[key]; }
 }
 function setSectionCollapsed(key, collapsed){
   let all;
   try { all = JSON.parse(localStorage.getItem(SECTION_KEY) || '{}') || {}; } catch (e) { all = {}; }
-  if (collapsed) all[key] = true; else delete all[key];
+  if (collapsed) all[key] = true; else if (DEFAULT_CLOSED[key]) all[key] = false; else delete all[key];
   try { localStorage.setItem(SECTION_KEY, JSON.stringify(all)); } catch (e) {}
 }
 /* Overview's own sections — Big rocks, This week, Quick wins, Delegate to
@@ -2328,7 +2064,7 @@ function setSectionCollapsed(key, collapsed){
    shut, per section, the same way the drawer's are. A separate key from the
    drawer's, so a section name the two happen to share cannot cross-wire
    their two different defaults. */
-const OVSECTION_KEY = 'todo-board-overview-closed';
+const OVSECTION_KEY = 'bench-overview-closed';
 function overviewOpen(key){
   try { return !((JSON.parse(localStorage.getItem(OVSECTION_KEY) || '{}') || {})[key]); }
   catch (e) { return true; }
@@ -2345,7 +2081,7 @@ function setOverviewOpen(key, open){
    two sub-steps under one task share the task's id and would otherwise
    dismiss each other. Persisted the same way the collapsed sections are, so
    it survives a reload rather than resetting every time the board opens. */
-const QUICK_DISMISS_KEY = 'todo-board-quick-dismissed';
+const QUICK_DISMISS_KEY = 'bench-quick-dismissed';
 function quickKey(it){ return it.id + (it.sub ? ':' + it.sub.line : ''); }
 function quickDismissedSet(){
   try { return new Set(JSON.parse(localStorage.getItem(QUICK_DISMISS_KEY) || '[]')); }
@@ -2383,7 +2119,7 @@ function applyDrawerWidth(){
 }
 function setDrawerWidth(px){
   state.drawerWidth = Math.round(Math.min(Math.max(px, 340), 1200));
-  try { localStorage.setItem('todo-board-drawer', state.drawerWidth); } catch (e) {}
+  try { localStorage.setItem('bench-drawer', state.drawerWidth); } catch (e) {}
   applyDrawerWidth();
 }
 applyDrawerWidth();
@@ -2425,95 +2161,6 @@ document.addEventListener('click', e => {
   openProjectDrawer(chip.dataset.project);
 }, true);
 
-/* The Bucket field's dropdown (see openDrawer, the "Bucket" field), one
-   delegated handler rather than binding the button and its options fresh on
-   every openDrawer call — #f-bucket-menu is rebuilt each time the drawer
-   redraws, so a listener attached directly to it or to any element that
-   survives the redraw would stack a copy on every open. Looking the task up
-   fresh here, from state.openTask, is what lets that be true safely. */
-/* The panel being open and the button's chevron pointing up are one state
-   with two elements holding it, so they are always set together — every path
-   below closes the menu, and a button left turned up after a click-away would
-   be pointing at a panel that is no longer there. */
-function setBucketMenu(open) {
-  const menu = $('#f-bucket-menu');
-  const btn = $('#f-bucket-btn');
-  if (menu) menu.classList.toggle('hidden', !open);
-  if (btn) btn.classList.toggle('open', open && !!menu);
-}
-document.addEventListener('click', e => {
-  const menu = $('#f-bucket-menu');
-  const btn = e.target.closest('#f-bucket-btn');
-  if (btn) {
-    if (menu) setBucketMenu(menu.classList.contains('hidden'));
-    return;
-  }
-  const opt = e.target.closest('#f-bucket-menu [data-bucket]');
-  if (opt) {
-    const id = state.openTask;
-    const loc = id && locate(id);
-    const nb = loc && state.doc.buckets.find(b => b.name === opt.dataset.bucket);
-    setBucketMenu(false);
-    if (!loc || !nb || nb === loc.bucket) return;
-    const target = ensureTier(nb, loc.tier.name);
-    loc.tier.tasks.splice(loc.index, 1);
-    target.tasks.push(loc.task);
-    // The filter stays put rather than following the task to its new bucket
-    // — moving a card out of the one you're looking at should look like
-    // moving it out, the same as any other edit that drops a task from view.
-    markDirty(); refreshView(); openDrawer(id);
-    return;
-  }
-  // Anywhere else closes it — the click-away a native <select> gets for free.
-  if (menu && !menu.classList.contains('hidden')) setBucketMenu(false);
-});
-/* The Delegate to and Assigned to dropdowns (delegateSelectHTML above), one
-   delegated handler for the same reason as the Bucket field's: the panel is
-   rebuilt on every redraw. A pick sets the hidden <select> and fires its own
-   onchange, which may redraw the drawer; if the field survives, its button
-   and ticks are brought up to date here. */
-function closeDelegateMenus(except){
-  document.querySelectorAll('[data-delegate-menu]').forEach(m => {
-    if (m === except) return;
-    m.classList.add('hidden');
-    const b = document.querySelector('[data-delegate-btn="' + m.dataset.delegateMenu + '"]');
-    if (b) b.classList.remove('open');
-  });
-}
-document.addEventListener('click', e => {
-  const btn = e.target.closest('[data-delegate-btn]');
-  if (btn) {
-    const menu = document.querySelector('[data-delegate-menu="' + btn.dataset.delegateBtn + '"]');
-    closeDelegateMenus(menu);
-    if (menu) {
-      const open = menu.classList.contains('hidden');
-      menu.classList.toggle('hidden', !open);
-      btn.classList.toggle('open', open);
-    }
-    return;
-  }
-  const opt = e.target.closest('[data-delegate-value]');
-  if (opt) {
-    const id = opt.closest('[data-delegate-menu]').dataset.delegateMenu;
-    const sel = document.getElementById(id);
-    closeDelegateMenus();
-    if (!sel || sel.value === opt.dataset.delegateValue) return;
-    sel.value = opt.dataset.delegateValue;
-    if (sel.onchange) sel.onchange({ target: sel });
-    const live = document.getElementById(id);
-    if (live === sel) {
-      const b = document.querySelector('[data-delegate-btn="' + id + '"]');
-      if (b) b.innerHTML = delegateBtnInner(sel.value);
-      document.querySelectorAll('[data-delegate-menu="' + id + '"] [data-delegate-value]').forEach(o => {
-        const on = o.dataset.delegateValue === sel.value;
-        o.classList.toggle('on', on);
-        o.setAttribute('aria-checked', String(on));
-      });
-    }
-    return;
-  }
-  closeDelegateMenus();
-});
 $('#del').onclick = () => {
   if (state.locked) return;
   const loc = state.openTask && locate(state.openTask);
@@ -2636,7 +2283,7 @@ function openBulkBucketPicker(){
   sel.onchange = () => { dest = options[+sel.value]; };
 }
 
-/* The bucket menu's own move (setBucketMenu's [data-bucket] handler, above)
+/* The Bucket field's own move (PICK_SPECS['f-bucket'] in openDrawer)
    looped once per selected task: splice out of where it is, ensureTier() the
    same column name in the new bucket, push it in. */
 function bulkMoveToColumn(tierName){
