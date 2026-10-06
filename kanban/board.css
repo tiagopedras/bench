@@ -722,6 +722,13 @@
     color:var(--tenon-text-faint); padding:2px 6px; border-radius:var(--tenon-radius-default);
   }
   .tlsort:hover{color:var(--tenon-text-default); background:var(--tenon-background-raised)}
+  /* Sits in the header's label cell, left of the resize handle. */
+  .tltoggleall{
+    margin-left:auto; margin-right:10px; flex:none; border:0; background:transparent; cursor:pointer;
+    font-weight:600; font-size: var(--tenon-typography-size-xs);
+    color:var(--tenon-text-faint); padding:2px 6px; border-radius:var(--tenon-radius-default);
+  }
+  .tltoggleall:hover{color:var(--tenon-text-default); background:var(--tenon-background-neutral)}
 
   .tlrow.tlheader{position:sticky; top:0; z-index:3; background:var(--tenon-background-raised)}
   .tlrow.tlheader .tllabel{background:var(--tenon-background-raised); position:relative}

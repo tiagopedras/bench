@@ -213,7 +213,7 @@ function timelineRowModel(row, scale, sub){
   // A step carries no colour of its own (see timelineTasks), and never has.
   return { id: row.id, title: row.title, sub: !!sub, draggable: drag,
            blocked: !!row.blocked, color: row.color, mark,
-           steps: (!sub && row.steps) ? row.steps.length : 0, expanded: !tlCollapsed.has(row.id) };
+           steps: (!sub && row.steps) ? row.steps.length : 0, expanded: tlExpanded.has(row.id) };
 }
 
 /* A lane: its tasks in order, each followed by its steps when expanded. */
@@ -222,7 +222,7 @@ function timelineLaneModel(bucket, rows, scale){
   const out = [];
   rows.forEach(row => {
     out.push(timelineRowModel(row, scale));
-    if (row.steps.length && !tlCollapsed.has(row.id)) {
+    if (row.steps.length && tlExpanded.has(row.id)) {
       row.steps.forEach(st => out.push(timelineRowModel(st, scale, true)));
     }
   });
@@ -274,8 +274,10 @@ function timelineSection(){
     const unranked = bucketRows.filter(r => r.tlrank == null);
     lanes.push(timelineLaneModel(bucket, ranked.concat(unranked), scale));
   });
+  const stepIds = rows.filter(r => r.steps.length).map(r => r.id);
   return {
     model: { scale: timelineScaleModel(scale), lanes,
+             hasSteps: stepIds.length > 0, allExpanded: stepIds.length > 0 && stepIds.every(id => tlExpanded.has(id)),
              legendColors: Array.from(byBucket.values()).map(bucketRows => bucketRows[0].color), tray },
     n: dated.length + undated.length,
   };
@@ -1238,11 +1240,18 @@ function renderFilterChips(){
 
 let dragId = null;
 let subDrag = null;
-/* Which timeline tasks are showing their steps. Not persisted — reparsing
-   mints fresh task ids (see resetUndo), so a stored id would stop matching
-   anything by the next reload anyway. Expanded by default, since a step is
-   scheduled the same way a task is; the chevron folds one task's away. */
-let tlCollapsed = new Set();
+/* Which timeline tasks the user has opened to show their steps. Every task
+   starts folded on each load. Not persisted — reparsing mints fresh task ids
+   (see resetUndo), so a stored id would stop matching anything by the next
+   reload anyway. The chevron opens one task; the header button opens or
+   folds all of them (see timelineStepIds). */
+let tlExpanded = new Set();
+
+/* Ids of every open task that has steps, for the header's show-all button. */
+function timelineStepIds(){
+  const { dated, undated } = timelineTasks();
+  return dated.concat(undated).filter(r => r.steps.length).map(r => r.id);
+}
 
 /* A line showing where the card will land. One element, moved around the board
    rather than one per gap, so there is never more than one target on screen.

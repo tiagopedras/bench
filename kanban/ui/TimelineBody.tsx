@@ -15,7 +15,7 @@
  * next task) and `bindReorder` already knows to skip them by selector.
  *
  * Class names and `data-*` attributes are what they were. `data-open`,
- * `data-tlsort` and `data-tltoggle` are read by the delegated click listener
+ * `data-tlsort`, `data-tltoggle` and `data-tltoggleall` are read by the delegated click listener
  * in kanban/js/25-archiving.js, `data-tlcollapse` by the toggle listener in
  * kanban/js/19-drawer.js, and `data-dayoffset` by `setTlLabelWidth()`, which
  * moves the gridlines during a resize without a render.
@@ -95,6 +95,9 @@ export interface TimelineModel {
    *  lane row with an empty track, so a scale to draw it against exists as
    *  long as anything open exists, dated or not. */
   scale: TimelineScale | null
+  /** Whether any task has steps, and whether every one of them is showing. */
+  hasSteps: boolean
+  allExpanded: boolean
   lanes: TimelineLane[]
   /** One per lane on screen, for the legend's striped bucket swatch. */
   legendColors: string[]
@@ -264,7 +267,9 @@ function Lane({ lane, scale, locked, h }: {
 /* Weekends, week lines and today's line are siblings of the rows rather than
    inside the header, so each spans every lane at once. Each non-sticky one
    carries its day offset for setTlLabelWidth() to reposition during a resize. */
-function Header({ scale, h }: { scale: TimelineScale, h: TimelineHandlers | null }) {
+function Header({ scale, h, hasSteps, allExpanded }: {
+  scale: TimelineScale, h: TimelineHandlers | null, hasSteps: boolean, allExpanded: boolean
+}) {
   const { dayPx, labelWidth, months, weeks, weekends, todayOffset, trackWidth } = scale
   return (
     <>
@@ -278,6 +283,12 @@ function Header({ scale, h }: { scale: TimelineScale, h: TimelineHandlers | null
               },
               onDoubleClick: () => h.onResizeReset(),
             } : {})} />
+          {hasSteps && (
+            <button type="button" className={'tltoggleall' + (allExpanded ? ' open' : '')} data-tltoggleall
+              title={allExpanded ? 'Hide all sub-tasks' : 'Show all sub-tasks'}>
+              {allExpanded ? 'Hide all sub-tasks' : 'Show all sub-tasks'}
+            </button>
+          )}
         </div>
         <div className="tltrack" style={{ width: trackWidth + 'px' }}>
           {months.map(m => (
@@ -358,7 +369,7 @@ function Tray({ cards, locked, h }: { cards: TimelineTrayCard[], locked: boolean
 
 export function TimelineBody({ model, locked, handlers: h }: TimelineBodyProps) {
   const body = useRef<HTMLDivElement>(null)
-  const { scale, lanes, legendColors, tray } = model
+  const { scale, lanes, legendColors, tray, hasSteps, allExpanded } = model
   if (!scale) return <ColumnEmpty>Nothing open on the list.</ColumnEmpty>
 
   const at = <E,>(fn: (e: E, b: HTMLElement) => void) => (e: E) => { if (body.current) fn(e, body.current) }
@@ -375,7 +386,7 @@ export function TimelineBody({ model, locked, handlers: h }: TimelineBodyProps) 
       <div className="tlscroll" {...scrollProps}>
         <div ref={body} className="tlbody" data-daypx={scale.dayPx}
           style={{ ['--tllabelw' as string]: scale.labelWidth + 'px', ['--tldaypx' as string]: scale.dayPx + 'px' } as CSSProperties}>
-          <Header scale={scale} h={h} />
+          <Header scale={scale} h={h} hasSteps={hasSteps} allExpanded={allExpanded} />
           {lanes.map(l => <Lane key={l.bucket} lane={l} scale={scale} locked={locked} h={h} />)}
         </div>
       </div>

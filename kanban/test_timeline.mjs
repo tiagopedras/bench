@@ -419,9 +419,25 @@ await evalJS(`(() => {
   ].join('\\n'), 'demo.md', {});
   state.view = 'timeline'; renderView();
 })()`)
-check('sub-tasks are drawn under their task without expanding it',
-  await evalJS(`document.querySelectorAll('.tlrow.tlsub').length`) === 3,
-  await evalJS(`document.querySelectorAll('.tlrow.tlsub').length`))
+const subCount = () => evalJS(`document.querySelectorAll('.tlrow.tlsub').length`)
+const settle = ms => new Promise(r => setTimeout(r, ms))
+check('a task with sub-tasks starts folded', await subCount() === 0, await subCount())
+await evalJS(`document.querySelector('.tlchevron[data-tltoggle]').click()`)
+await settle(50)
+check('the chevron opens that one task', await subCount() === 3, await subCount())
+await evalJS(`document.querySelector('.tlchevron[data-tltoggle]').click()`)
+await settle(50)
+check('the header button offers to show all sub-tasks', await evalJS(`document.querySelector('[data-tltoggleall]').title`) === 'Show all sub-tasks')
+await evalJS(`document.querySelector('[data-tltoggleall]').click()`)
+await settle(50)
+check('the header button opens every task', await subCount() === 3, await subCount())
+check('and then offers to hide them', await evalJS(`document.querySelector('[data-tltoggleall]').title`) === 'Hide all sub-tasks')
+await evalJS(`document.querySelector('[data-tltoggleall]').click()`)
+await settle(50)
+check('pressed again it folds every task', await subCount() === 0, await subCount())
+await evalJS(`document.querySelector('[data-tltoggleall]').click()`)
+await settle(50)
+check('sub-tasks are drawn under their task once opened', await subCount() === 3, await subCount())
 check("one with no date of its own shows the task's due", await evalJS(`(() => {
   const r = timelineTasks().dated[0].steps.find(s => s.id === 'sb0002');
   return !!r && r.due === '2026-09-20';
@@ -571,6 +587,8 @@ await evalJS(`(() => {
   state.view = 'timeline'; renderView();
 })()`)
 const parentId2 = await evalJS(`allItems().find(i => i.title === 'Undated parent' && !i.sub).id`)
+await evalJS(`document.querySelector('.tlchevron[data-tltoggle="${parentId2}"]').click()`)
+await settle(50)
 check('the undated parent gets a lane row, with an empty track', await evalJS(`(() => {
   const track = document.querySelector('.tlrow[data-tlreorder="${parentId2}"] .tltrack');
   return !!track && !track.querySelector('.tlbar') && !track.querySelector('.tlmilestone');

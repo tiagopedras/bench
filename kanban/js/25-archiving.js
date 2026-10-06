@@ -212,7 +212,15 @@ $('#lists').addEventListener('click', e => {
   const toggle = e.target.closest('[data-tltoggle]');
   if (toggle) {
     const id = toggle.dataset.tltoggle;
-    if (tlCollapsed.has(id)) tlCollapsed.delete(id); else tlCollapsed.add(id);
+    if (tlExpanded.has(id)) tlExpanded.delete(id); else tlExpanded.add(id);
+    renderView();
+    return;
+  }
+
+  const toggleAll = e.target.closest('[data-tltoggleall]');
+  if (toggleAll) {
+    const ids = timelineStepIds();
+    if (ids.every(id => tlExpanded.has(id))) tlExpanded.clear(); else ids.forEach(id => tlExpanded.add(id));
     renderView();
     return;
   }
