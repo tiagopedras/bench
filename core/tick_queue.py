@@ -35,11 +35,25 @@ and the board runs handOver() on it, as Delegate to would. It is applied only
 while the task's `[to::]` still names that agent, and does nothing to a task
 that has since been handed over.
 
+The third asks for a card to move column, and is the content board's alone:
+
+    {"id": "b2e4f6a8", "move": "0q3ym0", "column": "Reviewing",
+     "by": "Content strategist agent", "at": "2026-10-06T23:04:11",
+     "note": "draft written", "draft": "/Users/.../data/content/posts/2026-10-08-x.md"}
+
+`move` is the task's own id. The content strategist agent's evening run leaves
+one for each post it drafts, and the board moves the card to Reviewing and puts
+`- Draft: <path>` on it (drainMove() in kanban/js/10-reference-sections.js). The
+board applies it only on the `content` list, only from that agent and only to
+Reviewing: it is a way to say "this draft is ready", not a general way for an
+agent to rearrange a board.
+
 The file is appended to and removed from under a lock, and the board removes
 only the ids it dealt with rather than rewriting the list, so a request that
 lands while the board is draining is not written over.
 
     python3 core/tick_queue.py tick aa0001 --by "Plan agent" --note "plan written"
+    python3 core/tick_queue.py move 0q3ym0 --by "Content strategist agent" --draft <path> --dataset content
 """
 
 import argparse
@@ -146,6 +160,29 @@ def append_handover(task_id, to, by, note="", path=None, now=None):
     return entry
 
 
+def append_move(task_id, column, by, note="", draft="", path=None, now=None):
+    """Asks the board to move task `task_id` to `column`, on behalf of `by`.
+
+    `draft` is the absolute path of the file the card should link to. The board
+    decides whether to honour it; see the module's docstring for when it does."""
+    path = path or queue_path()
+    entry = {
+        "id": uuid.uuid4().hex[:8],
+        "move": str(task_id).strip().lower(),
+        "column": str(column).strip(),
+        "by": str(by).strip(),
+        "at": (now or dt.datetime.now()).replace(microsecond=0).isoformat(),
+        "note": note,
+    }
+    if draft:
+        entry["draft"] = str(draft)
+    with _Locked(path):
+        items = read(path)
+        items.append(entry)
+        _write(path, items)
+    return entry
+
+
 def remove(ids, path=None):
     """Takes the entries with these ids out, and nothing else."""
     path = path or queue_path()
@@ -159,15 +196,21 @@ def remove(ids, path=None):
 
 
 def main(argv):
-    ap = argparse.ArgumentParser(description="Ask the board to tick a sub-task.")
-    ap.add_argument("action", choices=["tick"])
-    ap.add_argument("sub", help="the six-character id on the sub-task's line")
+    ap = argparse.ArgumentParser(description="Ask the board to tick a sub-task, or move a card.")
+    ap.add_argument("action", choices=["tick", "move"])
+    ap.add_argument("sub", help="the six-character id on the sub-task's line, or the card's for move")
     ap.add_argument("--by", required=True, help='who is asking: "Plan agent" or "Implement agent"')
     ap.add_argument("--note", default="")
     ap.add_argument("--plan", default="", help="a plan just written, relative to the plans folder")
     ap.add_argument("--type", default="", help="the plan's type:, on the Plan agent's tick")
+    ap.add_argument("--column", default="Reviewing", help="where move sends the card")
+    ap.add_argument("--draft", default="", help="the draft move links the card to, by absolute path")
     ap.add_argument("--dataset")
     args = ap.parse_args(argv)
+    if args.action == "move":
+        entry = append_move(args.sub, args.column, args.by, args.note, args.draft, path=queue_path(args.dataset))
+        print("queued: move %s to %s by %s (%s)" % (entry["move"], entry["column"], entry["by"], entry["id"]))
+        return 0
     entry = append(args.sub, args.by, args.note, path=queue_path(args.dataset), plan=args.plan, kind=args.type)
     print("queued: tick %s by %s (%s)" % (entry["sub"], entry["by"], entry["id"]))
     return 0

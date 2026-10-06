@@ -1541,6 +1541,46 @@ function drainHandover(it){
   return handOver(t, who) ? 'handed' : 'cleared';
 }
 
+/* The third request: move a card to Reviewing, with a link to its draft. The
+   content strategist agent's evening run leaves one per post it writes
+   (AGENTS/content-strategist-agent/hooks.py), since it may not write todo.md
+   either. Narrow on purpose: only on the `content` list, only from that agent
+   and only into Reviewing, so it says "this draft is ready" and cannot be used
+   to rearrange a board. Anything else is refused and cleared. The draft goes on
+   the card as `- Draft: <path>`, replacing an older one, above any sub-tasks.
+   Returns 'wait' while the card is not in this list, then 'moved', 'linked'
+   (already in Reviewing, link added), 'refused' or 'cleared'. */
+const MOVE_DATASET = 'content';
+const MOVE_AGENT = 'Content strategist agent';
+function drainMove(it){
+  if (state.dataset !== MOVE_DATASET || String(it.by || '').trim() !== MOVE_AGENT ||
+      String(it.column || '').trim() !== WAIT_COL) return 'refused';
+  const want = String(it.move || '').trim().toLowerCase();
+  let t = null;
+  for (const b of state.doc.buckets)
+    for (const tier of b.tiers)
+      for (const x of tier.tasks) if (!t && x.stableId === want) t = x;
+  if (!t) return 'wait';
+  if (t.done) return 'cleared';
+  let linked = false;
+  const draft = String(it.draft || '').trim();
+  if (/^\/\S.*\.md$/.test(draft) && !t.body.some(l => l.trim() === '- Draft: ' + draft)) {
+    const line = '  - Draft: ' + draft;
+    const old = t.body.findIndex(l => /^ {2}- Draft:/.test(l));
+    const step = subSteps(t)[0];
+    if (old > -1) t.body[old] = line;
+    else t.body.splice(step ? step.line : t.body.length, 0, line);
+    linked = true;
+  }
+  const cur = locate(t.id);
+  if (cur && cur.tier.name !== WAIT_COL && cur.tier.name !== DONE_COL) {
+    cur.tier.tasks.splice(cur.index, 1);
+    ensureTier(cur.bucket, WAIT_COL).tasks.unshift(t);
+    return 'moved';
+  }
+  return linked ? 'linked' : 'cleared';
+}
+
 /* Drained on load, when the tab comes back into focus, and once when a run this
    tab started finishes (20-loading-saving.js), so a plan written by a run the
    board did not start still gets its `Plan:` line without a reload. One drain at
@@ -1562,7 +1602,7 @@ async function drainTickQueueOnce(){
   if (!Array.isArray(items) || !items.length) return;
 
   const dealt = [];
-  let ticked = 0, refused = 0, moved = 0, approved = 0, handed = 0;
+  let ticked = 0, refused = 0, moved = 0, approved = 0, handed = 0, drafts = 0;
   for (const it of items) {
     if (!it || !it.id) continue;
     if (it.handover) {
@@ -1570,6 +1610,14 @@ async function drainTickQueueOnce(){
       if (r === 'wait') continue;
       dealt.push(it.id);
       if (r === 'handed') handed++;
+      continue;
+    }
+    if (it.move) {
+      const r = drainMove(it);
+      if (r === 'wait') continue;
+      dealt.push(it.id);
+      if (r === 'moved' || r === 'linked') drafts++;
+      if (r === 'refused') refused++;
       continue;
     }
     const found = locateSub(String(it.sub || '').trim().toLowerCase());
@@ -1627,7 +1675,7 @@ async function drainTickQueueOnce(){
     }
   }
   if (!dealt.length) return;
-  if (ticked || handed) { markDirty(); refreshView(); }
+  if (ticked || handed || drafts) { markDirty(); refreshView(); }
   await postJSON('/tick-queue.json', { done: dealt }).catch(() => {});
   if (ticked || refused) {
     $('#status').textContent = (ticked
@@ -1641,6 +1689,11 @@ async function drainTickQueueOnce(){
     const was = ticked || refused ? $('#status').textContent + '; ' : '';
     $('#status').textContent = was + 'handed over ' + handed + ' task' + (handed === 1 ? '' : 's') +
       ' tagged to an agent with no handover — save to apply';
+  }
+  if (drafts) {
+    const was = ticked || refused || handed ? $('#status').textContent + '; ' : '';
+    $('#status').textContent = was + drafts + ' draft' + (drafts === 1 ? '' : 's') + ' ready, moved into ' +
+      WAIT_COL + ' — save to apply';
   }
 }
 
