@@ -788,6 +788,24 @@ they settled is written up in the README rather than left here:
 
 ## Big
 
+- **Nothing on the board shows which bucket an agent is working in; a
+  per-bucket thinking orb would, once it has a place to sit.** Each bucket would
+  get the thinking-orbs `solving` animation tinted with its own colour, which
+  `bucketColor()` in `kanban/js/02-state.js:335` already settles (one of the ten
+  Tenon chart swatches, `-600` in light mode and `-350` in dark). That function
+  returns a `var(--tenon-chart-N)` string while `ThinkingOrb`'s `color` prop
+  takes only hex or `rgb()`, so the colour has to be resolved through
+  `getComputedStyle` and re-read when the theme switches. thinking-orbs 0.3.2 is
+  already in bench's `package.json` for this. At 20px it reads best at density
+  0.65 and dot size 1.10, the values tuned for the chat's solving orb;
+  https://claude.ai/artifact/4pnZ6aQVsggSUs9fJQ5Bji shows all ten. The
+  placement is still undecided: column header, card, or the bucket picker
+  (`kanban/js/08-buckets.js:214`).
+  Build: Opus. Id `bucket-orbs`.
+  Files: `kanban/js/02-state.js`, `kanban/js/08-buckets.js`, `kanban/ui/TaskCard.tsx`.
+  Tests: `node kanban/ui/test_primitives.mjs`, `scripts/test-board.sh --all`.
+  Open: where does the orb sit? Default: on a card while an agent's sub-task on it is open.
+
 - **The PA never says which open tasks run on a process a bucket agent already
   knows, so help that exists goes unoffered until he thinks to ask.** Each
   bucket brief (`data/<dataset>/buckets/<stream>/<stream>.md`, found by
