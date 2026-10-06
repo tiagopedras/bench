@@ -15,15 +15,17 @@
    in a menu there was nothing on the page saying which one you were reading.
    ========================================================================= */
 
-/* The button reads "Data · twinkl ▾". A middot rather than brackets or a
-   colon, the same separator the reports use for a period, and the raw folder
-   name rather than anything prettified — that name is what data/.current
-   holds and what every path under data/ is spelt with, so a tidied-up version
-   here would be a second name for one folder. Falls back to a bare "Data ▾"
-   when the server has no /datasets.json to answer with, which is the board
-   behaving exactly as it did before lists existed. */
+/* The button reads "Work And Career ▾", with a plain "Data" label beside it in
+   the page. The name is tidied for display only: data/.current, the folder and
+   every request keep the raw name ("work-and-career"). Falls back to "Lists ▾"
+   when there is no name, which is the board behaving as it did before lists
+   existed. */
+function prettyDataset(name){
+  return String(name || '').replace(/[-_]+/g, ' ').trim()
+    .replace(/(^|\s)(\S)/g, (m, sp, ch) => sp + ch.toUpperCase());
+}
 function setDataMenuLabel(name){
-  $('#dataMenuBtn').textContent = name ? 'Data · ' + name + ' ▾' : 'Data ▾';
+  $('#dataMenuBtn').textContent = (name ? prettyDataset(name) : 'Lists') + ' \u25BE';
 }
 /* Every list is a row of its own under a "Lists" heading, rather than a name
    inside a closed <select>. A picker that has to be opened to say what it
@@ -36,9 +38,10 @@ function setDataMenuLabel(name){
 function datasetItemHTML(name, current){
   return '<button class="dropdown-item dsitem' + (current ? ' current' : '') + '"' +
     ' role="menuitem" data-dataset="' + esc(name) + '"' +
+    ' title="' + esc(name) + '"' +
     (current ? ' aria-current="true"' : '') + '>' +
     '<span class="dstick" aria-hidden="true">' + (current ? '\u2713' : '') + '</span>' +
-    esc(name) + '</button>';
+    esc(prettyDataset(name)) + '</button>';
 }
 
 async function loadDatasets(){

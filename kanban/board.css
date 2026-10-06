@@ -88,6 +88,7 @@
   .btn.dashed:hover{color:var(--tenon-text-default)}
   .btn.small{padding:4px 9px; font-size: var(--tenon-typography-size-sm); font-weight:560; border-radius:var(--tenon-radius-default)}
   .menugroup{display:inline-flex; align-items:center; gap:9px}
+  .menulabel{font-size:var(--tenon-typography-size-sm); color:var(--tenon-text-subtle); user-select:none}
   /* A themed cluster of header actions (Data: Undo, Download copy, Backups,
      Schedule, switch list) behind one button rather than five always-visible
      controls under a bare label — the row was crowded with no grouping to
