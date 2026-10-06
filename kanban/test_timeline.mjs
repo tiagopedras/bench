@@ -1,19 +1,18 @@
 #!/usr/bin/env node
 /* Timeline — the one section `renderSections('timeline')` draws: the lanes,
- * and the tray of undated tasks under them.
+ * including an empty row for each undated task.
  *
  *   python3 kanban/server.py &          # or BOARD_PORT=... at one already up
  *   node kanban/test_timeline.mjs
  *
  * Written 14 Sep 2026, alongside the port of the view's shell to
  * kanban/ui/SectionsView.tsx, and grown on 25 Sep 2026 when the body went the
- * same way: the lanes, bars, scale and tray are TimelineBody
+ * same way: the lanes, bars, scale and legend are TimelineBody
  * (kanban/ui/TimelineBody.tsx), drawn from the data timelineSection() returns,
  * with every drag handed to it as a prop.
  *
  * The drag checks drive every drag the view has, end to end: a row reorder, a
- * click and a drag on a bar, a handle resize, a click on an empty track, and a
- * tray card dropped on the scale. They went in against the string-built lanes
+ * click and a drag on a bar, a handle resize, and a click on an empty track. They went in against the string-built lanes
  * first, and the React port passed them unchanged.
  */
 import { spawn } from 'node:child_process'
@@ -87,8 +86,7 @@ await evalJS(`(() => {
     '- [ ] Dated two \`id:tl0003\` [bucket:: People] [impact:: low] [effort:: S] \`start:2026-09-15\` \`due:2026-09-17\`',
     // Both kept last so the reorder drag below, worked out against the
     // lane's first two rows, still lands on the two dated ones untouched by
-    // either one's arrival. Two undated ones: the first goes tray-to-scale
-    // (unchanged behaviour), the second gets clicked on its own row's track.
+    // either one's arrival. Two undated ones, the second gets clicked on its own row's track.
     '- [ ] Undated one \`id:tl0002\` [bucket:: People] [impact:: med] [effort:: S]',
     '- [ ] Undated two \`id:tl0004\` [bucket:: People] [impact:: med] [effort:: S]',
     ''
@@ -108,20 +106,15 @@ check('a hint with two tags renders both as code', await evalJS(`
 `) === 'start:|due:|due:|start:', await evalJS(`document.querySelector('.lists.tview .tenon-column__desc')?.innerHTML`))
 
 check('the dated task draws a lane', await evalJS(`!!document.querySelector('.tlscroll .tlbody')`))
-check('the undated one sits in the tray', (await evalJS(`
-  document.querySelector('.tltraycards .tltraycard')?.textContent
-`) || '').includes('Undated one'))
-
-/* The legend sits under the scale and above the tray — four swatches, and the
+/* The legend sits under the scale — four swatches, and the
    bucket one striped from the colours actually on screen rather than picking
    a lane's. */
-check('the legend is drawn below the scale, above the tray', await evalJS(`(() => {
+check('the legend is drawn below the scale', await evalJS(`(() => {
   const leg = document.querySelector('.tllegend');
   if (!leg) return false;
-  const scroll = document.querySelector('.tlscroll'), tray = document.querySelector('.tltray');
+  const scroll = document.querySelector('.tlscroll');
   const after = scroll.compareDocumentPosition(leg) & Node.DOCUMENT_POSITION_FOLLOWING;
-  const before = !tray || (leg.compareDocumentPosition(tray) & Node.DOCUMENT_POSITION_FOLLOWING);
-  return !!after && !!before && leg.querySelectorAll('.tlswatch').length === 4;
+  return !!after && leg.querySelectorAll('.tlswatch').length === 4;
 })()`))
 check('and its bucket swatch is striped from the lane colours', await evalJS(`
   document.querySelector('.tllegend .tlswatch').style.background.includes('linear-gradient')
@@ -135,24 +128,14 @@ await evalJS(`window.__handler = (el, name) => {
   const k = el && Object.keys(el).find(k => k.startsWith('__reactProps'));
   return !!k && typeof el[k][name] === 'function';
 }`)
-check('the tray card is draggable, with its drag handler on it', await evalJS(`
-  document.querySelector('.tltraycard').draggable && __handler(document.querySelector('.tltraycard'), 'onDragStart')
-`))
-check('and the scale itself takes the drop', await evalJS(`(() => {
-  const s = document.querySelector('.tlscroll');
-  return __handler(s, 'onDragOver') && __handler(s, 'onDrop');
-})()`))
-
 /* ---- switching away and back re-wires cleanly, not twice ---- */
 
 await evalJS(`state.view = 'board'; renderView(); state.view = 'timeline'; renderView()`)
-check('a second visit still finds a lane and a wired tray card, not a stale one', await evalJS(`(() => {
-  return !!document.querySelector('.tlscroll .tlbody') &&
-    __handler(document.querySelector('.tltraycard'), 'onDragStart');
-})()`))
+check('a second visit still finds a lane', await evalJS(`!!document.querySelector('.tlscroll .tlbody')`))
+check('and no tray', await evalJS(`!document.querySelector('.tltray, .tltraycard')`))
 
 /* ---- the drags themselves ----
-   Added 25 Sep 2026, before the lanes, bars and tray moved from one HTML
+   Added 25 Sep 2026, before the lanes and bars moved from one HTML
    string to React components, so that port had something to hold it to.
    The checks drive each drag the way a person would and read the result off
    the document, never off how a handler happens to be attached: a bar drag is
@@ -291,16 +274,12 @@ check('dragging a row label below the next row reorders the lane',
 
 /* An undated task gets a row of its own now too (the point of this change) —
    empty track, no bar or diamond — and clicking that track sets its due date
-   exactly the way a dated row’s already did just above. It sits in the tray
-   as well until then, the same undated task shown two ways at once. */
+   exactly the way a dated row’s already did just above. */
 {
   check('an undated task still gets a lane row, with an empty track', await evalJS(`(() => {
     const track = document.querySelector('.tlrow[data-tlreorder="${ID.un2}"] .tltrack');
     return !!track && !track.querySelector('.tlbar') && !track.querySelector('.tlmilestone');
   })()`))
-  check('and it is still in the tray at the same time', await evalJS(`
-    !!document.querySelector('.tltraycard[data-tlid="${ID.un2}"]')
-  `))
   const target = await dateAt(12)
   const p = await dayX(ID.un2, 12)
   check('the click lands on its own empty track', await evalJS(`document.elementFromPoint(${p.x}, ${p.y})?.classList.contains('tltrack')`) === true)
@@ -310,36 +289,24 @@ check('dragging a row label below the next row reorders the lane',
   const d = await taskDates(ID.un2)
   check('clicking an undated row’s track sets its due date, same as a dated row’s',
     d.due === target && d.start === null, JSON.stringify({ d, target }))
-  check('and it leaves the tray, same as a tray-to-scale drop would',
-    await evalJS(`!document.querySelector('.tltraycard[data-tlid="${ID.un2}"]')`))
   await evalJS(`closeDrawer()`)
 }
 
-/* Tray to scale: the undated card dropped on day 10 of the scale gets that
-   day as its due date and leaves the tray. */
+/* The other undated task is dated from its empty row on day 10, which the
+   diamond checks below rely on. */
 {
   const target = await dateAt(10)
-  await evalJS(`(async () => {
-    const card = document.querySelector('.tltraycard[data-tlid="${ID.un}"]');
-    const body = document.querySelector('.tlbody');
-    const c = card.getBoundingClientRect(), b = body.getBoundingClientRect();
-    const x = b.left + state.tlLabelWidth + 10.5 * TL_DAY_PX, y = b.top + 40;
-    __fire('dragstart', card, c.left + 5, c.top + 5);
-    await new Promise(res => setTimeout(res, 20));
-    __fire('dragover', body, x, y);
-    window.__targetShown = !!document.querySelector('.tlbody .tltarget');
-    __fire('drop', body, x, y);
-    __fire('dragend', card, x, y);
-  })()`)
-  check('dragging an undated card over the scale shows the target line', await evalJS(`window.__targetShown`))
+  const p = await dayX(ID.un, 10)
+  await mouse('mousePressed', p.x, p.y)
+  await mouse('mouseReleased', p.x, p.y)
+  await new Promise(r => setTimeout(r, 50))
   const d = await taskDates(ID.un)
-  check('dropping it on day 10 of the scale sets that day as its due date',
+  check('clicking the first undated row on day 10 gives it that due date',
     d.due === target && d.start === null, JSON.stringify({ d, target }))
-  check('and it leaves the tray for a lane', await evalJS(`
-    !document.querySelector('.tltraycard[data-tlid="${ID.un}"]') &&
+  check('and it draws a diamond in its lane', await evalJS(`
     !!document.querySelector('.tlrow[data-tlreorder="${ID.un}"] .tlmilestone')
   `))
-  check('and the target line is cleared', await evalJS(`!document.querySelector('.tltarget')`))
+  await evalJS(`closeDrawer()`)
 }
 
 /* A trail (a start, no due) has edges too. Its right edge sets the due date
@@ -629,11 +596,8 @@ await evalJS(`(() => {
 })()`)
 check('with nothing dated at all, timelineSection still returns a scale',
   await evalJS(`!!timelineSection().model.scale`))
-check('and the scale is drawn — a lane with an empty track, not just the tray',
+check('and the scale is drawn — a lane with an empty track',
   await evalJS(`!!document.querySelector('.tlscroll .tlbody .tltrack')`))
-check('the one task left is still in the tray as well',
-  await evalJS(`document.querySelectorAll('.tltraycard').length`) === 1)
-
 /* ---- the point of the guard ---- */
 
 check('the timeline wrote nothing, which is all it should ever do',

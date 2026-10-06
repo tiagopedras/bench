@@ -16,7 +16,7 @@
    on that date rather than a bar backed by a start date nobody set; a task
    with only `start:` draws as a bar out to today, since "started, no
    deadline yet" is still two real dates once today is one of them. A task
-   with neither sits in the tray below the lanes rather than being dropped.
+   with neither gets a lane row with an empty track, which dates it when clicked or dragged.
 
    A lane's vertical order is its own thing, not the tier order the board
    uses — a lane mixes tasks pulled from every tier, so there is no shared
@@ -82,8 +82,7 @@ function timelineTasks(){
                     span: (t.start || t.due) ? null : tlSpanOf(steps) };
       // Whether the task itself carries a date, or a step does — same test as
       // before, just no longer readable off steps.length now that a dateless
-      // step is kept too. This is what still decides the tray, not the lane:
-      // every row gets a lane row either way (see timelineSection).
+      // step is kept too. Every row gets a lane row either way (see timelineSection).
       const hasDate = !!(t.start || t.due) || steps.some(s => s.start || s.due);
       (hasDate ? dated : undated).push(row);
     }));
@@ -248,18 +247,15 @@ function timelineScaleModel(scale){
 /* Everything the Timeline's body draws, as data for TimelineBody. It was one
    HTML string until 25 Sep 2026. Every open top-level task gets a lane row
    now, dated or not — an undated one draws with an empty track, clickable
-   the same way a dated one's already was. It still sits in the tray too
-   (unchanged): the row and the tray card are two ways to give it a date, not
-   one replacing the other. `scale` is null only when nothing at all is open —
+   the same way a dated one's already was. `scale` is null only when nothing at all is open —
    dated.length === 0 no longer means that, since an undated row still needs
    a scale to draw its empty track against (see timelineScale, which floors
    to a window around today with nothing dated to measure). The count is
-   every open top-level task, dated or not: the tray is part of the column. */
+   every open top-level task, dated or not. */
 function timelineSection(){
   const { dated, undated } = timelineTasks();
-  const tray = undated.map(row => ({ id: row.id, title: row.title, color: row.color, bucket: row.bucket }));
   const rows = dated.concat(undated);
-  if (!rows.length) return { model: { scale: null, lanes: [], legendColors: [], tray }, n: 0 };
+  if (!rows.length) return { model: { scale: null, lanes: [], legendColors: [] }, n: 0 };
   const scale = timelineScale(dated);
   const byBucket = new Map();
   rows.forEach(row => {
@@ -278,7 +274,7 @@ function timelineSection(){
   return {
     model: { scale: timelineScaleModel(scale), lanes,
              hasSteps: stepIds.length > 0, allExpanded: stepIds.length > 0 && stepIds.every(id => tlExpanded.has(id)),
-             legendColors: Array.from(byBucket.values()).map(bucketRows => bucketRows[0].color), tray },
+             legendColors: Array.from(byBucket.values()).map(bucketRows => bucketRows[0].color) },
     n: dated.length + undated.length,
   };
 }
@@ -290,60 +286,19 @@ function tlDayAt(body, clientX){
   return { rect, scale, dayN: Math.floor((clientX - rect.left - state.tlLabelWidth) / scale.dayPx) };
 }
 
-/* Every drag the Timeline has, handed to TimelineBody as props. A locked tab
-   gets none of them: renderSections() passes null instead.
-
-   The tray's cards drag the same way every board card does, with the same
-   `dataTransfer`/`dragId` convention, but drop onto the scale instead of a
-   tier, and the drop sets a date instead of a column. */
+/* Every pointer interaction the Timeline has, handed to TimelineBody as props.
+   A locked tab gets none of them: renderSections() passes null instead. */
 const timelineHandlers = {
-  onTrayDragStart(e, id){
-    e.dataTransfer.setData('text/plain', id);
-    e.dataTransfer.effectAllowed = 'move';
-    dragId = id;
-    hideTlHoverLine();
-  },
-  onTrayDragEnd(){ dragId = null; hideTlTargetLine(); hideTlPopover(); },
-  // Same day math the drop uses, run on every dragover instead of only at
-  // drop, so the target line and the date popover track the pointer the
-  // whole way across the scale.
-  onScaleDragOver(e, body){
-    if (!dragId) return;
-    e.preventDefault();
-    const { scale, dayN } = tlDayAt(body, e.clientX);
-    showTlTargetLine(state.tlLabelWidth + (dayN + 0.5) * scale.dayPx);
-    showTlPopover(e.clientX, e.clientY, dueLabel(ymd(addDays(scale.min, dayN))));
-  },
-  onScaleDragLeave(e){
-    if (!e.currentTarget.contains(e.relatedTarget)) { hideTlTargetLine(); hideTlPopover(); }
-  },
-  // The hover guide and the tray's own drop-target line answer the same
-  // question, "which day is this", so only one is ever on screen: a real
-  // drag or an in-progress track click (tlTrackActive) suppresses this one.
+  // An in-progress drag or track click (tlTrackActive) suppresses the hover
+  // guide, since the mark being dragged already says which day it is.
   onScalePointerMove(e, body){
-    if (dragId || tlReorderId || tlTrackActive) { hideTlHoverLine(); return; }
+    if (tlReorderId || tlTrackActive) { hideTlHoverLine(); return; }
     const { rect, scale, dayN } = tlDayAt(body, e.clientX);
     const x = e.clientX - rect.left - state.tlLabelWidth;
     if (x < 0 || e.clientY < rect.top || dayN < 0 || dayN > scale.days) { hideTlHoverLine(); return; }
     showTlHoverLine(scale, dayN);
   },
   onScalePointerLeave(){ hideTlHoverLine(); },
-  onScaleDrop(e, body){
-    e.preventDefault();
-    hideTlTargetLine();
-    hideTlPopover();
-    const id = e.dataTransfer.getData('text/plain') || dragId;
-    // Cleared here as well as on dragend: the card leaves the tray in the
-    // render below, and a card no longer in the page never hears its dragend.
-    dragId = null;
-    const loc = id && locate(id);
-    if (!loc) return;
-    const { scale, dayN } = tlDayAt(body, e.clientX);
-    loc.task.due = ymd(addDays(scale.min, dayN));
-    loc.task.dirty = true;
-    markDirty();
-    refreshView();
-  },
   onMarkPointerDown(e, id, kind){ tlMarkPointerDown(e, id, kind); },
   onTrackPointerDown(e, id){ tlTrackPointerDown(e, id); },
   onResizePointerDown(e, scroll){ tlResizePointerDown(e, scroll); },
@@ -381,8 +336,7 @@ function sortTimelineLane(bucket){
    `bindReorder`, bound once per lane by the `Lane` component in
    kanban/ui/TimelineBody.tsx, so a task can only be reordered against others
    in the same bucket. `bindReorder` stops its own dragover and drop at the
-   lane, which is what keeps a row drop from reaching the scale's drop (the
-   undated tray's) and being read as a date instead of a reorder. This is
+   lane. This is
    what it calls with the lane's task ids in their new order.
 
    tlReorderId is still tracked by hand, for the hover line's guard above:
@@ -449,24 +403,6 @@ function showTlPopover(x, y, text){
   tlPopoverEl.classList.add('on');
 }
 function hideTlPopover(){ if (tlPopoverEl) tlPopoverEl.classList.remove('on'); }
-
-/* The vertical line shown while dragging an undated tray card across the
-   scale — same idea as .tltoday/.tlweekline (a sibling of the rows, spanning
-   every lane at once), but appended on demand rather than drawn by the
-   template, since it only exists for the length of one drag. Reused across
-   a drag's own dragover events rather than recreated on each one. */
-let tlTargetEl = null;
-function showTlTargetLine(left){
-  const body = $('.tlbody');
-  if (!body) return;
-  if (!tlTargetEl) {
-    tlTargetEl = document.createElement('div');
-    tlTargetEl.className = 'tltarget';
-    body.appendChild(tlTargetEl);
-  }
-  tlTargetEl.style.left = left + 'px';
-}
-function hideTlTargetLine(){ if (tlTargetEl) { tlTargetEl.remove(); tlTargetEl = null; } }
 
 /* Drag a bar or a milestone to reschedule the task it belongs to, straight
    from the chart — the Gantt exists to make "push this a week" a drag rather
@@ -814,11 +750,10 @@ function renderSections(viewId){
       dependencyChain: chainSection(items),
     }));
   } else if (viewId === 'timeline') {
-    // The hover line and a drag's target line are appended to .tlbody, not
-    // drawn by React, and React keeps the same .tlbody across renders, so
-    // take them down before this one rather than leave them where they were.
+    // The hover line is appended to .tlbody, not drawn by React, and React
+    // keeps the same .tlbody across renders, so take it down before this one
+    // rather than leave it where it was.
     hideTlHoverLine();
-    hideTlTargetLine();
     const tl = timelineSection();
     BoardUI.mountFlushed(host, BoardUI.TimelineView({ timeline: {
       body: BoardUI.h(BoardUI.TimelineBody, {

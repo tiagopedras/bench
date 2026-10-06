@@ -201,8 +201,8 @@ export function TimelineView({ timeline }: TimelineViewProps) {
         <Section title="Timeline"
           hint={<>Open top-level tasks as bars and milestones across their <code>start:</code>/
             <code>due:</code> dates, one lane per bucket. A <code>due:</code> with no{' '}
-            <code>start:</code> draws as a diamond rather than a guessed bar. Undated tasks sit in
-            the tray below — drag one onto the scale to give it a due date.</>}
+            <code>start:</code> draws as a diamond rather than a guessed bar. An undated task has an
+            empty row — click it to give it a due date.</>}
           body={timeline} />
       </div>
       <ListNote />

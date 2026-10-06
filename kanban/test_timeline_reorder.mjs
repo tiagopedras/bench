@@ -3,7 +3,7 @@
  * now drags through BoardUI.bindReorder (Tenon v0.9.0) rather than the
  * timeline's own dragstart/dragover/drop. What matters most here is the trap
  * the handover names: a row's drop must never bubble to .tlscroll's own
- * drop, wired for the undated tray, or it overwrites the dragged task's
+ * drop, or it overwrites the dragged task's
  * due date with whatever day sits under the pointer.
  *
  *   python3 kanban/server.py &          # or BOARD_PORT=... at one already up
@@ -126,7 +126,7 @@ try {
       return [title, { due: it.task.due, tlrank: it.task.tlrank }];
     }));
   })()`)
-  check('the trap: no row carries a due date rewritten by the tray’s own drop handler',
+  check('the trap: no row carries a due date rewritten by a scale drop',
     byTitle.Alpha.due === '2026-09-12' && byTitle.Beta.due === '2026-09-16' && byTitle.Gamma.due === '2026-09-20',
     JSON.stringify(byTitle))
 

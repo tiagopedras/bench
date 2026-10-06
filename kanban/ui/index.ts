@@ -67,7 +67,7 @@ export { MatrixBody } from './MatrixBody'
 export { TimelineBody } from './TimelineBody'
 export type {
   TimelineBodyProps, TimelineModel, TimelineLane, TimelineRow, TimelineMark, TimelineScale,
-  TimelineTrayCard, TimelineHandlers, TimelineDragKind,
+  TimelineHandlers, TimelineDragKind,
 } from './TimelineBody'
 export type { MatrixBodyProps, MatrixModel, MatrixCell, MatrixDot, MatrixRead } from './MatrixBody'
 export { TaskCard } from './TaskCard'

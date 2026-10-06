@@ -1,5 +1,5 @@
-/* The body of the Timeline's one column: the scale, one lane per bucket, the
- * legend under them and the tray of undated tasks.
+/* The body of the Timeline's one column: the scale, one lane per bucket,
+ * and the legend under them.
  *
  * It was `timelineSection()` returning one string, wired after the paint by
  * `wireTimelineDrag()` finding nodes by selector. `timelineSection()` in
@@ -21,8 +21,8 @@
  * moves the gridlines during a resize without a render.
  */
 import { useEffect, useRef } from 'react'
-import type { CSSProperties, DragEvent, PointerEvent } from 'react'
-import { Card, ColumnEmpty, bindReorder } from '@tiagopedras/tenon'
+import type { CSSProperties, PointerEvent } from 'react'
+import { ColumnEmpty, bindReorder } from '@tiagopedras/tenon'
 import { InlineMd } from './InlineMd'
 
 export type TimelineDragKind = 'move' | 'start' | 'due'
@@ -83,13 +83,6 @@ export interface TimelineScale {
   todayOffset: number
 }
 
-export interface TimelineTrayCard {
-  id: string
-  title: string
-  color: string
-  bucket: string
-}
-
 export interface TimelineModel {
   /** Null only when nothing at all is open — an undated task still gets a
    *  lane row with an empty track, so a scale to draw it against exists as
@@ -101,17 +94,11 @@ export interface TimelineModel {
   lanes: TimelineLane[]
   /** One per lane on screen, for the legend's striped bucket swatch. */
   legendColors: string[]
-  tray: TimelineTrayCard[]
 }
 
 /** Every drag the view has. The body is the `.tlbody` the pointer is over,
  *  since each handler measures days against it. */
 export interface TimelineHandlers {
-  onTrayDragStart: (e: DragEvent<HTMLElement>, id: string) => void
-  onTrayDragEnd: (e: DragEvent<HTMLElement>, id: string) => void
-  onScaleDragOver: (e: DragEvent<HTMLElement>, body: HTMLElement) => void
-  onScaleDragLeave: (e: DragEvent<HTMLElement>) => void
-  onScaleDrop: (e: DragEvent<HTMLElement>, body: HTMLElement) => void
   onScalePointerMove: (e: PointerEvent<HTMLElement>, body: HTMLElement) => void
   onScalePointerLeave: () => void
   onMarkPointerDown: (e: PointerEvent<HTMLElement>, id: string, kind: TimelineDragKind) => void
@@ -336,47 +323,13 @@ function Legend({ colors }: { colors: string[] }) {
   )
 }
 
-/* Undated open tasks, as the same mini-card the dependency chain draws.
-   Dragging one onto the scale sets its `due:`. */
-function Tray({ cards, locked, h }: { cards: TimelineTrayCard[], locked: boolean, h: TimelineHandlers | null }) {
-  if (!cards.length) return null
-  return (
-    <div className="tltray" id="tlTray">
-      <div className="tltrayhead">
-        <strong>{cards.length} with no date</strong>
-        <span>Drag one onto the scale to give it a due date.</span>
-      </div>
-      <div className="tltraycards">
-        {cards.map(c => (
-          /* The tooltip sits on a wrapper that draws nothing, since Card spends
-             its own `title` prop on the card's title (see ChainBody). */
-          <span key={c.id} title="Drag onto the scale, or click to open" style={{ display: 'contents' }}>
-            <Card as="div" className="chaincard tltraycard" style={bc(c.color)}
-              draggable={!locked} data-tlid={c.id} data-open={c.id}
-              {...(h ? {
-                onDragStart: (e: DragEvent<HTMLElement>) => h.onTrayDragStart(e, c.id),
-                onDragEnd: (e: DragEvent<HTMLElement>) => h.onTrayDragEnd(e, c.id),
-              } : {})}>
-              <span className="chaintitle"><InlineMd text={c.title} /></span>
-              <div className="chainwhere">{c.bucket}</div>
-            </Card>
-          </span>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 export function TimelineBody({ model, locked, handlers: h }: TimelineBodyProps) {
   const body = useRef<HTMLDivElement>(null)
-  const { scale, lanes, legendColors, tray, hasSteps, allExpanded } = model
+  const { scale, lanes, legendColors, hasSteps, allExpanded } = model
   if (!scale) return <ColumnEmpty>Nothing open on the list.</ColumnEmpty>
 
   const at = <E,>(fn: (e: E, b: HTMLElement) => void) => (e: E) => { if (body.current) fn(e, body.current) }
   const scrollProps = h ? {
-    onDragOver: at<DragEvent<HTMLElement>>(h.onScaleDragOver),
-    onDragLeave: (e: DragEvent<HTMLElement>) => h.onScaleDragLeave(e),
-    onDrop: at<DragEvent<HTMLElement>>(h.onScaleDrop),
     onPointerMove: at<PointerEvent<HTMLElement>>(h.onScalePointerMove),
     onPointerLeave: () => h.onScalePointerLeave(),
   } : {}
@@ -391,7 +344,6 @@ export function TimelineBody({ model, locked, handlers: h }: TimelineBodyProps) 
         </div>
       </div>
       <Legend colors={legendColors} />
-      <Tray cards={tray} locked={locked} h={h} />
-    </>
+          </>
   )
 }

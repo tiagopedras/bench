@@ -798,14 +798,6 @@
     letter-spacing:.03em; text-transform:uppercase; color:var(--tenon-text-faint); white-space:nowrap;
     pointer-events:none;
   }
-  /* Shown only while dragging an undated tray card across the scale — see
-     showTlTargetLine in 18-timeline.js. Dashed rather than solid so it never
-     reads as .tltoday at a glance. */
-  .tltarget{
-    position:absolute; top:0; bottom:0; width:0; z-index:1; pointer-events:none;
-    border-left:2px dashed var(--tenon-stroke-accent);
-  }
-
   .tlbar{
     position:absolute; top:8px; height:16px; border-radius:var(--tenon-radius-default); background:var(--bc);
     cursor:grab; opacity:.9;
@@ -867,8 +859,8 @@
   .tlmilestone.soon{background:var(--tenon-status-soon)}
   .tlsub .tlmilestone{top:7px; width:9px; height:9px; cursor:pointer; margin-left:calc((var(--tldaypx, 28px) - 9px) / 2)}
 
-  /* Under the scale and above the tray — the last thing read rather than a
-     header the eye has to pass on every visit. */
+  /* Under the scale — the last thing read rather than a header the eye has to
+     pass on every visit. */
   .tllegend{
     display:flex; flex-wrap:wrap; gap:6px 16px; align-items:center;
     margin-top:8px; font-size: var(--tenon-typography-size-sm); color:var(--tenon-text-faint);
@@ -878,14 +870,6 @@
   /* The same .55 the rows themselves fade to, so the swatch is the thing it
      describes rather than an approximation of it. */
   .tlswatch.dim{opacity:.55}
-  .tltray{margin-top:12px; padding:10px 11px; border:1px dashed var(--tenon-stroke-default); border-radius:var(--tenon-radius-md)}
-  .tltrayhead{display:flex; flex-wrap:wrap; gap:4px 8px; align-items:baseline; margin-bottom:8px}
-  .tltrayhead strong{font-size: var(--tenon-typography-size-sm); font-weight:700; color:var(--tenon-text-subtle)}
-  .tltrayhead span{font-size: var(--tenon-typography-size-sm); color:var(--tenon-text-faint)}
-  .tltraycards{display:flex; flex-wrap:wrap; gap:8px}
-  .tltraycard{width:auto; flex:none; max-width:220px; cursor:grab}
-  .tltraycard:active{cursor:grabbing}
-
   /* The live date readout while a bar or milestone is being dragged. Fixed to
      the viewport and follows the pointer — see showTlPopover. */
   .tlpopover{
