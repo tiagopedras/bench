@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Spinner } from '@tiagopedras/tenon'
 import type { MeetingRef, MessageRef, NightRun, PlanRef, Snapshot, TaskRef } from '../../shared/types.js'
 
 type SectionKey = 'plans' | 'overdue' | 'today' | 'messages'
@@ -369,7 +370,12 @@ export default function App(): React.JSX.Element {
   }
 
   if (!snapshot) {
-    return <div className="app loading">Reading the list…</div>
+    return (
+      <div className="app loading">
+        <Spinner size="lg" label="Reading the list" />
+        <span>Reading the list…</span>
+      </div>
+    )
   }
 
   const { digest } = snapshot

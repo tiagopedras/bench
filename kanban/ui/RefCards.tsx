@@ -15,7 +15,7 @@
  * unchanged; its comments moved with it.
  */
 import type { ReactNode } from 'react'
-import { Alert, Column, ColumnEmpty } from '@tiagopedras/tenon'
+import { Alert, Column, ColumnEmpty, Spinner } from '@tiagopedras/tenon'
 
 export interface UsageWindow {
   start: string
@@ -236,7 +236,7 @@ function UsageRow({ w, peak }: { w: UsageWindow, peak: number }) {
 }
 
 function UsageBody({ usage, days, ranges, onDays }: Pick<RefCardsProps, 'usage' | 'days' | 'ranges' | 'onDays'>) {
-  if (usage.kind === 'loading') return <>Loading…</>
+  if (usage.kind === 'loading') return <Spinner size="sm" label="Loading" />
   if (usage.kind === 'error') {
     return <Alert tone="error">Could not read the usage windows. {usage.message}</Alert>
   }
@@ -310,7 +310,7 @@ function JobRow({ j }: { j: ScheduleJob }) {
 }
 
 function ScheduleBody({ schedule }: { schedule: ScheduleState }) {
-  if (schedule.kind === 'loading') return <>Loading…</>
+  if (schedule.kind === 'loading') return <Spinner size="sm" label="Loading" />
   if (schedule.kind === 'stale') {
     return (
       <Alert tone="error" title="The board helper needs restarting.">

@@ -17,7 +17,7 @@
  * finds the button by them.
  */
 import type { ReactNode } from 'react'
-import { Alert, Column } from '@tiagopedras/tenon'
+import { Alert, Column, Spinner } from '@tiagopedras/tenon'
 
 export interface BackupFile {
   name: string
@@ -127,7 +127,7 @@ export function BackupsView(props: BackupsViewProps) {
       ? STALE_HELPER
       : <Alert tone="error" title="Could not read the backup list.">{error.detail}</Alert>
   } else if (weekly === null) {
-    body = 'Loading…'
+    body = <div className="loading-state"><Spinner size="md" label="Loading" /></div>
   } else {
     body = (
       <>

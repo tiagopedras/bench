@@ -13,6 +13,8 @@
 
 .app.loading {
   display: flex;
+  flex-direction: column;
+  gap: var(--tenon-dimension-150);
   align-items: center;
   justify-content: center;
   color: var(--tenon-text-faint);

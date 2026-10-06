@@ -38,7 +38,7 @@
  * `Markdown` draws them (InlineMd.tsx), since 26 Sep 2026.
  */
 import type { ReactNode } from 'react'
-import { Alert, Column } from '@tiagopedras/tenon'
+import { Alert, Column, Spinner } from '@tiagopedras/tenon'
 import { InlineMd } from './InlineMd'
 import {
   CompletedByCategory, RecentAccomplishments, WeeklyTrend,
@@ -178,7 +178,7 @@ export function WrittenReportsColumn(props: ReportsColumnsProps) {
       )
       : <Alert tone="error">Could not read the report list. {writtenError.detail}</Alert>
   } else if (written === null) {
-    body = 'Loading…'
+    body = <div className="loading-state"><Spinner size="md" label="Loading" /></div>
   } else if (!written.length) {
     body = (
       <div className="empty">

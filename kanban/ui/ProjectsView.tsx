@@ -25,7 +25,7 @@
  * instead of buried at the point of use.
  */
 import type { ReactNode } from 'react'
-import { Alert, Column, ColumnEmpty } from '@tiagopedras/tenon'
+import { Alert, Column, ColumnEmpty, Spinner } from '@tiagopedras/tenon'
 import { InlineMd } from './InlineMd'
 
 export interface ProjectSummary {
@@ -125,7 +125,7 @@ export function ProjectsView(props: ProjectsViewProps) {
       <Alert tone="error" title={error.title}>{error.detail}</Alert>
     )
   } else if (projects === null) {
-    body = 'Loading…'
+    body = <div className="loading-state"><Spinner size="md" label="Loading" /></div>
   } else if (!projects.length) {
     body = <div className="empty">Nothing under <code>data/projects/</code> yet.</div>
   } else {

@@ -2901,3 +2901,5 @@
     --tl-sub-9: var(--tenon-color-red-450);
     --tl-sub-10: var(--tenon-color-slate-450);
 }
+
+.loading-state{display:flex; justify-content:center; padding:var(--tenon-dimension-300) 0}
