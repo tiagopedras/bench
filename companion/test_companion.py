@@ -169,6 +169,34 @@ def test_notify_queue():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_content_queue_ignores_window():
+    """notifyQueue.ts, run under node: a content notice posts outside the
+    08:30-20:00 window, a twinkl one is held."""
+    import subprocess
+    tmp = tempfile.mkdtemp(prefix="drain-test-")
+    try:
+        for ds in ("twinkl", "content"):
+            os.makedirs(os.path.join(tmp, "data", ds))
+            path = os.path.join(tmp, "data", ds, "notify-queue.json")
+            notify.queue("T", "from " + ds, path=path)
+        script = (
+            "import {drainAll} from %r;"
+            "const got=[];"
+            "drainAll(%r,'twinkl',false,(t,b)=>got.push(b));"
+            "console.log(JSON.stringify(got));"
+        ) % (os.path.join(HERE, "src", "main", "notifyQueue.ts"), tmp)
+        out = subprocess.run(["node", "--input-type=module", "-e", script],
+                             capture_output=True, text=True)
+        check("outside the window only the content notice posts",
+              json.loads(out.stdout or "null"), ["from content"])
+        with open(os.path.join(tmp, "data", "twinkl", "notify-queue.json")) as fh:
+            check("the twinkl notice is held on its queue", len(json.load(fh)), 1)
+        with open(os.path.join(tmp, "data", "content", "notify-queue.json")) as fh:
+            check("the content queue is emptied", len(json.load(fh)), 0)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def test_json():
     """The shape the Electron companion polls once a tick — see digest.to_json.
 
@@ -278,6 +306,7 @@ def main():
     test_messages()
     test_digest_line()
     test_notify_queue()
+    test_content_queue_ignores_window()
     test_json()
     test_timed_meetings()
     test_meetings()

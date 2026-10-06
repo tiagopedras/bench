@@ -19,7 +19,7 @@ import type { Digest, Snapshot } from '../shared/types.js'
 import { runDigest } from './digest.js'
 import { planListing } from './plans.js'
 import { readNightRun } from './night.js'
-import { drainQueue } from './notifyQueue.js'
+import { drainAll } from './notifyQueue.js'
 import { readState, writeState, type CompanionState } from './state.js'
 import { readBucketColors } from './buckets.js'
 import { openBoard } from './boardUrl.js'
@@ -209,7 +209,7 @@ async function refresh(): Promise<void> {
   ])
   const now = new Date()
   const withinWindow = nowMinutes(now) >= minutesOf(NOTIFY_AT) && nowMinutes(now) <= minutesOf(NOTIFY_UNTIL)
-  drainQueue(ROOT, DATASET, withinWindow, postNotification)
+  drainAll(ROOT, DATASET, withinWindow, postNotification)
 
   snapshot = {
     digest,

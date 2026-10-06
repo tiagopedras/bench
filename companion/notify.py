@@ -35,6 +35,9 @@ What the companion will not do with what you queue, however loudly you ask:
   - Post outside 08:30 to 20:00. A line queued at 02:00 waits for the morning.
   - Post more than three at once.
 
+The one exception is the `content` list: its queue is drained on every tick
+with no time window, so a notice from the 11pm run shows at once.
+
 Weekends and public holidays are *not* excluded, unlike the morning briefing.
 That briefing is a scheduled interruption about a working day, so a Saturday
 rightly gets none; a queued line answers something that has just happened,
