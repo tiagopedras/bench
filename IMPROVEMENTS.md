@@ -18,6 +18,29 @@ needs a decision, a new tag, or a new piece of the board before it can be built.
 
 ## Small
 
+- **A sub-task with no start of its own draws from its task's start on the timeline, but its drawer says "Any time".** `timelineTasks()` sets each step's start to `laterOf(s.start, t.start)` (`kanban/js/18-timeline.js:79`), so a bar runs from the task's start to the step's own due. The sub-task drawer passes only the step's own start to `dateFieldModels(f.start, inh.due, took('due'))` (`kanban/js/19-drawer.js:1745`), so Due carries the "From the task" hint and Can start, whose model at `:275` has no `inherited` flag, reads "Any time" with no hint. Drawer and bar disagree about when the step can start. Either `dateFieldModels()` gets an `inheritedStart` and shows the task's date faded, as Due does, or the timeline stops inheriting the start and draws a step with only a due as a milestone, the way a top-level task with only a due already draws.
+  Build: Sonnet. Id `subtask-start-inheritance`.
+  Files: `kanban/js/19-drawer.js`, `kanban/js/18-timeline.js`.
+  Tests: `scripts/test-board.sh test_drawer_fields.mjs timeline`.
+  Open: drawer hint or milestone on the timeline? Default: drawer hint, since the timeline already inherits the due date the same way and the drawer is the odd one out.
+
+- **The task panel's sub-task list shows only a tick, so a sub-task in Doing
+  reads the same as one not started.** Each sub-task already has a state, To
+  do, Doing or Done, which its own panel's State picker reads
+  (`SUB_STATES` and `now` at `kanban/js/19-drawer.js:1639`), but
+  `mountSubRows()` at `kanban/js/19-drawer.js:1001` passes `SubRows` only
+  `done`, so `SubRows` in `kanban/ui/DrawerFields.tsx:229` draws a tick and no
+  state. The change is a `state` field on the row model and a small tag after
+  the title, coloured from the same `SUB_STATES` tokens. A sub-task assigned
+  to an agent could show its run state instead (running, waiting for you,
+  failed), which `agentRunFor()` and `runState()` in
+  `kanban/js/28-agent-runs.js:48` and `:73` already work out for the card's
+  status line.
+  Build: Sonnet. Id `sub-status`.
+  Files: `kanban/js/19-drawer.js`, `kanban/ui/DrawerFields.tsx`, `kanban/board.css`.
+  Tests: `scripts/test-board.sh test_drawer_fields.mjs`.
+  Open: which states get a tag? Default: Doing, plus the run state on a sub-task assigned to an agent; To do and Done stay as the tick shows them.
+
 - **A task ticked into Done stays the one thing.** `setDone()` in
   `kanban/js/04-tier-two-the-one-thing.js:627` is the single way a tick changes,
   and it dates the tick, moves the card and ticks the sub-steps, but never
@@ -70,8 +93,12 @@ needs a decision, a new tag, or a new piece of the board before it can be built.
   Tests: `scripts/test-board.sh test_board.mjs`, then `node kanban/ui/test_primitives.mjs`.
   Open: fix it in Tenon's `Card.css` so every consumer gets it? Default: no, board only, since the 4px border is the board's own rule.
 
-- **The timeline folds one bucket lane and one task's sub-tasks at a time, so
-  getting a compact view of the whole plan takes a click per row.** Each lane
+- ~~**The timeline folds one bucket lane and one task's sub-tasks at a time, so
+  getting a compact view of the whole plan takes a click per row.**~~
+  **Done, 6 Oct 2026.** Every task now starts with its sub-tasks folded on each
+  load (`tlExpanded` replaced `tlCollapsed`), and one header button,
+  `data-tltoggleall`, shows or hides every task's sub-tasks. Not remembered
+  across reloads. The lane button was left out on purpose. Each lane
   is a `<details>` (`Lane()` in `kanban/ui/TimelineBody.tsx:243`) whose open
   state goes through `setSectionCollapsed()` under `data-tlcollapse`
   (`kanban/js/19-drawer.js:2355`, stored in `todo-board-collapsed`), and each
@@ -87,8 +114,10 @@ needs a decision, a new tag, or a new piece of the board before it can be built.
   Tests: `scripts/test-board.sh test_timeline.mjs test_timeline_reorder.mjs test_board.mjs`.
   Open: timeline only, or the board's columns too? Default: timeline only, since that is where sub-tasks draw as rows. Should the show/hide sub-tasks choice survive a reload? Default: yes, as one flag in localStorage rather than per-task ids, which change on every reparse.
 
-- **The timeline's No date tray lists tasks that already have a row in the
-  lanes above it, so every undated task shows twice.** Since undated tasks got
+- ~~**The timeline's No date tray lists tasks that already have a row in the
+  lanes above it, so every undated task shows twice.**~~
+  **Done, 6 Oct 2026.** Tray, its scale drop and its CSS removed; an undated
+  task is dated by clicking its empty row. Since undated tasks got
   their own empty lane rows, `timelineSection()`
   (`kanban/js/18-timeline.js:249`) feeds `undated` into both `rows` and
   `tray`, and its own comment calls them two ways to date the same task.
@@ -787,6 +816,24 @@ they settled is written up in the README rather than left here:
   frozen table, so the JavaScript third copy cannot drift either.
 
 ## Big
+
+- **The companion only exists inside bench, so nothing outside bench can put a
+  notification on screen without reaching into bench's folders.** The banner
+  channel is `companion/notify.py`, which writes to
+  `data/<dataset>/notify-queue.json` (`queue_path()`), and the Electron app drains
+  those files in `companion/src/main/notifyQueue.ts`. An agent under `~/Code/AGENTS/`
+  (the content strategist's evening run, from 6 Oct 2026) has to call bench's
+  script by absolute path and name a bench dataset to be heard. Moving it to its
+  own folder means a queue location that belongs to the companion rather than to
+  a board, `notify.py` moving with it, and every caller (`core/agent_runs.py`,
+  `agents/plan-agent/plan.py`) pointed at the new path; the board-specific
+  parts (the morning digest off `digest.py`, the plans view) stay bench's and
+  read through it. The cheap version, the companion draining the `content` queue
+  too, is being built first.
+  Build: Opus. Id `companion-standalone`.
+  Files: `companion/notify.py`, `companion/src/main/notifyQueue.ts`, `companion/src/main/index.ts`, `companion/digest.py`, `core/agent_runs.py`, `agents/plan-agent/paths.py`, `agents/plan-agent/plan.py`.
+  Tests: `python3 companion/test_companion.py`.
+  Open: where does it live? Default: `~/Code/companion/`, its own repo, since it is an app and `PACKAGES/` holds no apps.
 
 - **Nothing on the board shows which bucket an agent is working in; a
   per-bucket thinking orb would, once it has a place to sit.** Each bucket would

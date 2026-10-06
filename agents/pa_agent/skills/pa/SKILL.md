@@ -23,6 +23,8 @@ That means two things for you. Apply what you are handed rather than re-opening 
 
 **Another skill handed over.** `pa-checkin`, `pa-retrieve-tasks`, `pa-checkout`, `pa-focus`, `pa-review-plans` and `pa-mobile` all end by passing you a set of changes he has already agreed to. They arrive as a list: the task, what changes, and anything the other skill knows that you cannot see from the file, a provenance line for a meeting action for example. Apply them, run the checker, report once at the end rather than per change.
 
+**The content strategist agent asked, on the `content` board.** Added 6 Oct 2026. `content-strategist-agent` runs `data/content/todo.md` and decides what moves on it. On that dataset only, apply its changes without asking him first, including moving cards into Doing and Reviewing, which the conventions otherwise reserve for him. Don't open by confirming the board either. Report the batch in one line and tell him to Reload. Everywhere else, including any other dataset that agent names, the normal rules hold.
+
 When something in a handover cannot be expressed in the conventions, say so rather than inventing a form for it. A tag nobody else reads is worse than a note in the report.
 
 ## From a board chat
