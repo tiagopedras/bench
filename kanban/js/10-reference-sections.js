@@ -822,6 +822,7 @@ function makeChatWin(newFor, o){
   let paWaiting = null;
   inst = AIChat.create({
     windowed: true,
+    thinkingOrbs: true,
     dockable: true,
     pinned: !!(o && o.pinned),
     ownerLabel: chatOwnerLabel,
@@ -881,6 +882,7 @@ function chatOwnerLabel(taskId){
 
 const hub = (typeof AIChat !== 'undefined') ? AIChat.create({
   windowed: true,
+  thinkingOrbs: true,
   ownerLabel: chatOwnerLabel,
   // Worth explaining once, on the button that starts a chat, not on every
   // task's Chats section — see the Ask Claude / New chat tooltips.
