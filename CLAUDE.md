@@ -36,8 +36,7 @@ his voice, kept short.
 ## The desktop companion
 
 `companion/` is the menu bar app that notifies once each working morning. It
-reads `data/twinkl/todo.md` and never writes to it — a second writer is exactly
-what the board's autosave cannot survive. Format knowledge lives in
+watches one list, picked from the List submenu in its tray menu (personal, work-and-career, twinkl; personal by default), saved in data/companion-list.json and independent of data/.current. Format knowledge lives in
 `core/todo.py`, not the companion, and so does the working calendar (generates
 UK and Portuguese public holidays; both count as days off by default). Run
 `python3 core/test_todo.py --online` after touching calendar rules — it checks
