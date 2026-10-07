@@ -204,10 +204,14 @@ function drawTray(d: Digest): void {
 }
 
 async function refresh(): Promise<void> {
+  const list = dataset
   const [digest, plans] = await Promise.all([
-    runDigest(COMPANION_DIR, dataset),
-    Promise.resolve(planListing(ROOT, dataset))
+    runDigest(COMPANION_DIR, list),
+    Promise.resolve(planListing(ROOT, list))
   ])
+  // The list was switched while the digest ran; that switch started its own
+  // refresh, and this one's answer belongs to the old list.
+  if (dataset !== list) return
   const now = new Date()
   const withinWindow = nowMinutes(now) >= minutesOf(NOTIFY_AT) && nowMinutes(now) <= minutesOf(NOTIFY_UNTIL)
   drainAll(ROOT, dataset, withinWindow, postNotification)
@@ -354,6 +358,7 @@ function registerIpc(): void {
 async function runOneShot(argv: string[]): Promise<void> {
   app.dock?.hide()
   await app.whenReady()
+  dataset = readList(ROOT)
   const digest = await runDigest(COMPANION_DIR, dataset)
 
   if (argv.includes('--notify-test')) {
