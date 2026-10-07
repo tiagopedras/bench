@@ -37,9 +37,9 @@ function errorDigest(message: string): Digest {
   }
 }
 
-function tryOne(python: string, script: string): Promise<Digest | null> {
+function tryOne(python: string, script: string, list: string): Promise<Digest | null> {
   return new Promise((resolve) => {
-    execFile(python, [script, '--json'], { timeout: 15_000 }, (err, stdout) => {
+    execFile(python, [script, '--json', '--list', list], { timeout: 15_000 }, (err, stdout) => {
       if (err && !stdout) {
         resolve(null)
         return
@@ -55,11 +55,12 @@ function tryOne(python: string, script: string): Promise<Digest | null> {
 }
 
 /** `companionDir` is companion/ — where digest.py lives, whatever this app's
-    own build output sits under. */
-export async function runDigest(companionDir: string): Promise<Digest> {
+    own build output sits under. `list` is the dataset to read, passed to
+    digest.py as --list. */
+export async function runDigest(companionDir: string, list: string): Promise<Digest> {
   const script = path.join(companionDir, 'digest.py')
   for (const python of CANDIDATES) {
-    const result = await tryOne(python, script)
+    const result = await tryOne(python, script, list)
     if (result) return result
   }
   return errorDigest('no Python on this machine could run digest.py')

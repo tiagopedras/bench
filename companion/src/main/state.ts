@@ -39,3 +39,32 @@ export function writeState(root: string, dataset: string, state: CompanionState)
     // best effort
   }
 }
+
+/** The lists the companion can watch, in menu order. The first is the default
+    when nothing is saved. Kept in step with LISTS in companion/digest.py. */
+export const LISTS = ['personal', 'work-and-career', 'twinkl'] as const
+export type ListName = (typeof LISTS)[number]
+
+/** The companion's own choice, deliberately not data/.current, which is the
+    board dropdown's pointer. */
+export function listPath(root: string): string {
+  return path.join(root, 'data', 'companion-list.json')
+}
+
+export function readList(root: string): ListName {
+  try {
+    const saved = (JSON.parse(fs.readFileSync(listPath(root), 'utf8')) as { list?: string }).list
+    return LISTS.find((name) => name === saved) ?? LISTS[0]
+  } catch {
+    return LISTS[0]
+  }
+}
+
+export function writeList(root: string, list: ListName): void {
+  try {
+    fs.mkdirSync(path.dirname(listPath(root)), { recursive: true })
+    fs.writeFileSync(listPath(root), JSON.stringify({ list }, null, 2))
+  } catch {
+    // best effort
+  }
+}

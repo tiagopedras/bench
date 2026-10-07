@@ -294,10 +294,30 @@ def test_read_dismissed():
     tmp = tempfile.mkdtemp(prefix="companion-state-")
     try:
         check("no state file yet", digest.read_dismissed(tmp), set())
-        os.makedirs(os.path.join(tmp, "data", digest.DATASET))
+        os.makedirs(os.path.join(tmp, "data", digest.DEFAULT_LIST))
         with open(digest.companion_state_path(tmp), "w", encoding="utf-8") as fh:
             json.dump({"dismissed": ["a", "b"]}, fh)
         check("reads what is there", digest.read_dismissed(tmp), {"a", "b"})
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_chosen_list():
+    tmp = tempfile.mkdtemp(prefix="companion-list-")
+    try:
+        os.makedirs(os.path.join(tmp, "data"))
+        check("nothing saved is personal", digest.chosen_list(tmp), "personal")
+        saved = os.path.join(tmp, "data", "companion-list.json")
+        with open(saved, "w", encoding="utf-8") as fh:
+            json.dump({"list": "work-and-career"}, fh)
+        check("the file is read", digest.chosen_list(tmp), "work-and-career")
+        check("the argument wins", digest.chosen_list(tmp, "twinkl"), "twinkl")
+        check("an unknown argument is ignored", digest.chosen_list(tmp, "nope"), "work-and-career")
+        with open(saved, "w", encoding="utf-8") as fh:
+            fh.write("not json")
+        check("a broken file is personal", digest.chosen_list(tmp), "personal")
+        check("todo.md follows the list", digest.todo_path(tmp, "twinkl"),
+              os.path.join(tmp, "data", "twinkl", "todo.md"))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -312,6 +332,7 @@ def main():
     test_meetings()
     test_task_key()
     test_read_dismissed()
+    test_chosen_list()
     if FAILED:
         print("%d failed\n" % len(FAILED))
         for f in FAILED:

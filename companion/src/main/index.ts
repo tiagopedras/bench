@@ -20,7 +20,7 @@ import { runDigest } from './digest.js'
 import { planListing } from './plans.js'
 import { readNightRun } from './night.js'
 import { drainAll } from './notifyQueue.js'
-import { readState, writeState, type CompanionState } from './state.js'
+import { LISTS, readList, readState, writeList, writeState, type CompanionState, type ListName } from './state.js'
 import { readBucketColors } from './buckets.js'
 import { openBoard } from './boardUrl.js'
 
@@ -51,7 +51,6 @@ const ROOT = findRepoRoot()
 // packaged, frozen .app.
 const COMPANION_DIR = path.join(ROOT, 'companion')
 
-const DATASET = 'twinkl'
 const TICK_MS = 60_000
 // The morning notification fires at the first tick at or after this, on a
 // working day, and not after this — same window as app.py's NOTIFY_AT /
@@ -74,6 +73,8 @@ function log(message: string): void {
 
 let tray: Tray | null = null
 let window_: BrowserWindow | null = null
+// Which list this watches; the tray's List menu moves it. Read again at start.
+let dataset: ListName = 'personal'
 let state: CompanionState = {}
 let snapshot: Snapshot | null = null
 let quitting = false
@@ -146,7 +147,7 @@ function send(d: Digest): void {
   const now = new Date()
   state.notified = now.toISOString().slice(0, 10)
   state.notified_at = new Intl.DateTimeFormat('en-GB', { hour: 'numeric', minute: '2-digit' }).format(now)
-  writeState(ROOT, DATASET, state)
+  writeState(ROOT, dataset, state)
 }
 
 function maybeNotify(d: Digest): void {
@@ -187,7 +188,7 @@ function maybeFireMeetings(d: Digest): void {
     // Capped the same way dismissed is — far more than are ever live at
     // once, so the oldest dropping off costs nothing.
     state.meetingsFired = fired.slice(-200)
-    writeState(ROOT, DATASET, state)
+    writeState(ROOT, dataset, state)
   }
 }
 
@@ -204,19 +205,19 @@ function drawTray(d: Digest): void {
 
 async function refresh(): Promise<void> {
   const [digest, plans] = await Promise.all([
-    runDigest(COMPANION_DIR),
-    Promise.resolve(planListing(ROOT, DATASET))
+    runDigest(COMPANION_DIR, dataset),
+    Promise.resolve(planListing(ROOT, dataset))
   ])
   const now = new Date()
   const withinWindow = nowMinutes(now) >= minutesOf(NOTIFY_AT) && nowMinutes(now) <= minutesOf(NOTIFY_UNTIL)
-  drainAll(ROOT, DATASET, withinWindow, postNotification)
+  drainAll(ROOT, dataset, withinWindow, postNotification)
 
   snapshot = {
     digest,
     plans,
-    night: readNightRun(ROOT, DATASET),
+    night: readNightRun(ROOT, dataset),
     statusLine: statusLine(digest, now),
-    bucketColors: readBucketColors(ROOT, DATASET)
+    bucketColors: readBucketColors(ROOT, dataset)
   }
   drawTray(digest)
   window_?.webContents.send('companion:snapshot', snapshot)
@@ -233,6 +234,14 @@ function toggleWindow(): void {
   }
 }
 
+function switchList(name: ListName): void {
+  if (name === dataset) return
+  dataset = name
+  writeList(ROOT, name)
+  state = readState(ROOT, name)
+  void refresh()
+}
+
 function createTray(): void {
   const image = nativeImage.createFromPath(path.join(COMPANION_DIR, 'resources', 'trayTemplate.png'))
   image.setTemplateImage(true)
@@ -243,6 +252,15 @@ function createTray(): void {
     const menu = Menu.buildFromTemplate([
       { label: 'Open the board', click: () => openBoard(ROOT) },
       { label: 'Check again', click: () => void refresh() },
+      {
+        label: 'List',
+        submenu: LISTS.map((name) => ({
+          label: name,
+          type: 'radio' as const,
+          checked: name === dataset,
+          click: () => switchList(name)
+        }))
+      },
       { type: 'separator' },
       {
         label: 'Quit',
@@ -322,7 +340,7 @@ function registerIpc(): void {
       // once, so the oldest dropping off only means a sent message
       // reappears once.
       state.dismissed = [...seen, key].slice(-200)
-      writeState(ROOT, DATASET, state)
+      writeState(ROOT, dataset, state)
     }
     void refresh()
   })
@@ -336,7 +354,7 @@ function registerIpc(): void {
 async function runOneShot(argv: string[]): Promise<void> {
   app.dock?.hide()
   await app.whenReady()
-  const digest = await runDigest(COMPANION_DIR)
+  const digest = await runDigest(COMPANION_DIR, dataset)
 
   if (argv.includes('--notify-test')) {
     const opt = (name: string): string | undefined => {
@@ -384,7 +402,8 @@ async function main(): Promise<void> {
 
   await app.whenReady()
   app.dock?.hide()
-  state = readState(ROOT, DATASET)
+  dataset = readList(ROOT)
+  state = readState(ROOT, dataset)
 
   createWindow()
   createTray()

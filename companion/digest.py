@@ -49,12 +49,14 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "core"))
 import todo  # noqa: E402
 
-# The one list this watches. It reads data/twinkl/ by name rather than following
+# The one list this watches, chosen in the companion's tray menu and kept in
+# data/companion-list.json. It reads that list by name rather than following
 # data/.current, which is the pointer the board's dropdown moves: switching the
 # board to another list for ten minutes should not silently change what gets
-# notified tomorrow morning. One list, chosen here, until there is a reason for
-# a second.
-DATASET = "twinkl"
+# notified tomorrow morning. The Electron app passes its choice as --list; run
+# from a terminal the file is read, and with neither it is "personal".
+LISTS = ("personal", "work-and-career", "twinkl")
+DEFAULT_LIST = "personal"
 
 PARKED_COLUMNS = {"reviewing"}
 
@@ -90,23 +92,42 @@ class Digest:
         return ", ".join(bits) if bits else "Nothing due today"
 
 
-def todo_path(root=None):
-    root = root or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(root, "data", DATASET, "todo.md")
+def default_root():
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def companion_state_path(root=None):
-    root = root or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(root, "data", DATASET, "companion.json")
+def chosen_list(root=None, override=None):
+    """The list to watch: the argument if it names one, else what
+    data/companion-list.json holds, else personal."""
+    if override in LISTS:
+        return override
+    try:
+        with open(os.path.join(root or default_root(), "data", "companion-list.json"), encoding="utf-8") as fh:
+            saved = json.load(fh).get("list")
+        if saved in LISTS:
+            return saved
+    except (OSError, ValueError, AttributeError):
+        pass
+    return DEFAULT_LIST
 
 
-def read_dismissed(root=None):
+def todo_path(root=None, dataset=None):
+    root = root or default_root()
+    return os.path.join(root, "data", dataset or chosen_list(root), "todo.md")
+
+
+def companion_state_path(root=None, dataset=None):
+    root = root or default_root()
+    return os.path.join(root, "data", dataset or chosen_list(root), "companion.json")
+
+
+def read_dismissed(root=None, dataset=None):
     """The set of message keys the companion has hidden, straight off
     companion.json — read here rather than passed in, so anything that just
     wants a digest (a terminal, the Electron app's --json call) gets the same
     answer the app itself would, without first having to read its own state."""
     try:
-        with open(companion_state_path(root), encoding="utf-8") as fh:
+        with open(companion_state_path(root, dataset), encoding="utf-8") as fh:
             return set(json.load(fh).get("dismissed", []))
     except (OSError, ValueError):
         return set()
@@ -283,8 +304,14 @@ def main():
     argv = sys.argv[1:]
     as_json = "--json" in argv
     argv = [a for a in argv if a != "--json"]
+    override = None
+    if "--list" in argv:
+        i = argv.index("--list")
+        override = argv[i + 1] if i + 1 < len(argv) else None
+        del argv[i:i + 2]
+    dataset = chosen_list(override=override)
     day = dt.date.fromisoformat(argv[0]) if argv else None
-    d = build(day, dismissed=read_dismissed())
+    d = build(day, path=todo_path(dataset=dataset), dismissed=read_dismissed(dataset=dataset))
     if as_json:
         print(json.dumps(to_json(d)))
         return 1 if d.error else 0
