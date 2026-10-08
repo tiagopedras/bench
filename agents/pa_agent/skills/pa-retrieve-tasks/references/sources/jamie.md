@@ -17,7 +17,7 @@ ToolSearch("select:mcp__jamie__list_meetings,mcp__jamie__list_tasks,mcp__jamie__
 If that returns nothing, the tools are not published to the session and no amount
 of retrying will change it. MCP servers are enumerated when a session starts, so a
 server added mid-session never appears in it. Check `claude mcp list` and start a
-fresh session in `~/Code/bench`, since the server is registered at local scope and
+fresh session in `$BENCH_ROOT`, since the server is registered at local scope and
 does not exist in other directories.
 
 **`claude mcp list` saying "Connected" is not proof the tools are usable.** It went
@@ -86,7 +86,7 @@ a file, a board, a date — to be the part worth keeping.
 **It circles.** A subject discussed three times comes back as three tasks in three
 wordings. Merging them is normal, not an edge case.
 
-**It assigns to whoever was named out loud.** A task saying "send Tiago the file"
+**It assigns to whoever was named out loud.** A task saying "send Sam the file"
 is somebody else's, however much it concerns him.
 
 **It marks things complete.** Tasks ticked in the meeting come back with

@@ -341,8 +341,11 @@ function bucketColor(name, index){
    and writes it too. */
 const DONE_COL = DONE_HEADING;
 /* Who the two review sub-tasks of a handover are assigned to, and so whose move
-   it is when one of them opens. The name as people.md and `[to::]` spell it. */
-const OWNER_NAME = 'Tiago';
+   it is when one of them opens. The name as people.md and `[to::]` spell it.
+   It is the `Name:` line of data/profile.md, served at /profile.json and read
+   by loadProfile() (20-loading-saving.js), so each person running Bench gets
+   their own. 'Me' until that answers, and wherever there is no profile. */
+let OWNER_NAME = 'Me';
 /* Not a special column the way Done is — just a tier the board tints, so a
    renamed section simply stops matching and goes back to looking normal. It
    was Waiting for review until 21 Sep 2026: a column says the state of the

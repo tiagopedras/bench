@@ -208,6 +208,19 @@ async function loadJira(){
    10-reference-sections.js falls back to raw notes exactly as it did before
    this existed, so a board that cannot read this file works exactly as one
    that predates it. */
+/* Whose name the review steps of a handover carry, and so whose move a card
+   is. From the `Name:` line of data/profile.md, through /profile.json. No
+   profile, or a host serving these files statically, leaves it at 'Me'. */
+async function loadProfile(){
+  try {
+    const data = await getJSON('/profile.json');
+    if (data && data.name && data.name !== OWNER_NAME) {
+      OWNER_NAME = data.name;
+      if (state.doc) renderView();
+    }
+  } catch (err) { /* no profile: the reviews go to 'Me' */ }
+}
+
 async function loadBriefings(){
   try {
     const data = await getJSON('/briefings.json');

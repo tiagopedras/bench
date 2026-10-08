@@ -1,11 +1,11 @@
 ---
 name: pa-retrieve-tasks
-description: Pull the action items captured from the owner's meetings by whatever recorder was in the room, review them with him one by one, and add the ones he keeps to his master to-do list at Code/bench/data/todo.md. Jamie is the source configured today. Use whenever he asks what came out of his calls, what he was actioned with, what the recorder picked up, or asks to check today's, yesterday's or this week's meetings for tasks. Phrasings include "check my Jamie calls", "any tasks from today's meetings", "what did I get actioned with", "pull my action items", "what came out of that working group", "did I pick anything up in that call", and "add my meeting tasks to my list". Also use when he names one meeting and wants its actions. Do not use it to summarise a meeting he just wants to read, to create new action items in the recorder, or to review the to-do list itself, which is pa-checkin. pa-checkin no longer calls it by default (since 22 Sep 2026); it runs only when he asks.
+description: Pull the action items captured from the owner's meetings by whatever recorder was in the room, review them with him one by one, and add the ones he keeps to his master to-do list at data/<dataset>/todo.md in the Bench checkout. Jamie is the source configured today. Use whenever he asks what came out of his calls, what he was actioned with, what the recorder picked up, or asks to check today's, yesterday's or this week's meetings for tasks. Phrasings include "check my Jamie calls", "any tasks from today's meetings", "what did I get actioned with", "pull my action items", "what came out of that working group", "did I pick anything up in that call", and "add my meeting tasks to my list". Also use when he names one meeting and wants its actions. Do not use it to summarise a meeting he just wants to read, to create new action items in the recorder, or to review the to-do list itself, which is pa-checkin. pa-checkin no longer calls it by default (since 22 Sep 2026); it runs only when he asks.
 ---
 
 # Meeting actions into the to-do list
 
-**Read `~/Code/bench/agents/pa_agent/PA.md` first, then `~/Code/bench/CONVENTIONS.md`.** The first holds who he is, where the list lives, how he prioritises, the standing rules and the tone. The second holds the file format. Neither is repeated below.
+**Read `$BENCH_ROOT/agents/pa_agent/PA.md` first (`$BENCH_ROOT` is the Bench checkout: the `BENCH_ROOT` environment variable, or `~/Code/bench` when that is unset), then `$BENCH_ROOT/CONVENTIONS.md`.** The first holds who he is, where the list lives, how he prioritises, the standing rules and the tone. The second holds the file format. Neither is repeated below.
 
 Something sits in his meetings and writes down who agreed to do what. This skill
 moves the ones that are his onto the list and closes them where they came from, so
@@ -103,7 +103,7 @@ and the same holds for the Tuesday after a bank holiday Monday.
 Business day here means what it means everywhere else in this system: weekends
 are out and UK bank holidays are out, since the team is UK-based. The England and
 Wales dates for 2026 and 2027 are in
-`~/Code/bench/agents/pa_agent/skills/pa/scripts/check_todo.py`, which is the
+`$BENCH_ROOT/agents/pa_agent/skills/pa/scripts/check_todo.py`, which is the
 authority when a date is borderline.
 
 **When he names a window, his wins.** "This week" means Monday to today. "Go back
@@ -138,7 +138,7 @@ Three piles, and only the first one is his:
 
 - **His, open.** These are the candidates.
 - **His, already marked done in the source.** He did them in the meeting or straight after. Never add these to the list, and never add them pre-ticked either — a done task arriving on the list is noise with no future. Name them in one line so he knows they were seen, and if he says one is not actually finished, it moves to the first pile.
-- **Everybody else's.** These stay out, including the ones that mention him. "Send Tiago the file" is somebody else's task and putting it on his list makes him responsible for chasing himself. At most it is one closing line, and only when he is waiting on the output.
+- **Everybody else's.** These stay out, including the ones that mention him. "Send Sam the file" is somebody else's task and putting it on his list makes him responsible for chasing himself. At most it is one closing line, and only when he is waiting on the output.
 
 The one exception in the third pile: a task assigned to someone who reports to him,
 where the real work is his to unblock or follow up. That is a judgement call, so
@@ -289,6 +289,6 @@ in front of him twice with different wording.
 
 ## Tone
 
-See `~/Code/bench/agents/pa_agent/PA.md`.
+See `$BENCH_ROOT/agents/pa_agent/PA.md`.
 
 The review message is the one place a numbered list is right, since he is answering it with numbers.

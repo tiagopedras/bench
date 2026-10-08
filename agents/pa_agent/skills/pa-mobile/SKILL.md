@@ -1,11 +1,11 @@
 ---
 name: pa-mobile
-description: The phone surface over the master to-do list, at Code/bench/data/<dataset>/todo.md (<dataset> named by data/.current, currently "twinkl"), reached over Remote Control from the Claude mobile app. Same list and same file as at the desk, so it reads and writes for real, and it can run anything the other pa-* skills run. Two things make it different: every question is asked as multiple choice rather than as something to type, and every report is rendered from this skill's own templates rather than the desk ones. Use whenever he is on his phone and asks what is going on, what his main thing is, what is due, what moved today, what the week looks like, or for the agenda for a standing meeting, and whenever he says he is on mobile, on the move, between meetings, walking or away from his desk. Also use when he wants to tick something off or move a date without typing it out. Do not use it at the desk, where pa-checkin is the fuller session, and do not use it for a restructure, a bucket sweep or an optimisation pass, all of which need a screen.
+description: The phone surface over the master to-do list, at data/<dataset>/todo.md in the Bench checkout (<dataset> named by data/.current), reached over Remote Control from the Claude mobile app. Same list and same file as at the desk, so it reads and writes for real, and it can run anything the other pa-* skills run. Two things make it different: every question is asked as multiple choice rather than as something to type, and every report is rendered from this skill's own templates rather than the desk ones. Use whenever he is on his phone and asks what is going on, what his main thing is, what is due, what moved today, what the week looks like, or for the agenda for a standing meeting, and whenever he says he is on mobile, on the move, between meetings, walking or away from his desk. Also use when he wants to tick something off or move a date without typing it out. Do not use it at the desk, where pa-checkin is the fuller session, and do not use it for a restructure, a bucket sweep or an optimisation pass, all of which need a screen.
 ---
 
 # Running the list from a phone
 
-**Read `~/Code/bench/agents/pa_agent/PA.md` first, then `~/Code/bench/CONVENTIONS.md`.** The first holds who he is, where the list lives, how he prioritises, the standing rules and the tone. The second holds the file format. Neither is repeated below.
+**Read `$BENCH_ROOT/agents/pa_agent/PA.md` first (`$BENCH_ROOT` is the Bench checkout: the `BENCH_ROOT` environment variable, or `~/Code/bench` when that is unset), then `$BENCH_ROOT/CONVENTIONS.md`.** The first holds who he is, where the list lives, how he prioritises, the standing rules and the tone. The second holds the file format. Neither is repeated below.
 
 Nothing about the list changes here. Same file, same four buckets, same tags,
 same checker. He reaches this session over Remote Control from the Claude app,
@@ -98,13 +98,13 @@ print(render.render('agents/pa_agent/skills/pa-mobile/templates/<name>.md', ctx)
 "
 ```
 
-run from `~/Code/bench`, with `<dataset>` and `<name>` filled in — `meeting-prep`
+run from `$BENCH_ROOT`, with `<dataset>` and `<name>` filled in — `meeting-prep`
 uses `aggregate.meeting_view(tasks, title, today)` instead, and `change-report`
 builds its own `changes`/`needs_you`/`pending_count` and skips `aggregate`
 entirely, the same as the desk copy of it in `pa/SKILL.md`.
 
 **Placeholders and blocks** are described in
-`~/Code/bench/agents/pa_agent/skills/pa/references/templates.md`, which also
+`$BENCH_ROOT/agents/pa_agent/skills/pa/references/templates.md`, which also
 lists every field available to fill them. Read it before rendering the first
 time in a session.
 
@@ -116,7 +116,7 @@ Read `data/.current`, then that dataset's `todo.md`, including `## Context`.
 Then run the checker:
 
 ```bash
-python3 ~/Code/bench/agents/pa_agent/skills/pa/scripts/check_todo.py ~/Code/bench/data/<dataset>/todo.md
+python3 ${BENCH_ROOT:-$HOME/Code/bench}/agents/pa_agent/skills/pa/scripts/check_todo.py ${BENCH_ROOT:-$HOME/Code/bench}/data/<dataset>/todo.md
 ```
 
 Hold what it says. Do not report a flag that was already there when you arrived,
@@ -215,7 +215,7 @@ is waiting for the desk if the watermark is stale.
 
 ## Tone
 
-See `~/Code/bench/agents/pa_agent/PA.md`, and then cut it further. Everything
+See `$BENCH_ROOT/agents/pa_agent/PA.md`, and then cut it further. Everything
 here is read on a phone, usually while he is walking. Short lines, no tables, no
 headers he did not ask for, and no sentence that exists to introduce the next
 one.

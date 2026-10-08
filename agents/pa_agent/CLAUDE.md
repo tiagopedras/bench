@@ -49,8 +49,9 @@ has the one writer.
 
 ## What lives where
 
-- `PA.md` — standing behaviour, read by every skill and by the planning agent's six
-  planners and `implement-agent`. It stayed a plain file rather than folding into
+- `PA.md` — standing behaviour, the same for everyone. Who the owner is lives in
+  their private `data/profile.md`, started from `profile.template.md`. `PA.md` is
+  read by every skill and by the planning agent's planners and `implement-agent`. It stayed a plain file rather than folding into
   `pa` precisely because those seven read it and never write anything.
 - `../../CONVENTIONS.md` — the file format.
 - `skills/pa/scripts/check_todo.py` — the mechanical checker. It lived under
@@ -81,7 +82,7 @@ second copy that goes stale the moment the folder is edited, and every one of
 them had. Add a skill by linking it:
 
 ```sh
-ln -s ~/Code/bench/agents/pa_agent/skills/<name> ~/.claude/skills/<name>
+ln -s "${BENCH_ROOT:-$HOME/Code/bench}"/agents/pa_agent/skills/<name> ~/.claude/skills/<name>
 ```
 
 The folder is the source, so an edit takes effect the next time the skill fires.

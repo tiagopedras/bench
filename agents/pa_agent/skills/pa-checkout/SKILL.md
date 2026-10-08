@@ -1,11 +1,11 @@
 ---
 name: pa-checkout
-description: Walk through everything sitting in Doing or Reviewing on the owner's master to-do list, at Code/bench/data/<dataset>/todo.md (<dataset> named by data/.current, currently "twinkl"), one task at a time, and help him decide whether it moves forward, needs more detail, or is stuck for a reason worth naming. Opens with the total number of tasks it will go through and the count in each of the two states, then numbers them as it goes. Use whenever he asks to clear the backlog, go through what's stuck, review what's blocked or waiting, chase what's sitting in Doing, or asks something like "let's go through what's stuck", "what's been sitting there", "help me close some of this out", or "what's blocked right now". Top-level tasks only — a sub-step has no state of its own, it inherits its parent's. Do not use this for a general status read, which is pa-checkin, or for a re-prioritisation, which is pa, or for pulling meeting actions, which is pa-retrieve-tasks. This skill only reviews and asks; the pa skill does the actual writing.
+description: Walk through everything sitting in Doing or Reviewing on the owner's master to-do list, at data/<dataset>/todo.md in the Bench checkout (<dataset> named by data/.current), one task at a time, and help him decide whether it moves forward, needs more detail, or is stuck for a reason worth naming. Opens with the total number of tasks it will go through and the count in each of the two states, then numbers them as it goes. Use whenever he asks to clear the backlog, go through what's stuck, review what's blocked or waiting, chase what's sitting in Doing, or asks something like "let's go through what's stuck", "what's been sitting there", "help me close some of this out", or "what's blocked right now". Top-level tasks only — a sub-step has no state of its own, it inherits its parent's. Do not use this for a general status read, which is pa-checkin, or for a re-prioritisation, which is pa, or for pulling meeting actions, which is pa-retrieve-tasks. This skill only reviews and asks; the pa skill does the actual writing.
 ---
 
 # Unsticking Doing and Reviewing
 
-**Read `~/Code/bench/agents/pa_agent/PA.md` first, then `~/Code/bench/CONVENTIONS.md`.** The first holds who he is, where the list lives, how he prioritises, the standing rules and the tone. The second holds the file format. Neither is repeated below.
+**Read `$BENCH_ROOT/agents/pa_agent/PA.md` first (`$BENCH_ROOT` is the Bench checkout: the `BENCH_ROOT` environment variable, or `~/Code/bench` when that is unset), then `$BENCH_ROOT/CONVENTIONS.md`.** The first holds who he is, where the list lives, how he prioritises, the standing rules and the tone. The second holds the file format. Neither is repeated below.
 
 Two states on the list are not really about the work, they are a claim about
 where it sits: **Doing** says it is live, **Reviewing** says it is finished and
@@ -151,6 +151,6 @@ several tasks is exactly where one of them turns out to be the exception.
 
 ## Tone
 
-See `~/Code/bench/agents/pa_agent/PA.md`.
+See `$BENCH_ROOT/agents/pa_agent/PA.md`.
 
 The count in move 1 is a sentence, not a table, and the question for each task is one line. This is a conversation to move through quickly, not a form.

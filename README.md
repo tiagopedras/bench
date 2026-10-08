@@ -1452,11 +1452,23 @@ script cannot.
 
 ### Installing them
 
-Symlink, and nothing else:
+Symlink, and nothing else. If your checkout is somewhere other than
+`~/Code/bench`, set `BENCH_ROOT` to it first, in your shell profile so every
+Claude Code session sees it:
 
 ```sh
-ln -s ~/Code/bench/agents/pa_agent/skills/<name> ~/.claude/skills/<name>
+export BENCH_ROOT=~/Developer/bench    # only if not ~/Code/bench
+for s in "${BENCH_ROOT:-$HOME/Code/bench}"/agents/pa_agent/skills/*; do ln -s "$s" ~/.claude/skills/; done
 ```
+
+Then give the PA your profile. It is private, like the rest of `data/`:
+
+```sh
+cp "${BENCH_ROOT:-$HOME/Code/bench}"/agents/pa_agent/profile.template.md "${BENCH_ROOT:-$HOME/Code/bench}"/data/profile.md
+```
+
+Fill it in: who you are, how you work, how you want replies written. Every
+skill reads it after `PA.md`, and it wins where the two disagree.
 
 The folder is the installed skill, so an edit takes effect the next time it
 fires. There was a `build.command` here that packed each one into a

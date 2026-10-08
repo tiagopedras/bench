@@ -1,11 +1,11 @@
 ---
 name: do
-description: Carry out the work he has handed to the Implement agent, on the list at Code/bench/data/<dataset>/todo.md (<dataset> named by data/.current, currently "twinkl"), one task at a time, by handing each to the implement-agent agent. Use whenever he says to do, run, carry out, action or get on with an agreed plan, asks what is waiting to be run, says "let's do the ones I agreed", "run that plan", "action the agreed ones", "what did I say yes to", or names one task and asks to get it done. Also use after a pa-review-plans session where he approved a plan, since approving the plan is what starts it towards this. Do not use it to read or triage plans, which is pa-review-plans, and do not use it to run the planning agent, which is the Data menu's Run the Plan agent now.
+description: Carry out the work he has handed to the Implement agent, on the list at data/<dataset>/todo.md in the Bench checkout (<dataset> named by data/.current), one task at a time, by handing each to the implement-agent agent. Use whenever he says to do, run, carry out, action or get on with an agreed plan, asks what is waiting to be run, says "let's do the ones I agreed", "run that plan", "action the agreed ones", "what did I say yes to", or names one task and asks to get it done. Also use after a pa-review-plans session where he approved a plan, since approving the plan is what starts it towards this. Do not use it to read or triage plans, which is pa-review-plans, and do not use it to run the planning agent, which is the Data menu's Run the Plan agent now.
 ---
 
 # Carrying out an agreed plan
 
-**Read `~/Code/bench/agents/pa_agent/PA.md` first, then `~/Code/bench/CONVENTIONS.md`.** The
+**Read `$BENCH_ROOT/agents/pa_agent/PA.md` first (`$BENCH_ROOT` is the Bench checkout: the `BENCH_ROOT` environment variable, or `~/Code/bench` when that is unset), then `$BENCH_ROOT/CONVENTIONS.md`.** The
 first holds who he is, where the list lives, how he prioritises, the standing
 rules and the tone. The second holds the file format. Neither is repeated below.
 
@@ -86,7 +86,7 @@ rather than for him, so summarise it rather than relaying it, and follow
 Two things to do before you call it done:
 
 - **Queue the tick on the Implement sub-task**, once the report is in:
-  `python3 ~/Code/bench/core/tick_queue.py tick <sub-id> --by "Implement agent"
+  `python3 ${BENCH_ROOT:-$HOME/Code/bench}/core/tick_queue.py tick <sub-id> --by "Implement agent"
   --note "report written"`. It is the agent's own tick, made through the board's
   queue because nobody but the board writes the list, and the board applies it the
   next time it loads, moving the card to Reviewing and unblocking his review of the

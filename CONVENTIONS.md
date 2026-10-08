@@ -4,15 +4,9 @@ The format is load-bearing. Every rule here exists because breaking it caused a 
 
 ## Buckets
 
-Five, in this order, matching how his role actually splits:
+Each list has its own buckets: the `## N. Name` headings in its `todo.md`. What each one is for is in that list's `data/<list>/buckets/README.md` and the brief beside it (see `BUCKETS.md`). Read them from the file every session rather than assuming a set.
 
-1. **People** — probation reviews, performance reviews, hiring, 1:1s, growth conversations
-2. **BAU** (Design oversight) — chasing, aligning and checking in on work that is not his to do: aligning designers, aligning stakeholders, unblocking, reviewing others' work, project planning. Most of it is waiting on somebody, so a task here is mostly about who holds it and what would move it.
-3. **DS** (Design System) — a temporary remit, so scope creep here is a signal worth naming. The largest bucket by some distance, sub-organised into five streams: ways of working, audits, improvements, documentation, enablement. The stream is named in the task's first note line.
-4. **Strategic** — planning, defining ways of working, strategy decks, testing new ways of working with AI. The least mechanical bucket — much of it is a decision wearing a task's clothes.
-5. **Processes** — this repo, mostly: the board, the server, the `pa-*` skills, the companion, the planning agent, the implementing agent. Everything that runs his working week rather than being the work. The one bucket whose output is code, which makes it the only one where "done" is checkable.
-
-BAU and DS were renamed from Design oversight and Design System; Processes was added 6 Sep 2026. Do not add a sixth bucket without asking. The five map to how he is measured, and a sixth usually means a task is miscategorised. He can rename, reorder, add and remove buckets himself on the board, so read the headings out of the file rather than assuming these five are what you will find.
+Do not add a bucket without asking. A list's buckets map to how the owner splits their work, and a new one usually means a task is miscategorised. The owner can rename, reorder, add and remove buckets on the board.
 
 ## States
 
@@ -350,7 +344,7 @@ An item that is not live yet, waiting on something merging or being defined, kee
 
 ## Section order
 
-The file is the title, the `Last updated` line, the `Meeting actions last pulled` line, the **How this works** legend, **Where the other views went**, then the buckets in the order the file has them, currently People, Design oversight, Design System, Strategic. Sections are separated by `---` on its own line.
+The file is the title, the `Last updated` line, the `Meeting actions last pulled` line, the **How this works** legend, **Where the other views went**, then the buckets in the order the file has them. Sections are separated by `---` on its own line.
 
 ## Ordering
 
@@ -360,7 +354,7 @@ Anything with `due:` or `urgent` jumps the queue regardless of impact and effort
 
 **Working days only.** Weekend deadlines get pulled back to the previous Friday. The exception is a step that waits on someone else replying, which pushes to the following Monday instead, because a Friday deadline on someone else's reply is really a Monday deadline.
 
-**UK bank holidays count as non-working days.** The team is UK-based. The checker script knows England and Wales dates for 2026 and 2027.
+**Public holidays count as non-working days.** The checker works out England and Wales and Portuguese public holidays.
 
 **Back-plan from the formal deadline.** A probation formally due Sunday 23 August closes Friday 21 August in this file, and every sub-step is dated backwards from there. Never leave the formal date as the working date.
 

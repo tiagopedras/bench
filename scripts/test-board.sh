@@ -106,6 +106,9 @@ seed() {
   mkdir -p "$DATA_ROOT/_test/backups"
   cp kanban/demo.md "$DATA_ROOT/_test/todo.md"
   printf '_test' > "$DATA_ROOT/.current"
+  # The owner the suites' fixtures assign review steps to (see profile_name()
+  # in kanban/server.py and OWNER_NAME in kanban/js/02-state.js).
+  printf 'Name: Tiago\n' > "$DATA_ROOT/profile.md"
 }
 seed
 

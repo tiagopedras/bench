@@ -16,6 +16,7 @@ loadBucketThemes();
 loadColumnNames();
 loadChatViewed();
 loadBriefings();
+loadProfile();
 // Says so in the console if stream.json and the column names here have drifted
 // apart. Never blocks anything; see checkStreamManifest in 02-state.js.
 checkStreamManifest();

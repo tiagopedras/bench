@@ -145,6 +145,25 @@ def dataset_dir(name):
     return os.path.join(DATA_ROOT, name)
 
 
+PROFILE_NAME_RE = re.compile(r"^\s*Name:\s*(\S.*?)\s*$", re.M | re.I)
+
+
+def profile_name():
+    """The owner's name, from the `Name:` line of data/profile.md.
+
+    data/profile.md says who runs this checkout (agents/pa_agent/PA.md and
+    profile.template.md). The board needs one fact from it, the name the
+    review steps of a handover are assigned to. None when there is no
+    profile, or its Name line is still the template's placeholder."""
+    try:
+        with open(os.path.join(DATA_ROOT, "profile.md"), encoding="utf-8") as fh:
+            m = PROFILE_NAME_RE.search(fh.read())
+    except OSError:
+        return None
+    name = m.group(1).strip() if m else ""
+    return name if name and not name.startswith("<") else None
+
+
 def people_path(name=None):
     return os.path.join(dataset_dir(name or current_dataset()), "people.md")
 
@@ -2080,6 +2099,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 # "nothing has been opened" is the honest answer and the next
                 # save fixes it.
                 return self._json(200, {"version": 1, "viewed": {}})
+        if path == "/profile.json":
+            name = profile_name()
+            if not name:
+                return self._json(404, {"error": "no Name line in data/profile.md"})
+            return self._json(200, {"name": name})
         if path == "/people.json":
             try:
                 with open(people_path(), encoding="utf-8") as fh:

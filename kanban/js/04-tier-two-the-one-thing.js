@@ -455,9 +455,9 @@ function locate(id){
    `[to::]` on the task itself records who has it. */
 const HANDOVER_STEPS = {
   'plan':        { title: 'Plan',            to: 'Plan agent' },
-  'plan-review': { title: 'Review the plan', to: OWNER_NAME },
+  'plan-review': { title: 'Review the plan', to: null },   // null: the owner, read when the step is made
   'implement':   { title: 'Implement',       to: 'Implement agent' },
-  'work-review': { title: 'Review the work', to: OWNER_NAME }
+  'work-review': { title: 'Review the work', to: null }
 };
 /* ---- How much of an agent's work waits on him: its handover level ----
    Set per agent, per list, on the agent's card in the Agents tab.
@@ -528,7 +528,7 @@ function handOver(t, agent, level){
   kinds.forEach(kind => {
     const id = mintId(taken); taken.add(id);
     const slug = t.stableId + '-' + kind;
-    const f = { done: false, bold: false, title: HANDOVER_STEPS[kind].title, to: HANDOVER_STEPS[kind].to,
+    const f = { done: false, bold: false, title: HANDOVER_STEPS[kind].title, to: HANDOVER_STEPS[kind].to || OWNER_NAME,
                 slug, blockedBy: before ? [before] : [], stableId: id, body: [], dirty: true, extra: [] };
     t.body.push(indent + serializeTask(f)[0]);
     /* Written as the review's own note, the way setStepNoteText() indents one,

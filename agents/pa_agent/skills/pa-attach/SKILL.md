@@ -1,13 +1,13 @@
 ---
 name: pa-attach
-description: File the conversation you are having right now against a task on the owner's master to-do list, at Code/bench/data/<dataset>/todo.md (<dataset> named by data/.current, currently "twinkl"). Takes no arguments — it reads its own session id from the environment, shows the task list, and once he names one, writes the request to data/<dataset>/attach-queue.json for the board to file next time it loads. It never touches todo.md itself. Use whenever he says a conversation belongs to a task, asks to attach, file or link this chat to a task, says "this is actually about X", "put this on my list", "attach this session", "file this conversation under...", or when work that started in the terminal turns out to be about a specific piece of work on the list. Do not use this to start a new conversation from a task — that already happens from the board's own Chats field in the drawer — and do not use it to review the list itself, which is pa-checkin, or to change it, which is pa.
+description: File the conversation you are having right now against a task on the owner's master to-do list, at data/<dataset>/todo.md in the Bench checkout (<dataset> named by data/.current). Takes no arguments — it reads its own session id from the environment, shows the task list, and once he names one, writes the request to data/<dataset>/attach-queue.json for the board to file next time it loads. It never touches todo.md itself. Use whenever he says a conversation belongs to a task, asks to attach, file or link this chat to a task, says "this is actually about X", "put this on my list", "attach this session", "file this conversation under...", or when work that started in the terminal turns out to be about a specific piece of work on the list. Do not use this to start a new conversation from a task — that already happens from the board's own Chats field in the drawer — and do not use it to review the list itself, which is pa-checkin, or to change it, which is pa.
 ---
 
 # Attaching this conversation to a task
 
 Files the conversation you are running inside, right now, against a task on the list — the case README.md in this repo calls "a session that started in the terminal": half an hour into some other piece of work it turns out this conversation *is* the work, and it should end up filed the way one started from the board would be.
 
-**Read `~/Code/bench/agents/pa_agent/PA.md` first.** It holds where the list lives and how `data/<dataset>` is resolved. This skill does not repeat that.
+**Read `$BENCH_ROOT/agents/pa_agent/PA.md` first (`$BENCH_ROOT` is the Bench checkout: the `BENCH_ROOT` environment variable, or `~/Code/bench` when that is unset).** It holds where the list lives and how `data/<dataset>` is resolved. This skill does not repeat that.
 
 ## Why this cannot just edit todo.md
 
@@ -27,7 +27,7 @@ If that comes back empty, say so plainly and stop — this only works run from i
 
 1. **Read `CLAUDE_CODE_SESSION_ID`**, as above. Note the current working directory too (`pwd`) — the board needs both to find this transcript again.
 
-2. **Read the task list** at `~/Code/bench/data/<dataset>/todo.md` (`<dataset>` from `data/.current`) and show its top-level, undone tasks grouped by bucket, as a compact list — title only, no tags or scores, this is a picker rather than a status read. Leave done tasks out; there is nothing to attach a live conversation to on something already finished.
+2. **Read the task list** at `$BENCH_ROOT/data/<dataset>/todo.md` (`<dataset>` from `data/.current`) and show its top-level, undone tasks grouped by bucket, as a compact list — title only, no tags or scores, this is a picker rather than a status read. Leave done tasks out; there is nothing to attach a live conversation to on something already finished.
 
    **Do not use AskUserQuestion for this.** The list can run to hundreds of tasks, and that tool holds at most four options — ask in plain text instead, and let him answer with a number, a title, or a search term.
 
@@ -36,8 +36,8 @@ If that comes back empty, say so plainly and stop — this only works run from i
 4. **Write the queue entry:**
 
    ```bash
-   python3 ~/Code/bench/agents/pa_agent/skills/pa-attach/scripts/attach_session.py \
-     ~/Code/bench/data/<dataset>/attach-queue.json \
+   python3 ${BENCH_ROOT:-$HOME/Code/bench}/agents/pa_agent/skills/pa-attach/scripts/attach_session.py \
+     ${BENCH_ROOT:-$HOME/Code/bench}/data/<dataset>/attach-queue.json \
      --title "<the task's exact title, copied from the file>" \
      --cwd "$(pwd)"
    ```
@@ -54,4 +54,4 @@ It does not offer to attach to a task that does not exist yet. If the work genui
 
 ## Tone
 
-One exchange: show the list, take the answer, confirm. Not a check-in, not a review — see `~/Code/bench/agents/pa_agent/PA.md` for the tone that applies everywhere else on this list, and keep this shorter than that.
+One exchange: show the list, take the answer, confirm. Not a check-in, not a review — see `$BENCH_ROOT/agents/pa_agent/PA.md` for the tone that applies everywhere else on this list, and keep this shorter than that.
