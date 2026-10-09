@@ -1461,6 +1461,12 @@ export BENCH_ROOT=~/Developer/bench    # only if not ~/Code/bench
 for s in "${BENCH_ROOT:-$HOME/Code/bench}"/agents/pa_agent/skills/*; do ln -s "$s" ~/.claude/skills/; done
 ```
 
+The PA renders its briefs and reports with one Python library, `chevron`:
+
+```sh
+pip3 install --user chevron
+```
+
 Then give the PA your profile. It is private, like the rest of `data/`:
 
 ```sh
