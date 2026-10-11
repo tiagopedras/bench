@@ -2220,12 +2220,18 @@
     -webkit-mask-composite:xor; mask-composite:exclude;
     pointer-events:none;
   }
-  .tenon-card.is-held.is-held{animation:held-glow-in .2s ease-out}
+  .tenon-card.is-held.is-held{animation:held-glow-in .2s ease-out, held-glow-pulse 1.6s ease-in-out .2s infinite}
   .tenon-card.is-held::after{animation:held-ring-in .2s ease-out}
   .tenon-card.is-releasing.is-releasing{animation:held-glow-out .15s ease-in forwards}
   .tenon-card.is-releasing::after{animation:held-ring-out .15s ease-in forwards}
   @keyframes held-glow-in{from{box-shadow:0 0 4px 1px rgba(255,138,133,0), 0 0 12px 3px rgba(255,138,133,0), 0 1px 1px 0 rgba(16,20,28,.04)}}
   @keyframes held-glow-out{to{box-shadow:0 0 4px 1px rgba(255,138,133,0), 0 0 12px 3px rgba(255,138,133,0), 0 1px 1px 0 rgba(16,20,28,.04)}}
+  /* Starts at the full glow the card rests on and dips to a softer one, so the
+     held card breathes after its 200ms fade-in. The ring does not pulse. */
+  @keyframes held-glow-pulse{
+    0%, 100%{box-shadow:0 0 4px 1px #FF8A85, 0 0 12px 3px #FF8A85, 0 1px 1px 0 rgba(16,20,28,0.04)}
+    50%{box-shadow:0 0 3px 0px rgba(255,138,133,0.55), 0 0 8px 1px rgba(255,138,133,0.45), 0 1px 1px 0 rgba(16,20,28,0.04)}
+  }
   @keyframes held-ring-in{from{opacity:0}}
   @keyframes held-ring-out{to{opacity:0}}
   /* spotlight() in js/09a-spotlight.js: everything but the held card steps back.
@@ -2240,7 +2246,8 @@
   body.spotlit .spot-on, body.spotlit .spot-on *{pointer-events:auto}
   @media (prefers-reduced-motion: reduce){
     .spot-dim, .spot-undim{transition:none}
-    .tenon-card.is-held, .tenon-card.is-releasing, .tenon-card.is-held::after, .tenon-card.is-releasing::after{animation-duration:.01ms !important}
+    .tenon-card.is-held.is-held{animation:none}
+    .tenon-card.is-releasing, .tenon-card.is-held::after, .tenon-card.is-releasing::after{animation-duration:.01ms !important}
   }
   .tenon-card.onething.is-held::after, .tenon-card.onething.is-releasing::after{left:-4px}
   /* Same as any other card — same width, radius, padding, shadow, left
