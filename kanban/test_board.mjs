@@ -489,6 +489,13 @@ check('pressing a card stops text selection', await evalJS(`document.body.classL
 await evalJS(`new Promise(r => setTimeout(r, 750))`)
 check('a 600ms hold adds the held class and calls the hold hook', await evalJS(
   `${holdCard}.classList.contains('is-held') && __holds.join() === 'start:bd0002'`))
+check('the held ring is the card plus 2px each way, over the bucket stripe', await evalJS(
+  `(() => { const el = ${holdCard}; const c = el.getBoundingClientRect();
+    const a = getComputedStyle(el, '::after'), b = getComputedStyle(el, '::before');
+    const pad = a.boxSizing === 'border-box' ? 0 : 2;
+    const w = parseFloat(a.width) + pad, h = parseFloat(a.height) + pad;
+    return Math.abs(w - (c.width + 2)) < 1.5 && Math.abs(h - (c.height + 2)) < 1.5 &&
+      a.backgroundImage.includes('linear-gradient') && parseFloat(b.width) > 0 && getComputedStyle(el).outlineStyle === 'none'; })()`))
 check('a held card cannot start a drag', await evalJS(
   `(() => { const e = new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: new DataTransfer() });
     ${holdCard}.dispatchEvent(e); return e.defaultPrevented && state.openTask !== 'bd0002'; })()`))

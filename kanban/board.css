@@ -2199,22 +2199,25 @@
   .tenon-card__eyebrow + .tenon-card__head{margin-top:5px}
   .tenon-card.dragging{opacity:.4}
   /* Pressed and held 600ms (TaskCard.tsx). While the pointer is down on a card,
-     nothing on the page can be selected. The ring is a pseudo-element drawn
-     1px outside the card, so the card keeps its size and its contents stay
+     nothing on the page can be selected. The ring is a pseudo-element (::after,
+     since Tenon's ::before is the bucket stripe) drawn 1px outside the card, so the card keeps its size and its contents stay
      put; the mask leaves only the ring. */
   body.card-pressing{user-select:none; -webkit-user-select:none}
-  .tenon-card.is-held{
+  /* Twice, so it outranks .tenon-card.onething below, which colours the same border. */
+  .tenon-card.is-held.is-held{
     --held-from:#F0B355; --held-to:#FF8A85;
-    position:relative; border-radius:9px;
+    position:relative; border-radius:9px; outline:none;
+    border-top-color:transparent; border-right-color:transparent; border-bottom-color:transparent;
     box-shadow:0 0 8px 1px var(--held-to), 0 1px 1px 0 rgba(16,20,28,.04);
   }
-  .tenon-card.is-held::before{
+  .tenon-card.is-held::after{
     content:""; position:absolute; top:-2px; right:-2px; bottom:-2px; left:-5px; border-radius:10px; padding:1px;
     background:linear-gradient(135deg, var(--held-from), var(--held-to));
     -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite:xor; mask-composite:exclude;
     pointer-events:none;
   }
+  .tenon-card.onething.is-held::after{left:-4px}
   /* Same as any other card — same width, radius, padding, shadow, left
      bucket-colour stripe — except the border colour and a faint accent tint
      behind it, so it reads as "the same card, just marked" rather than a
