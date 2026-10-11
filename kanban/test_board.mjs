@@ -483,6 +483,10 @@ await evalJS(`closeDrawer(); window.__holds = [];
     bubbles: true, cancelable: true, pointerType: 'mouse', button: 0, clientX: x, clientY: y }));
   renderBoard();`)
 const holdCard = `document.querySelector('#board .tenon-card[data-id="bd0002"]')`
+check('at rest the stripe sits at the card edge over a clear left border', await evalJS(
+  `(() => { const el = ${holdCard}, cs = getComputedStyle(el), b = getComputedStyle(el, '::before');
+    return cs.borderLeftColor === 'rgba(0, 0, 0, 0)' && parseFloat(cs.borderLeftWidth) > 0 &&
+      parseFloat(b.left) === -parseFloat(cs.borderLeftWidth) && parseFloat(cs.borderTopWidth) === 1; })()`))
 await evalJS(`(() => { const el = ${holdCard}; const r = el.getBoundingClientRect(); window.__pt = [r.x + 20, r.y + 20];
   __ptr('pointerdown', el, ...__pt); })()`)
 check('pressing a card stops text selection', await evalJS(`document.body.classList.contains('card-pressing')`))
