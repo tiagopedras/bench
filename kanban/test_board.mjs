@@ -503,6 +503,15 @@ check('the rest of the page dims while a card is held, and the held card does no
       __eff(${holdCard}) === +getComputedStyle(${holdCard}).opacity &&
       __eff(${holdCard}.closest('.tenon-column')) === +getComputedStyle(${holdCard}.closest('.tenon-column')).opacity &&
       !${holdCard}.closest('.tenon-column').classList.contains('spot-dim'); })()`))
+const otherCard = `document.querySelector('#board .tenon-card[data-id="bd0001"]')`
+const oc = await evalJS(`(() => { const r = ${otherCard}.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2] })()`)
+await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: oc[0], y: oc[1] })
+await wait(300)
+check('while held, another card gets no hover and the pointer is not over it', await evalJS(
+  `!${otherCard}.matches(':hover') && document.elementFromPoint(${oc[0]}, ${oc[1]}) !== ${otherCard} &&
+   getComputedStyle(${otherCard}).pointerEvents === 'none'`))
+check('the held card keeps its hover look with the pointer moved off', await evalJS(
+  `!${holdCard}.matches(':hover') && +getComputedStyle(${holdCard}).opacity === 1 && state.openTask !== 'bd0002'`))
 check('a held card cannot start a drag', await evalJS(
   `(() => { const e = new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: new DataTransfer() });
     ${holdCard}.dispatchEvent(e); return e.defaultPrevented && state.openTask !== 'bd0002'; })()`))
@@ -517,6 +526,13 @@ check('after release the dim is gone and the card is back to rest', await evalJS
    __eff(document.querySelector('#board .tenon-card[data-id="bd0001"]')) ===
      +getComputedStyle(document.querySelector('#board .tenon-card[data-id="bd0001"]')).opacity &&
    ['none', 'normal'].includes(getComputedStyle(${holdCard}, '::after').content)`))
+await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: oc[0] + 1, y: oc[1] + 1 })
+await wait(100)
+check('after release another card takes hover again', await evalJS(`${otherCard}.matches(':hover')`))
+await evalJS(`(() => { spotlight(${holdCard}); clearSpotlight(); clearSpotlight(); })()`)
+await wait(300)
+check('clearing the spotlight twice leaves nothing behind', await evalJS(
+  `document.querySelectorAll('.spot-dim, .spot-undim, .spot-on').length === 0 && !document.body.classList.contains('spotlit')`))
 check('the click after a hold does not open the drawer', await evalJS(`state.openTask !== 'bd0002'`))
 await evalJS(`(() => { const el = ${holdCard}; __ptr('pointerdown', el, ...__pt); __ptr('pointerup', null, ...__pt); el.click(); })()`)
 check('a short click still opens the card', await evalJS(`state.openTask === 'bd0002'`))

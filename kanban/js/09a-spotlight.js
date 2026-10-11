@@ -14,10 +14,17 @@
    ========================================================================= */
 
 let spotlit = [];
-let spotTimer = 0;
+let spotEl = null;
 
+/* Also shuts hover out of everything else for as long as it lasts: the body
+   gets `spotlit`, which takes pointer events from every element but this one
+   and its insides (board.css). The pointer events the caller listens for on
+   window and document still arrive; they land on the page itself. */
 function spotlight(el){
   clearSpotlight(true);
+  spotEl = el;
+  el.classList.add('spot-on');
+  document.body.classList.add('spotlit');
   for (let node = el; node && node !== document.documentElement; node = node.parentElement) {
     const parent = node.parentElement;
     if (!parent) break;
@@ -30,12 +37,15 @@ function spotlight(el){
 }
 
 /* Fades back over 150ms: `spot-undim` carries the slower-out transition while
-   the opacity returns to whatever the element had before. */
+   the opacity returns to whatever the element had before. Each call cleans up
+   its own set on its own timer, so a second call inside the 150ms cannot leave
+   the class behind. */
 function clearSpotlight(now){
-  window.clearTimeout(spotTimer);
   const els = spotlit;
   spotlit = [];
+  if (spotEl) spotEl.classList.remove('spot-on');
+  spotEl = null;
+  document.body.classList.remove('spotlit');
   els.forEach(e => { e.classList.remove('spot-dim'); if (!now) e.classList.add('spot-undim'); });
-  if (now) { els.forEach(e => e.classList.remove('spot-undim')); return; }
-  spotTimer = window.setTimeout(() => els.forEach(e => e.classList.remove('spot-undim')), 160);
+  if (!now) window.setTimeout(() => els.forEach(e => e.classList.remove('spot-undim')), 160);
 }
