@@ -1092,6 +1092,8 @@ function renderBoard(){
       dragId = id;
     },
     onDragEnd: () => { dragId = null; },
+    onHoldStart: onCardHoldStart,
+    onHoldEnd: onCardHoldEnd,
     /* Says where the drop line goes, and nothing else: a sub-step drag is not a
        card, and a sorted column has no gap to drop into because its order is
        worked out. Either way the column still lights up as a valid target. The

@@ -54,6 +54,8 @@ export interface BoardViewProps {
   onOpen: (id: string) => void
   onDragStart: (e: DragEvent<HTMLElement>, id: string) => void
   onDragEnd: (e: DragEvent<HTMLElement>, id: string) => void
+  onHoldStart?: (id: string, el: HTMLElement) => void
+  onHoldEnd?: (id: string, el: HTMLElement) => void
   onZoneOver: (e: DragEvent<HTMLElement>, tier: string) => string | null
   onZoneDrop: (e: DragEvent<HTMLElement>, tier: string) => void
   onAdd: (tier: string) => void
@@ -64,7 +66,7 @@ export interface BoardViewProps {
 const PENCIL = 'M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z'
 
 export function BoardView(props: BoardViewProps) {
-  const { columns, locked, onOpen, onDragStart, onDragEnd, onZoneOver, onZoneDrop, onAdd, onEdit, onSort } = props
+  const { columns, locked, onOpen, onDragStart, onDragEnd, onHoldStart, onHoldEnd, onZoneOver, onZoneDrop, onAdd, onEdit, onSort } = props
   /* Which column the pointer is over, where its drop line sits, and which card
      is being carried. All three are gone the moment the drag ends. */
   const [over, setOver] = useState<string | null>(null)
@@ -92,6 +94,8 @@ export function BoardView(props: BoardViewProps) {
             draggable={c.draggable}
             dragging={dragging === c.model.id}
             onOpen={onOpen}
+            onHoldStart={onHoldStart}
+            onHoldEnd={onHoldEnd}
             onDragStart={(e, id) => {
               onDragStart(e, id)
               /* After the browser has taken its drag image: fading the card in

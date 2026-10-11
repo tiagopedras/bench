@@ -474,6 +474,38 @@ check('the drawer has a History section', await evalJS(`(() => {
   return ok;
 })()`))
 
+/* ---- press and hold ---- */
+
+await evalJS(`closeDrawer(); window.__holds = [];
+  onCardHoldStart = (id) => window.__holds.push('start:' + id);
+  onCardHoldEnd = (id) => window.__holds.push('end:' + id);
+  window.__ptr = (type, el, x, y) => (type === 'pointerdown' ? el : window).dispatchEvent(new PointerEvent(type, {
+    bubbles: true, cancelable: true, pointerType: 'mouse', button: 0, clientX: x, clientY: y }));
+  renderBoard();`)
+const holdCard = `document.querySelector('#board .tenon-card[data-id="bd0002"]')`
+await evalJS(`(() => { const el = ${holdCard}; const r = el.getBoundingClientRect(); window.__pt = [r.x + 20, r.y + 20];
+  __ptr('pointerdown', el, ...__pt); })()`)
+check('pressing a card stops text selection', await evalJS(`document.body.classList.contains('card-pressing')`))
+await evalJS(`new Promise(r => setTimeout(r, 750))`)
+check('a 600ms hold adds the held class and calls the hold hook', await evalJS(
+  `${holdCard}.classList.contains('is-held') && __holds.join() === 'start:bd0002'`))
+check('a held card cannot start a drag', await evalJS(
+  `(() => { const e = new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: new DataTransfer() });
+    ${holdCard}.dispatchEvent(e); return e.defaultPrevented && state.openTask !== 'bd0002'; })()`))
+await evalJS(`__ptr('pointerup', null, ...__pt); ${holdCard}.click()`)
+await evalJS(`new Promise(r => setTimeout(r, 50))`)
+check('releasing drops the held class and calls the end hook', await evalJS(
+  `!${holdCard}.classList.contains('is-held') && __holds.join() === 'start:bd0002,end:bd0002' &&
+   !document.body.classList.contains('card-pressing')`))
+check('the click after a hold does not open the drawer', await evalJS(`state.openTask !== 'bd0002'`))
+await evalJS(`(() => { const el = ${holdCard}; __ptr('pointerdown', el, ...__pt); __ptr('pointerup', null, ...__pt); el.click(); })()`)
+check('a short click still opens the card', await evalJS(`state.openTask === 'bd0002'`))
+await evalJS(`closeDrawer(); (() => { const el = ${holdCard}; __ptr('pointerdown', el, ...__pt);
+  __ptr('pointermove', null, __pt[0] + 12, __pt[1]); })()`)
+await evalJS(`new Promise(r => setTimeout(r, 750))`)
+check('moving past 5px before 600ms cancels the hold', await evalJS(`!${holdCard}.classList.contains('is-held')`))
+await evalJS(`__ptr('pointerup', null, ...__pt); closeDrawer()`)
+
 /* ---- the point of the guard ---- */
 
 /* The tab is unlocked here, so the board tries to save after every move. The

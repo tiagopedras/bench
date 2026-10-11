@@ -12,7 +12,8 @@
  * in one span, which the pinned string shapes do not have; the test steps
  * over it.
  */
-import type { DragEvent, KeyboardEvent } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { DragEvent, KeyboardEvent, PointerEvent } from 'react'
 import { Card, Pill, Tag } from '@tiagopedras/tenon'
 import type { PillTone, TagTone } from '@tiagopedras/tenon'
 import { InlineMd } from './InlineMd'
@@ -81,7 +82,17 @@ export interface TaskCardProps {
   onOpen?: (id: string, multi?: boolean) => void
   onDragStart?: (e: DragEvent<HTMLElement>, id: string) => void
   onDragEnd?: (e: DragEvent<HTMLElement>, id: string) => void
+  /** The card has been pressed and held for HOLD_MS without moving, and when
+   *  that press ends. onCardHoldStart()/onCardHoldEnd() in 09-columns.js. */
+  onHoldStart?: (id: string, el: HTMLElement) => void
+  onHoldEnd?: (id: string, el: HTMLElement) => void
 }
+
+const HOLD_MS = 600
+const HOLD_SLOP = 5
+/* What inside a card takes a press for itself: the project chip, links, a
+   checkbox. A hold only starts on the card body. */
+const OWN_PRESS = 'button,a,input,select,textarea,label,[data-project]'
 
 function ChipSpan({ c }: { c: Chip }) {
   const avatar = c.avatarHTML
@@ -97,9 +108,62 @@ function ChipSpan({ c }: { c: Chip }) {
 }
 
 export function TaskCard(props: TaskCardProps) {
-  const { model: m, stripe, bucketLabel, draggable, dragging, onOpen, onDragStart, onDragEnd } = props
+  const { model: m, stripe, bucketLabel, draggable, dragging, onOpen, onDragStart, onDragEnd, onHoldStart, onHoldEnd } = props
   const still = !!props.static
+  const [held, setHeld] = useState(false)
+  const heldRef = useRef(false)
+  const cardRef = useRef<HTMLElement | null>(null)
+  // Set when a hold ends, so the click that follows the release is dropped.
+  const swallow = useRef(false)
+  const stop = useRef<(() => void) | null>(null)
+  useEffect(() => () => { if (stop.current) stop.current() }, [])
+
+  const press = (e: PointerEvent<HTMLElement>) => {
+    if (still || e.pointerType !== 'mouse' || e.button !== 0) return
+    if ((e.target as Element).closest(OWN_PRESS)) return
+    const el = e.currentTarget
+    cardRef.current = el
+    const x0 = e.clientX, y0 = e.clientY
+    document.body.classList.add('card-pressing')
+    const sel = window.getSelection()
+    if (sel) sel.removeAllRanges()
+    const finish = () => {
+      window.clearTimeout(timer)
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', finish)
+      window.removeEventListener('pointercancel', finish)
+      window.removeEventListener('blur', finish)
+      document.documentElement.removeEventListener('mouseleave', finish)
+      document.body.classList.remove('card-pressing')
+      stop.current = null
+      if (heldRef.current) {
+        heldRef.current = false
+        setHeld(false)
+        swallow.current = true
+        window.setTimeout(() => { swallow.current = false }, 0)
+        if (onHoldEnd) onHoldEnd(m.id, el)
+      }
+    }
+    const move = (ev: globalThis.PointerEvent) => {
+      if (heldRef.current) return
+      if (Math.hypot(ev.clientX - x0, ev.clientY - y0) > HOLD_SLOP) finish()
+    }
+    const timer = window.setTimeout(() => {
+      heldRef.current = true
+      setHeld(true)
+      const s = window.getSelection()
+      if (s) s.removeAllRanges()
+      if (onHoldStart) onHoldStart(m.id, el)
+    }, HOLD_MS)
+    stop.current = finish
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', finish)
+    window.addEventListener('pointercancel', finish)
+    window.addEventListener('blur', finish)
+    document.documentElement.addEventListener('mouseleave', finish)
+  }
   const open = (e: { metaKey?: boolean, ctrlKey?: boolean, shiftKey?: boolean }) => {
+    if (swallow.current) { swallow.current = false; return }
     if (onOpen) onOpen(m.id, !!(e.metaKey || e.ctrlKey || e.shiftKey))
   }
   const key = (e: KeyboardEvent<HTMLElement>) => {
@@ -130,7 +194,7 @@ export function TaskCard(props: TaskCardProps) {
 
   return (
     <Card
-      className={(m.cls + (dragging ? ' dragging' : '')).trim()}
+      className={(m.cls + (dragging ? ' dragging' : '') + (held ? ' is-held' : '')).trim()}
       accent={stripe}
       draggable={still ? false : draggable}
       dragging={dragging}
@@ -139,7 +203,11 @@ export function TaskCard(props: TaskCardProps) {
       data-id={m.id}
       onClick={still ? undefined : open}
       onKeyDown={still ? undefined : key}
-      onDragStart={still || !onDragStart ? undefined : e => onDragStart(e, m.id)}
+      onPointerDown={still ? undefined : press}
+      onDragStart={still || !onDragStart ? undefined : e => {
+        if (heldRef.current) { e.preventDefault(); return }
+        onDragStart(e, m.id)
+      }}
       onDragEnd={still || !onDragEnd ? undefined : e => onDragEnd(e, m.id)}
       eyebrow={bucketLabel ? <span className="bucket">{bucketLabel}</span> : undefined}
       title={<InlineMd text={m.title} />}

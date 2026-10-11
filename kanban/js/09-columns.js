@@ -460,6 +460,16 @@ document.addEventListener('click', e => {
    they draw with an empty count and this puts the figure in when it arrives.
    Silent when the column has gone: a view can be switched away from while its
    fetch is still in the air. */
+/* A card pressed and held for 600ms without moving (TaskCard.tsx). The board
+   adds the held look itself; these are where what a hold does while it lasts
+   gets written. */
+function onCardHoldStart(taskId, el){
+  // interaction while held goes here
+}
+function onCardHoldEnd(taskId, el){
+  // interaction while held goes here
+}
+
 function setColCount(sel, n){
   const el = document.querySelector(sel + ' .tenon-column__head .tenon-column__count');
   if (el) el.textContent = n;
