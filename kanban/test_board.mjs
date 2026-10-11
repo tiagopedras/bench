@@ -486,7 +486,7 @@ const holdCard = `document.querySelector('#board .tenon-card[data-id="bd0002"]')
 await evalJS(`(() => { const el = ${holdCard}; const r = el.getBoundingClientRect(); window.__pt = [r.x + 20, r.y + 20];
   __ptr('pointerdown', el, ...__pt); })()`)
 check('pressing a card stops text selection', await evalJS(`document.body.classList.contains('card-pressing')`))
-await evalJS(`new Promise(r => setTimeout(r, 750))`)
+await evalJS(`new Promise(r => setTimeout(r, 900))`)
 check('a 600ms hold adds the held class and calls the hold hook', await evalJS(
   `${holdCard}.classList.contains('is-held') && __holds.join() === 'start:bd0002'`))
 check('the held ring is the card plus 2px each way, over the bucket stripe', await evalJS(
@@ -496,6 +496,13 @@ check('the held ring is the card plus 2px each way, over the bucket stripe', awa
     const w = parseFloat(a.width) + pad, h = parseFloat(a.height) + pad;
     return Math.abs(w - (c.width + 2)) < 1.5 && Math.abs(h - (c.height + 2)) < 1.5 &&
       a.backgroundImage.includes('linear-gradient') && parseFloat(b.width) > 0 && getComputedStyle(el).outlineStyle === 'none'; })()`))
+await evalJS(`window.__eff = el => { let o = 1; for (; el; el = el.parentElement) o *= +getComputedStyle(el).opacity; return o }`)
+check('the rest of the page dims while a card is held, and the held card does not', await evalJS(
+  `(() => { const other = document.querySelector('#board .tenon-card[data-id="bd0001"]');
+    return __eff(other) < 0.35 && __eff(document.querySelector('#headline')) <= 0.35 &&
+      __eff(${holdCard}) === +getComputedStyle(${holdCard}).opacity &&
+      __eff(${holdCard}.closest('.tenon-column')) === +getComputedStyle(${holdCard}.closest('.tenon-column')).opacity &&
+      !${holdCard}.closest('.tenon-column').classList.contains('spot-dim'); })()`))
 check('a held card cannot start a drag', await evalJS(
   `(() => { const e = new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: new DataTransfer() });
     ${holdCard}.dispatchEvent(e); return e.defaultPrevented && state.openTask !== 'bd0002'; })()`))
@@ -504,6 +511,12 @@ await evalJS(`new Promise(r => setTimeout(r, 50))`)
 check('releasing drops the held class and calls the end hook', await evalJS(
   `!${holdCard}.classList.contains('is-held') && __holds.join() === 'start:bd0002,end:bd0002' &&
    !document.body.classList.contains('card-pressing')`))
+await evalJS(`new Promise(r => setTimeout(r, 250))`)
+check('after release the dim is gone and the card is back to rest', await evalJS(
+  `document.querySelectorAll('.spot-dim, .spot-undim, .is-releasing, .is-held').length === 0 &&
+   __eff(document.querySelector('#board .tenon-card[data-id="bd0001"]')) ===
+     +getComputedStyle(document.querySelector('#board .tenon-card[data-id="bd0001"]')).opacity &&
+   ['none', 'normal'].includes(getComputedStyle(${holdCard}, '::after').content)`))
 check('the click after a hold does not open the drawer', await evalJS(`state.openTask !== 'bd0002'`))
 await evalJS(`(() => { const el = ${holdCard}; __ptr('pointerdown', el, ...__pt); __ptr('pointerup', null, ...__pt); el.click(); })()`)
 check('a short click still opens the card', await evalJS(`state.openTask === 'bd0002'`))

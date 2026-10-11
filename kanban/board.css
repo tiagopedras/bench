@@ -2203,21 +2203,40 @@
      since Tenon's ::before is the bucket stripe) drawn 1px outside the card, so the card keeps its size and its contents stay
      put; the mask leaves only the ring. */
   body.card-pressing{user-select:none; -webkit-user-select:none}
-  /* Twice, so it outranks .tenon-card.onething below, which colours the same border. */
-  .tenon-card.is-held.is-held{
+  /* Twice, so it outranks .tenon-card.onething below, which colours the same border.
+     .is-releasing is the 150ms after release, kept only so the ring can fade
+     out; at rest neither class is there and the card is as it was. */
+  .tenon-card.is-held.is-held, .tenon-card.is-releasing.is-releasing{
     --held-from:#F0B355; --held-to:#FF8A85;
     position:relative; border-radius:9px; outline:none;
     border-top-color:transparent; border-right-color:transparent; border-bottom-color:transparent;
     box-shadow:0 0 8px 1px var(--held-to), 0 1px 1px 0 rgba(16,20,28,.04);
   }
-  .tenon-card.is-held::after{
+  .tenon-card.is-held::after, .tenon-card.is-releasing::after{
     content:""; position:absolute; top:-2px; right:-2px; bottom:-2px; left:-5px; border-radius:10px; padding:1px;
     background:linear-gradient(135deg, var(--held-from), var(--held-to));
     -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite:xor; mask-composite:exclude;
     pointer-events:none;
   }
-  .tenon-card.onething.is-held::after{left:-4px}
+  .tenon-card.is-held.is-held{animation:held-glow-in .2s ease-out}
+  .tenon-card.is-held::after{animation:held-ring-in .2s ease-out}
+  .tenon-card.is-releasing.is-releasing{animation:held-glow-out .15s ease-in forwards}
+  .tenon-card.is-releasing::after{animation:held-ring-out .15s ease-in forwards}
+  @keyframes held-glow-in{from{box-shadow:0 0 8px 1px rgba(255,138,133,0), 0 1px 1px 0 rgba(16,20,28,.04)}}
+  @keyframes held-glow-out{to{box-shadow:0 0 8px 1px rgba(255,138,133,0), 0 1px 1px 0 rgba(16,20,28,.04)}}
+  @keyframes held-ring-in{from{opacity:0}}
+  @keyframes held-ring-out{to{opacity:0}}
+  /* spotlight() in js/09a-spotlight.js: everything but the held card steps back.
+     !important so it beats the faded states below (.done, .waiting) and their
+     hover rules; .spot-undim only carries the slower return. */
+  .spot-dim{opacity:.35 !important; transition:opacity .2s ease}
+  .spot-undim{transition:opacity .15s ease}
+  @media (prefers-reduced-motion: reduce){
+    .spot-dim, .spot-undim{transition:none}
+    .tenon-card.is-held, .tenon-card.is-releasing, .tenon-card.is-held::after, .tenon-card.is-releasing::after{animation-duration:.01ms !important}
+  }
+  .tenon-card.onething.is-held::after, .tenon-card.onething.is-releasing::after{left:-4px}
   /* Same as any other card — same width, radius, padding, shadow, left
      bucket-colour stripe — except the border colour and a faint accent tint
      behind it, so it reads as "the same card, just marked" rather than a

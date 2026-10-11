@@ -111,6 +111,8 @@ export function TaskCard(props: TaskCardProps) {
   const { model: m, stripe, bucketLabel, draggable, dragging, onOpen, onDragStart, onDragEnd, onHoldStart, onHoldEnd } = props
   const still = !!props.static
   const [held, setHeld] = useState(false)
+  // The 150ms after release, while the ring fades out.
+  const [fading, setFading] = useState(false)
   const heldRef = useRef(false)
   const cardRef = useRef<HTMLElement | null>(null)
   // Set when a hold ends, so the click that follows the release is dropped.
@@ -139,6 +141,8 @@ export function TaskCard(props: TaskCardProps) {
       if (heldRef.current) {
         heldRef.current = false
         setHeld(false)
+        setFading(true)
+        window.setTimeout(() => setFading(false), 150)
         swallow.current = true
         window.setTimeout(() => { swallow.current = false }, 0)
         if (onHoldEnd) onHoldEnd(m.id, el)
@@ -194,7 +198,7 @@ export function TaskCard(props: TaskCardProps) {
 
   return (
     <Card
-      className={(m.cls + (dragging ? ' dragging' : '') + (held ? ' is-held' : '')).trim()}
+      className={(m.cls + (dragging ? ' dragging' : '') + (held ? ' is-held' : '') + (fading && !held ? ' is-releasing' : '')).trim()}
       accent={stripe}
       draggable={still ? false : draggable}
       dragging={dragging}
