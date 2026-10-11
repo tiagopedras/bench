@@ -2209,7 +2209,7 @@
   .tenon-card.is-held.is-held, .tenon-card.is-releasing.is-releasing{
     --held-from:#F0B355; --held-to:#FF8A85;
     position:relative; border-radius:9px; outline:none;
-    border-top-color:transparent; border-right-color:transparent; border-bottom-color:transparent;
+    border-color:transparent;
     box-shadow:0 0 4px 1px var(--held-to), 0 0 12px 3px var(--held-to), 0 1px 1px 0 rgba(16,20,28,.04);
     opacity:1;
   }
@@ -2250,6 +2250,14 @@
     .tenon-card.is-releasing, .tenon-card.is-held::after, .tenon-card.is-releasing::after{animation-duration:.01ms !important}
   }
   .tenon-card.onething.is-held::after, .tenon-card.onething.is-releasing::after{left:-4px}
+  /* The left border is 4px (3px on .onething) and its colour is not the bucket's,
+     so it is made clear above and the stripe moves out over it. From outside in:
+     ring, stripe, card, nothing between. The stripe is cut from a wider box so
+     its corners follow the card's 9px curve rather than shrinking to its 4px. */
+  .tenon-card.is-held.tenon-card--accent::before, .tenon-card.is-releasing.tenon-card--accent::before{
+    left:-4px; top:-1px; bottom:-1px; width:13px; border-radius:9px 0 0 9px; clip-path:inset(0 9px 0 0)
+  }
+  .tenon-card.onething.is-held.tenon-card--accent::before, .tenon-card.onething.is-releasing.tenon-card--accent::before{left:-3px}
   /* Same as any other card — same width, radius, padding, shadow, left
      bucket-colour stripe — except the border colour and a faint accent tint
      behind it, so it reads as "the same card, just marked" rather than a

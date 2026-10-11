@@ -495,7 +495,10 @@ check('the held ring is the card plus 2px each way, over the bucket stripe', awa
     const pad = a.boxSizing === 'border-box' ? 0 : 2;
     const w = parseFloat(a.width) + pad, h = parseFloat(a.height) + pad;
     return Math.abs(w - (c.width + 2)) < 1.5 && Math.abs(h - (c.height + 2)) < 1.5 &&
-      a.backgroundImage.includes('linear-gradient') && parseFloat(b.width) > 0 && getComputedStyle(el).outlineStyle === 'none'; })()`))
+      a.backgroundImage.includes('linear-gradient') && parseFloat(b.width) > 0 &&
+      getComputedStyle(el).borderLeftColor === 'rgba(0, 0, 0, 0)' &&
+      Math.abs(parseFloat(a.left) + parseFloat(getComputedStyle(el).borderLeftWidth) + 1) < 0.5 &&
+      parseFloat(b.left) === -parseFloat(getComputedStyle(el).borderLeftWidth) && getComputedStyle(el).outlineStyle === 'none'; })()`))
 await evalJS(`window.__eff = el => { let o = 1; for (; el; el = el.parentElement) o *= +getComputedStyle(el).opacity; return o }`)
 check('the rest of the page dims while a card is held, and the held card does not', await evalJS(
   `(() => { const other = document.querySelector('#board .tenon-card[data-id="bd0001"]');
