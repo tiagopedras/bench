@@ -955,12 +955,11 @@ function suggestions(t){
 }
 function suggestionSection(label, list, opts){
   opts = opts || {};
-  const rows = list.map(s => messageHTML(s.text, {
-    where: s.where, draft: s.draft, claude: opts.claude, task: opts.task,
-    dismiss: state.locked ? '' : s.raw
-  })).join('');
   const body = list.length
-    ? (opts.capped ? '<div class="capbody">' + rows + '</div>' : rows)
+    ? list.map(s => messageHTML(s.text, {
+        where: s.where, draft: s.draft, claude: opts.claude, task: opts.task,
+        dismiss: state.locked ? '' : s.raw
+      })).join('')
     : emptyState(opts.emptyText || 'Nothing here yet.');
   return sideSection(label, label, body, list.length, opts.sub);
 }
@@ -980,10 +979,8 @@ function agendaSection(list, when, prev, sub){
     emptyState('None yet. Written as `- Agenda:` in Notes, with the topics '
              + 'as bullets indented under it.'), undefined, sub);
   return sideSection('Meeting agenda', 'agenda',
-    '<div class="capbody">' +
     list.map(ag => agendaHTML(ag, when, { where: ag.where })).join('') +
     (prev ? agendaHTML(prev, '', { prev:true }) : '') +
-    '</div>' +
     '<span class="help">Copy takes the date, the word Agenda and both levels of ' +
     'bullets, as bullets. The topics themselves are edited in Description.</span>',
     list.length, sub);
@@ -1310,7 +1307,7 @@ function openDrawer(id, focusTitle){
   const outputs = startLinks +
     agendaSection(sugg.agenda, t.due, readPrevAgenda(bodyParts(t).notes), true) +
     suggestionSection('Message suggestions', sugg.message,
-      { sub: true, capped: true, emptyText: 'None yet. Written as `- Suggested message: ...` in Notes.' }) +
+      { sub: true, emptyText: 'None yet. Written as `- Suggested message: ...` in Notes.' }) +
     (DRAWER_HIDDEN.prompts ? '' : suggestionSection('Prompt suggestions', sugg.prompt,
       { sub: true, claude:true, task:t.id, emptyText: 'None yet. Written as `- Prompt: ...` in Notes.' })) +
     (DRAWER_HIDDEN.jira ? '' : jiraSection(sugg.jira, true)) +
