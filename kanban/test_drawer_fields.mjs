@@ -112,6 +112,7 @@ try {
   await evalJS(`openDrawer(__t().id)`)
   await wait(300)
   check('and shutting it is remembered too', await evalJS(`!${dsel}.open`))
+  check('by default Dependencies and AI processes are not drawn', await evalJS(`!document.querySelector('#dbody details[data-collapse="sugg:deps"]') && !document.querySelector('#dbody details[data-collapse="sugg:chats"]')`))
   await evalJS(`${dsel}.open = true`)
   await wait(150)
 

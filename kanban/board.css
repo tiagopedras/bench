@@ -2575,6 +2575,14 @@
   details.field > summary::-webkit-details-marker, details.sugg > summary::-webkit-details-marker{display:none}
   details.field > summary::before, details.sugg > summary::before{content:'▸'; font-size: var(--tenon-typography-size-sm); display:inline-block}
   details.field[open] > summary::before, details.sugg[open] > summary::before{content:'▾'}
+  /* A subsection inside Outputs: Description's title grey and small, which
+     .field > summary already gives it. Only the colour needs winning back from
+     .sugg > summary. */
+  details.field.subsec > summary{color:var(--tenon-text-faint)}
+  /* Start a project and Use an existing folder, as plain text links. */
+  .dlinks{display:flex; flex-wrap:wrap; gap:4px 14px}
+  .dlinkbtn{background:none; border:none; padding:0; cursor:pointer; font:inherit; font-size: var(--tenon-typography-size-sm); color:var(--tenon-text-accent)}
+  .dlinkbtn:hover{text-decoration:underline}
   .sublabel{font-style:normal; font-weight:550; text-transform:none; letter-spacing:0; color:var(--tenon-text-faint); opacity:.85; margin-left:6px}
   .substeps{display:flex; flex-direction:column; gap:1px; --tenon-reorder-gap: 1px}
   /* The drawer's History section: one line per specialist called in. */

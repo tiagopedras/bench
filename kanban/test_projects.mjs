@@ -252,11 +252,10 @@ check('an older helper is named as the cause', await evalJS(`
   /needs restarting/.test(document.querySelector('#projFiles')?.textContent || '')
 `))
 
-/* ---- the way back, from a task to the project it belongs to ----
-   Opening a task card from the project panel was a one-way trip: the task
-   drawer named its project ninth in the left-hand column, below the fold, and
-   after this change does not name it there at all. It is a card in the second
-   column now, beside the conversations. */
+/* ---- a task with a folder, in the drawer ----
+   The Project card is gone from the drawer. The folder's one action, Open
+   folder, is a button in the header, and the Outputs section leads the second
+   column with the folder links only while a task has no folder. */
 
 // The two failure cases above left the stub answering 501 to everything.
 await evalJS(`window.__projectStatus = 0`)
@@ -271,19 +270,19 @@ check('the fixture has a task on the project', !!taskId)
 await evalJS(`openDrawer(${JSON.stringify(taskId)})`)
 await new Promise(r => setTimeout(r, 600))
 
-check('the task drawer leads its second column with the project', await evalJS(`
-  document.querySelector('.dcol-side > details > summary')?.textContent.trim()
-`) === 'Project')
+check('the second column leads with Outputs', await evalJS(`
+  document.querySelector('.dcol-side > details > summary')?.textContent.trim() === 'Outputs'
+`))
 check('the project is gone from the left-hand column', await evalJS(`
   !document.querySelector('.dcol-main [data-project]')
 `))
-check('the card names the folder', await evalJS(`
-  document.querySelector('#taskProjCard .pctitle')?.textContent === 'atlas2027'
+check('and the drawer offers no folder links for a task that has one', await evalJS(`
+  !document.querySelector('#f-projstart') && !document.querySelector('#f-projpick')
 `))
-check('and fills in what it is and when it was touched', await evalJS(`
-  /FY27 annual roadmap/.test(document.querySelector('#taskProjBlurb')?.textContent || '') &&
-  document.querySelector('#taskProjWhen')?.textContent === '4 files · edited yesterday'
-`), await evalJS(`document.querySelector('#taskProjWhen')?.textContent`))
+check('the header offers Open project folder', await evalJS(`
+  !document.querySelector('#dheadProj').classList.contains('hidden') &&
+  document.querySelector('#dheadProj').textContent === 'Open project folder'
+`))
 
 // One shape for every section in that column — the whole point of the change.
 check('every section in the column is the same kind of section', await evalJS(`
@@ -296,11 +295,6 @@ check('and none of them still draws the packaged heading', await evalJS(`
   !document.querySelector('.dcol-side .aic-field, .dcol-side .aic-sublabel')
 `))
 
-// Clicking it lands on the project panel this file's first half tests.
-await evalJS(`document.querySelector('#taskProjCard .pcbody').click()`)
-await new Promise(r => setTimeout(r, 500))
-check('clicking the card opens the project', await evalJS(`state.openProject === 'atlas2027'`))
-check('and the task panel is behind it, not gone', await evalJS(`state.openTask === null`))
 
 /* ---- the third state: pointed at, with nothing left open ----
    No fixture project can be in it and Live at the same time, so this swaps the
@@ -435,8 +429,8 @@ const aopId = await idOf('On the roadmap')
 
 await evalJS(`openDrawer(${JSON.stringify(aopId)})`)
 await new Promise(r => setTimeout(r, 400))
-check('a task with a folder offers Open folder, even locked', await evalJS(`!!document.querySelector('#f-projopen')`))
-await evalJS(`document.querySelector('#f-projopen').click()`)
+check('a task with a folder offers Open folder, even locked', await evalJS(`!document.querySelector('#dheadProj').classList.contains('hidden')`))
+await evalJS(`document.querySelector('#dheadProj').click()`)
 await new Promise(r => setTimeout(r, 200))
 check('which asks the server to open that folder', await evalJS(`window.__blocked.some(b =>
   b.startsWith('POST /project/open') && b.includes('atlas2027'))`), await evalJS(`window.__blocked.join(' | ')`))
@@ -460,7 +454,7 @@ check('and the rest of the body keeps its order',
   briefBody[1] === '  - [ ] First step' && briefBody[2] === '  - Waiting on: HR', JSON.stringify(briefBody))
 check('the task reads the new folder back', await evalJS(`taskProject(locate(${JSON.stringify(briefId)}).task)`) === 'write-the-brief')
 check('the task is marked for autosave', await evalJS(`locate(${JSON.stringify(briefId)}).task.dirty === true`))
-check('the drawer now shows the folder card', await evalJS(`!!document.querySelector('#taskProjCard')`))
+check('the drawer now shows the folder, not the links', await evalJS(`!document.querySelector('#f-projstart') && !document.querySelector('#dheadProj').classList.contains('hidden')`))
 
 await evalJS(`state.locked = false; openDrawer(${JSON.stringify(pickId)})`)
 await new Promise(r => setTimeout(r, 300))
@@ -495,7 +489,7 @@ check('and the panel offers Open folder', await evalJS(`!!document.querySelector
 
 await evalJS(`state.demo = true; openDrawer(${JSON.stringify(aopId)})`)
 await new Promise(r => setTimeout(r, 300))
-check('the static copy offers no Open folder', await evalJS(`!document.querySelector('#f-projopen')`))
+check('the static copy offers no Open folder', await evalJS(`document.querySelector('#dheadProj').classList.contains('hidden')`))
 await evalJS(`openProjectDrawer('atlas2027')`)
 await new Promise(r => setTimeout(r, 300))
 check('in either panel', await evalJS(`!document.querySelector('#projOpenFolder')`))

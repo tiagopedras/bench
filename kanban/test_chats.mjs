@@ -89,6 +89,7 @@ await evalJS(`(() => {
 await evalJS(`(async () => {
   const demo = await (await fetch('/kanban/demo.md')).text();
   load(demo, 'demo.md', {});
+  DRAWER_HIDDEN.chats = false;
   state.locked = true;
   state.lockedLabel = 'chats test';
   return 'locked';

@@ -595,10 +595,15 @@ function emptyState(text){
     esc(text).replace(/`([^`]+)`/g, (m, code) => '<code>' + code + '</code>') +
     '</p>';
 }
-function sideSection(label, key, body, count){
+/* sub marks a subsection inside another side section (Outputs): no rule above
+   it, and its title takes Description's grey rather than the white heading. */
+/* Side-column sections switched off until they come back. The code stays. */
+const DRAWER_HIDDEN = { deps: true, chats: true };
+
+function sideSection(label, key, body, count, sub){
   const k = 'sugg:' + key;
-  return '<hr class="dsep">' +
-    '<details class="field sugg" data-collapse="' + esc(k) + '"' +
+  return (sub ? '' : '<hr class="dsep">') +
+    '<details class="field sugg' + (sub ? ' subsec' : '') + '" data-collapse="' + esc(k) + '"' +
     (sectionCollapsed(k) ? '' : ' open') + '>' +
     '<summary>' + esc(label) +
     (count > 1 ? ' <em class="sublabel">' + count + '</em>' : '') + '</summary>' +
@@ -939,7 +944,7 @@ function suggestionSection(label, list, opts){
         dismiss: state.locked ? '' : s.raw
       })).join('')
     : emptyState(opts.emptyText || 'Nothing here yet.');
-  return sideSection(label, label, body, list.length);
+  return sideSection(label, label, body, list.length, opts.sub);
 }
 
 /* The agenda for a recurring meeting, in the panel. Its own section rather than
@@ -952,31 +957,31 @@ function suggestionSection(label, list, opts){
 
    `prev` is last cycle's agenda, kept by the roll. Shown under this one and
    without a Copy, because its only job is to be read while the next is written. */
-function agendaSection(list, when, prev){
+function agendaSection(list, when, prev, sub){
   if (!list.length && !prev) return sideSection('Meeting agenda', 'agenda',
     emptyState('None yet. Written as `- Agenda:` in Notes, with the topics '
-             + 'as bullets indented under it.'));
+             + 'as bullets indented under it.'), undefined, sub);
   return sideSection('Meeting agenda', 'agenda',
     list.map(ag => agendaHTML(ag, when, { where: ag.where })).join('') +
     (prev ? agendaHTML(prev, '', { prev:true }) : '') +
     '<span class="help">Copy takes the date, the word Agenda and both levels of ' +
     'bullets, as bullets. The topics themselves are edited in Description.</span>',
-    list.length);
+    list.length, sub);
 }
 
 /* Tickets waiting to be raised. Its own section rather than a third kind of
    suggestion, because the button is a link out to Jira rather than a copy, and
    because which board it goes to is part of what the row has to say. */
-function jiraSection(list){
+function jiraSection(list, sub){
   if (!list.length) return sideSection('Jira tickets', 'jira',
-    emptyState('None yet. Written as `- Jira (BOARD): ...` in Notes.'));
+    emptyState('None yet. Written as `- Jira (BOARD): ...` in Notes.'), undefined, sub);
   return sideSection('Jira tickets', 'jira',
     list.map(n => jiraHTML(n, {
       where: n.where, dismiss: state.locked ? '' : n.raw, dismissDesc: n.descRaw
     })).join('') +
     '<span class="help">The link fills in the summary and the description. Nothing is ' +
     'raised until you press Create in Jira.</span>',
-    list.length);
+    list.length, sub);
 }
 
 /* Adds a step and puts the cursor straight in it. Shared by the Add button and
@@ -1135,6 +1140,11 @@ function openDrawer(id, focusTitle){
     ? 'Set ' + dueLabel(t.headline) + '. It stays the headline until you solve it. Click to remove it.'
     : 'The task that makes the others easier or unnecessary. Only one at a time.';
   hlBtn.disabled = ro;
+  // Open folder sits beside it. Only for a task with a folder, and only where a
+  // server can open one; a backup preview can still open a folder.
+  const projBtn = $('#dheadProj');
+  projBtn.classList.toggle('hidden', !(proj && !state.demo && !listFolder));
+  projBtn.onclick = () => openProjectFolder(proj);
   // title as well as text: the line truncates rather than wrapping when the
   // drawer is narrow, and the read-only one is the sentence worth reading.
   const help = $('#dheadHelp');
@@ -1261,27 +1271,33 @@ function openDrawer(id, focusTitle){
       (ro ? '' : '<button type="button" class="btn dashed small addsub" id="f-addsub" title="Enter keeps adding, blank Enter stops">+ Add subtask</button>') +
     '</div>';
 
-  // Chats, dependencies and the four suggestion-shaped sections below them are
-  // all "about the task" rather than "of the task" — kept in a second column
-  // when the drawer is wide enough to hold one, same content and order as
-  // when it isn't (see .dcols in the stylesheet).
+  // The outputs the task produces (agenda, message and prompt suggestions, Jira
+  // tickets) sit under one Outputs heading, each a subsection with its own count.
+  // History stays a section of its own after them. Both are "about the task"
+  // rather than "of the task", kept in a second column when the drawer is wide
+  // enough to hold one, same content and order as when it isn't (see .dcols).
   //
-  // Every one of them draws whether or not it has anything in it: the column is
-  // the same list of headings on every task, so nothing below it moves as you
-  // read from one task to the next, and a section with nothing in it is the one
-  // place that says what would put something there. Only chatSection() can
-  // still come back empty, and only when the chat engine isn't loaded at all —
-  // a heading over two buttons that cannot work is worse than no heading.
-  const sideFields =
-    projectSection(t) +
-    chatSection(t) +
-    dependenciesSection(t) +
-    agendaSection(sugg.agenda, t.due, readPrevAgenda(bodyParts(t).notes)) +
+  // Every one of them draws whether or not it has anything in it, so nothing
+  // below the column moves as you read from one task to the next.
+  // Start a project and Use an existing folder: only for a task with no folder
+  // yet, and only where a change can be made (same test the card used).
+  const canStart = !proj && !ro && !state.demo && !listFolder;
+  const startLinks = canStart
+    ? '<div class="dlinks"><button type="button" class="dlinkbtn" id="f-projstart">Start a project</button>' +
+      '<button type="button" class="dlinkbtn" id="f-projpick">Use an existing folder</button></div>' +
+      '<div class="ppick hidden" id="f-projpicker"></div>'
+    : '';
+  const outputs = startLinks +
+    agendaSection(sugg.agenda, t.due, readPrevAgenda(bodyParts(t).notes), true) +
     suggestionSection('Message suggestions', sugg.message,
-      { emptyText: 'None yet. Written as `- Suggested message: ...` in Notes.' }) +
+      { sub: true, emptyText: 'None yet. Written as `- Suggested message: ...` in Notes.' }) +
     suggestionSection('Prompt suggestions', sugg.prompt,
-      { claude:true, task:t.id, emptyText: 'None yet. Written as `- Prompt: ...` in Notes.' }) +
-    jiraSection(sugg.jira) +
+      { sub: true, claude:true, task:t.id, emptyText: 'None yet. Written as `- Prompt: ...` in Notes.' }) +
+    jiraSection(sugg.jira, true);
+  const sideFields =
+    (DRAWER_HIDDEN.chats ? '' : chatSection(t)) +
+    (DRAWER_HIDDEN.deps ? '' : dependenciesSection(t)) +
+    sideSection('Outputs', 'outputs', outputs) +
     historySection(t);
 
   $('#dbody').innerHTML = '<div class="dcols">' +
@@ -1305,15 +1321,10 @@ function openDrawer(id, focusTitle){
     defaultValue: dedent(splitDrawnNotes(bodyParts(t).notes).prose),
   }));
 
-  // The card in the Project section is drawn with the folder name it already
-  // had; what the folder holds is a read off disk, and the panel does not wait
-  // for it.
-  if (projectMountEl) BoardUI.unmount(projectMountEl);
-  projectMountEl = $('#f-project-mount');
-  projectDrawTask = t;
-  projectDrawRO = ro;
-  renderProjectSection();
-  if (proj) loadTaskProject(proj, t.id);
+  const startBtn = $('#f-projstart');
+  if (startBtn) startBtn.onclick = () => startProject(t);
+  const pickBtn = $('#f-projpick');
+  if (pickBtn) pickBtn.onclick = () => drawProjectPicker(t);
   loadTaskHistory(t);
   bindDependencySection(t);
   mountSubRows(t, id, subs, ro);
@@ -1867,6 +1878,7 @@ function openProjectDrawer(name){
   $('#drawer').classList.toggle('readonly', state.locked);
   $('#drawerTitle').textContent = name;
   $('#dheadHl').classList.add('hidden');
+  $('#dheadProj').classList.add('hidden');
 
   const open = rows.filter(r => !r.task.done);
   const done = rows.filter(r => r.task.done);

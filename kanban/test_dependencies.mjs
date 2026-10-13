@@ -85,6 +85,7 @@ try {
     state.locked = true;
   })()`)
   check('the tab is locked', await evalJS(`state.locked === true`))
+  await evalJS(`DRAWER_HIDDEN.deps = false`)
 
   const helpers = `
     window.__task = title => state.doc.buckets.flatMap(b => b.tiers).flatMap(x => x.tasks).find(t => t.title === title);
