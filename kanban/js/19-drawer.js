@@ -598,7 +598,7 @@ function emptyState(text){
 /* sub marks a subsection inside another side section (Outputs): no rule above
    it, and its title takes Description's grey rather than the white heading. */
 /* Side-column sections switched off until they come back. The code stays. */
-const DRAWER_HIDDEN = { deps: true, chats: true };
+const DRAWER_HIDDEN = { deps: true, chats: true, prompts: true, jira: true };
 
 function sideSection(label, key, body, count, sub){
   const k = 'sugg:' + key;
@@ -737,6 +737,13 @@ async function drawProjectPicker(t){
 /* The task's history: which specialist an owning agent brought in on it, one
    line per call (historyLine() in 02-state.js). Drawn empty and filled by
    loadTaskHistory() once the panel is up, the way the Project card is. */
+/* The files in the task's project folder, drawn empty and filled by
+   loadTaskProject() once the panel is up, the way History is. */
+function filesSection(){
+  return sideSection('Files', 'files',
+    '<div id="f-files">' + emptyState('No files yet.') + '</div>', undefined, true);
+}
+
 function historySection(t){
   return sideSection('History', 'history',
     '<div id="f-history">' + emptyState(t.stableId
@@ -775,14 +782,24 @@ async function loadTaskProject(name, taskId){
   // The panel may have moved to another task, or to a project, while this was
   // in flight — every openDrawer() on a task with a project starts one.
   if (state.openTask !== taskId) return;
-  const bits = [];
-  if (meta.file_count) bits.push(meta.file_count + ' file' + (meta.file_count === 1 ? '' : 's'));
-  const edited = cvWhen(meta.modified);
-  if (edited) bits.push('edited ' + edited);
-  renderProjectSection({
-    blurbHTML: meta.blurb ? mdInline(meta.blurb) : '',
-    whenText: bits.join(' · '),
-  });
+  const box = $('#f-files');
+  const list = meta.entries || [];
+  if (!box) return;
+  // A folder outside data/ is not served: its rows are plain text rather
+  // than links that would 404.
+  const base = isProjectPath(name) ? null : projectUrl(name);
+  const row = e => {
+    const size = e.dir
+      ? (e.children === null ? 'folder' : e.children + ' item' + (e.children === 1 ? '' : 's'))
+      : fileSize(e.size);
+    const inner = '<span class="pf">' + esc(e.name + (e.dir ? '/' : '')) + '</span>' +
+      '<span class="pfm">' + esc(size) + '</span>';
+    return base
+      ? '<a class="projfile' + (e.dir ? ' isdir' : '') + '" target="_blank" rel="noopener" ' +
+          'href="' + esc(base + encodeURIComponent(e.name) + (e.dir ? '/' : '')) + '">' + inner + '</a>'
+      : '<div class="projfile' + (e.dir ? ' isdir' : '') + '">' + inner + '</div>';
+  };
+  box.innerHTML = list.length ? list.map(row).join('') : emptyState('No files yet.');
 }
 
 function dependenciesSection(t){
@@ -1291,9 +1308,10 @@ function openDrawer(id, focusTitle){
     agendaSection(sugg.agenda, t.due, readPrevAgenda(bodyParts(t).notes), true) +
     suggestionSection('Message suggestions', sugg.message,
       { sub: true, emptyText: 'None yet. Written as `- Suggested message: ...` in Notes.' }) +
-    suggestionSection('Prompt suggestions', sugg.prompt,
-      { sub: true, claude:true, task:t.id, emptyText: 'None yet. Written as `- Prompt: ...` in Notes.' }) +
-    jiraSection(sugg.jira, true);
+    (DRAWER_HIDDEN.prompts ? '' : suggestionSection('Prompt suggestions', sugg.prompt,
+      { sub: true, claude:true, task:t.id, emptyText: 'None yet. Written as `- Prompt: ...` in Notes.' })) +
+    (DRAWER_HIDDEN.jira ? '' : jiraSection(sugg.jira, true)) +
+    filesSection();
   const sideFields =
     (DRAWER_HIDDEN.chats ? '' : chatSection(t)) +
     (DRAWER_HIDDEN.deps ? '' : dependenciesSection(t)) +
@@ -1325,6 +1343,7 @@ function openDrawer(id, focusTitle){
   if (startBtn) startBtn.onclick = () => startProject(t);
   const pickBtn = $('#f-projpick');
   if (pickBtn) pickBtn.onclick = () => drawProjectPicker(t);
+  if (proj) loadTaskProject(proj, t.id);
   loadTaskHistory(t);
   bindDependencySection(t);
   mountSubRows(t, id, subs, ro);

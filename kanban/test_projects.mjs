@@ -279,6 +279,10 @@ check('the project is gone from the left-hand column', await evalJS(`
 check('and the drawer offers no folder links for a task that has one', await evalJS(`
   !document.querySelector('#f-projstart') && !document.querySelector('#f-projpick')
 `))
+await new Promise(r => setTimeout(r, 300))
+check('Files lists the folder, one row a file', await evalJS(`
+  document.querySelectorAll('#f-files .projfile').length > 0
+`))
 check('the header offers Open project folder', await evalJS(`
   !document.querySelector('#dheadProj').classList.contains('hidden') &&
   document.querySelector('#dheadProj').textContent === 'Open project folder'

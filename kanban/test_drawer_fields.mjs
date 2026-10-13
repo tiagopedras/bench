@@ -113,6 +113,8 @@ try {
   await wait(300)
   check('and shutting it is remembered too', await evalJS(`!${dsel}.open`))
   check('by default Dependencies and AI processes are not drawn', await evalJS(`!document.querySelector('#dbody details[data-collapse="sugg:deps"]') && !document.querySelector('#dbody details[data-collapse="sugg:chats"]')`))
+  check('by default Jira tickets and Prompt suggestions are not drawn', await evalJS(`!document.querySelector('#dbody details[data-collapse="sugg:jira"]') && !document.querySelector('#dbody details[data-collapse="sugg:Prompt suggestions"]')`))
+  check('Files is in Outputs and says so when the task has no folder', await evalJS(`!taskProject(__t()) && !!document.querySelector('details[data-collapse="sugg:files"] #f-files') && document.querySelector('#f-files').textContent === 'No files yet.'`))
   await evalJS(`${dsel}.open = true`)
   await wait(150)
 
