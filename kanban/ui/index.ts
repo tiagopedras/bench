@@ -71,6 +71,7 @@ export type {
 } from './TimelineBody'
 export type { MatrixBodyProps, MatrixModel, MatrixCell, MatrixDot, MatrixRead } from './MatrixBody'
 export { TaskCard } from './TaskCard'
+export { bindHold, DRAWER_OWN_PRESS } from './hold'
 export type { TaskCardProps, TaskCardModel, Chip, CardProgress } from './TaskCard'
 export { BoardView } from './BoardView'
 export type { BoardViewProps, BoardColumn, BoardCard } from './BoardView'

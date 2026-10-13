@@ -130,6 +130,58 @@ try {
 
   check('the old dragging/over-top/over-bottom classes are never applied',
     await evalJS(`document.querySelectorAll('.sub.dragging,.sub.over-top,.sub.over-bottom').length === 0`))
+
+  /* ---- press and hold on the drawer (ui/hold.ts, wireDrawerHold) ---- */
+  await evalJS(`(() => {
+    window.__ptr = (type, el, x, y) => (type === 'pointerdown' ? el : window).dispatchEvent(new PointerEvent(type, {
+      bubbles: true, cancelable: true, pointerType: 'mouse', button: 0, clientX: x, clientY: y }));
+    window.__mid = el => { const r = el.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2] };
+    window.__eff = el => { let o = 1; for (; el; el = el.parentElement) o *= +getComputedStyle(el).opacity; return o };
+    return 'ready';
+  })()`)
+  const sec = `document.querySelector('#dbody .dcol > details[data-collapse="details"]')`
+  const sib = `document.querySelector('#dbody .dcol > details[data-collapse="sugg:history"]')`
+  const row = `document.querySelector('#f-subs .sub')`
+  check('the drawer has sections and a sibling section to dim', await evalJS(`!!${sec} && !!${sib}`))
+  await evalJS(`(() => { const p = __mid(${sec}.querySelector('summary')); __ptr('pointerdown', ${sec}.querySelector('summary'), ...p) })()`)
+  await wait(950)
+  check('holding a section gives it the held class', await evalJS(`${sec}.classList.contains('is-held')`))
+  check('the held section stays lit and its sibling section and the sub-task cards fade',
+    await evalJS(`__eff(${sec}) === +getComputedStyle(${sec}).opacity && __eff(${sib}) <= 0.35 && __eff(${row}) <= 0.35`),
+    await evalJS(`JSON.stringify([__eff(${sec}), +getComputedStyle(${sec}).opacity, __eff(${sib}), __eff(${row})])`))
+  check('a section hold draws the ring', await evalJS(`getComputedStyle(${sec}, '::after').content !== 'none'`))
+  await evalJS(`__ptr('pointerup', null, 0, 0)`)
+  await wait(350)
+  check('releasing clears the held class and the fade',
+    await evalJS(`document.querySelectorAll('.is-held, .is-releasing, .holdable, .spot-dim, .spot-undim').length === 0`))
+
+  await evalJS(`(() => { const r = ${row}; __ptr('pointerdown', r.querySelector('.subtext'), ...__mid(r.querySelector('.subtext'))) })()`)
+  await wait(950)
+  check('holding a sub-task card gives it the held class, and not its section',
+    await evalJS(`${row}.classList.contains('is-held') && !${row}.closest('.dcol > .field').classList.contains('is-held')`))
+  check('the other sub-task cards and the other sections fade',
+    await evalJS(`__eff(document.querySelectorAll('#f-subs .sub')[1]) <= 0.35 && __eff(${sib}) <= 0.35 && __eff(${row}) === +getComputedStyle(${row}).opacity`))
+  await evalJS(`__ptr('pointerup', null, 0, 0); ${row}.click()`)
+  await wait(350)
+  check('the click after a hold does not open the sub-task', await evalJS(`!document.querySelector('#subpanel').classList.contains('open')`))
+  check('nothing is left held after the sub-task hold',
+    await evalJS(`document.querySelectorAll('.is-held, .is-releasing, .holdable, .spot-dim, .spot-undim').length === 0`))
+
+  await evalJS(`(() => { const t = document.querySelector('#f-title'); __ptr('pointerdown', t, ...__mid(t)) })()`)
+  await wait(950)
+  check('a press inside a field starts no hold', await evalJS(`document.querySelectorAll('.is-held').length === 0`))
+  await evalJS(`__ptr('pointerup', null, 0, 0)`)
+
+  await evalJS(`(() => { const g = ${row}.querySelector('[data-tenon-grip]'); __ptr('pointerdown', g, ...__mid(g)) })()`)
+  await wait(950)
+  check('a press on the grip starts no hold', await evalJS(`document.querySelectorAll('.is-held').length === 0`))
+  await evalJS(`__ptr('pointerup', null, 0, 0)`)
+
+  await evalJS(`(() => { const r = ${row}.querySelector('.subtext'); __ptr('pointerdown', r, ...__mid(r)); __ptr('pointerup', null, 0, 0); })()`)
+  await evalJS(`${row}.click()`)
+  await wait(300)
+  check('a short click on a sub-task card still opens it',
+    await evalJS(`document.querySelector('#subpanel').classList.contains('open')`))
 } finally {
   chrome.kill()
 }

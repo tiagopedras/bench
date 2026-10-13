@@ -8,6 +8,7 @@
 state.sort = readSort();
 initViewFromHash();
 
+wireDrawerHold();
 loadFile();
 loadJira();
 loadDatasets();

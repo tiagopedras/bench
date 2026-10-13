@@ -1815,6 +1815,25 @@ function openSubtaskDrawer(found){
   syncHash(!wasOpen);
 }
 
+/* Press and hold on the task drawer, the same hold the board's cards have
+   (hold.ts, shared with TaskCard.tsx): 600ms on a sub-task card or on a
+   section of the drawer (Title, Description, Details, Subtasks and the side
+   column's Project, Dependencies and the rest) rings that one element and
+   fades the whole page around it, spotlight() in 09a-spotlight.js. One
+   delegated listener on #dbody, so it survives openDrawer() rebuilding the
+   panel. The innermost match wins, so a sub-task holds on its own rather than
+   its section. A press that starts in a field, button or link is theirs, which
+   keeps typing, selecting text and the grip's drag as they were. Called once
+   from boot.js, since the bundle loads after this file. */
+function wireDrawerHold(){
+  BoardUI.bindHold($('#dbody'), {
+    selector: '.sub, .dcol > .field, .dcol > details',
+    own: BoardUI.DRAWER_OWN_PRESS,
+    onStart: el => spotlight(el),
+    onEnd: () => clearSpotlight()
+  });
+}
+
 function closeDrawer(){
   state.openTask = null;
   state.openSubParent = null;

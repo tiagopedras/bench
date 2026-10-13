@@ -2206,24 +2206,24 @@
   /* Three times, so it outranks .tenon-card.onething and its :hover below, which colour the same border.
      .is-releasing is the 150ms after release, kept only so the ring can fade
      out; at rest neither class is there and the card is as it was. */
-  .tenon-card.is-held.is-held.is-held, .tenon-card.is-releasing.is-releasing.is-releasing{
+  :is(.tenon-card, .holdable).is-held.is-held.is-held, :is(.tenon-card, .holdable).is-releasing.is-releasing.is-releasing{
     --held-from:#F0B355; --held-to:#FF8A85;
     position:relative; border-radius:9px; outline:none;
     border-color:transparent;
     box-shadow:0 0 4px 1px var(--held-to), 0 0 12px 3px var(--held-to), 0 1px 1px 0 rgba(16,20,28,.04);
     opacity:1;
   }
-  .tenon-card.is-held::after, .tenon-card.is-releasing::after{
+  :is(.tenon-card, .holdable).is-held::after, :is(.tenon-card, .holdable).is-releasing::after{
     content:""; position:absolute; top:-2px; right:-2px; bottom:-2px; left:-5px; border-radius:10px; padding:1px;
     background:linear-gradient(135deg, var(--held-from), var(--held-to));
     -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite:xor; mask-composite:exclude;
     pointer-events:none;
   }
-  .tenon-card.is-held.is-held{animation:held-glow-in .2s ease-out, held-glow-pulse 1.6s ease-in-out .2s infinite}
-  .tenon-card.is-held::after{animation:held-ring-in .2s ease-out}
-  .tenon-card.is-releasing.is-releasing{animation:held-glow-out .15s ease-in forwards}
-  .tenon-card.is-releasing::after{animation:held-ring-out .15s ease-in forwards}
+  :is(.tenon-card, .holdable).is-held.is-held{animation:held-glow-in .2s ease-out, held-glow-pulse 1.6s ease-in-out .2s infinite}
+  :is(.tenon-card, .holdable).is-held::after{animation:held-ring-in .2s ease-out}
+  :is(.tenon-card, .holdable).is-releasing.is-releasing{animation:held-glow-out .15s ease-in forwards}
+  :is(.tenon-card, .holdable).is-releasing::after{animation:held-ring-out .15s ease-in forwards}
   @keyframes held-glow-in{from{box-shadow:0 0 4px 1px rgba(255,138,133,0), 0 0 12px 3px rgba(255,138,133,0), 0 1px 1px 0 rgba(16,20,28,.04)}}
   @keyframes held-glow-out{to{box-shadow:0 0 4px 1px rgba(255,138,133,0), 0 0 12px 3px rgba(255,138,133,0), 0 1px 1px 0 rgba(16,20,28,.04)}}
   /* Starts at the full glow the card rests on and dips to a softer one, so the
@@ -2246,10 +2246,12 @@
   body.spotlit .spot-on, body.spotlit .spot-on *{pointer-events:auto}
   @media (prefers-reduced-motion: reduce){
     .spot-dim, .spot-undim{transition:none}
-    .tenon-card.is-held.is-held{animation:none}
-    .tenon-card.is-releasing, .tenon-card.is-held::after, .tenon-card.is-releasing::after{animation-duration:.01ms !important}
+    :is(.tenon-card, .holdable).is-held.is-held{animation:none}
+    :is(.tenon-card, .holdable).is-releasing, :is(.tenon-card, .holdable).is-held::after, :is(.tenon-card, .holdable).is-releasing::after{animation-duration:.01ms !important}
   }
   .tenon-card.onething.is-held::after, .tenon-card.onething.is-releasing::after{left:-4px}
+  /* A drawer section or sub-task card (bindHold(), js/19-drawer.js) has no stripe, so the ring sits evenly 2px out. */
+  .holdable.is-held::after, .holdable.is-releasing::after{left:-2px}
   /* Tenon's card draws the stripe inside the border; this puts it at the card's
      outer edge. The 4px left border (3px on .onething) stays so nothing moves,
      is made clear, and the stripe is drawn out over it, cut from a wider box so
