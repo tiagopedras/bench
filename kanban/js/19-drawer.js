@@ -1192,6 +1192,13 @@ function openDrawer(id, focusTitle){
   };
   const mainFields =
     '<label class="field"><span>Title</span><input type="text" id="f-title" value="' + esc(t.title) + '"' + dis + '></label>' +
+    '<details class="field dgroup" data-collapse="details"' + (sectionCollapsed('details') ? '' : ' open') + '><summary>Details</summary>' +
+    /* Tenon's Dropdown rather than a native <select> — an <option> cannot carry
+       the coloured dot the bucket filter pills at the top of the board already
+       draw (see bucketColor()/BUCKET_COLOR in 02-state.js), and this is the
+       one field on the whole card where "which bucket" is exactly the thing
+       that colour already stands for everywhere else. */
+    '<div class="field"><span>Bucket</span><div data-pick-host="f-bucket"></div></div>' +
     '<details class="field" data-collapse="notes"' + (sectionCollapsed('notes') ? '' : ' open') + '>' +
       /* The label carries the note about subtasks and the Expand button, the
          way Subtasks' own label already carries Complete all. Under the field
@@ -1215,12 +1222,6 @@ function openDrawer(id, focusTitle){
       '<div id="f-body-view" class="repdoc noteview"' + (ro ? '' : ' title="Click to edit"') + '></div>' +
       '<div id="f-body-mount"></div>' +
     '</details>' +
-    /* Tenon's Dropdown rather than a native <select> — an <option> cannot carry
-       the coloured dot the bucket filter pills at the top of the board already
-       draw (see bucketColor()/BUCKET_COLOR in 02-state.js), and this is the
-       one field on the whole card where "which bucket" is exactly the thing
-       that colour already stands for everywhere else. */
-    '<div class="field"><span>Bucket</span><div data-pick-host="f-bucket"></div></div>' +
     /* Only when the bucket has declared themes, or the task already carries
        one the bucket no longer does (see themeSelectHTML above) — most
        buckets have none, and a field offering an empty dropdown on every
@@ -1228,7 +1229,6 @@ function openDrawer(id, focusTitle){
     (bucketThemes.length || t.theme
       ? '<div class="field"><span>Theme</span>' + themeSelectHTML(t.theme, bucketThemes, dis) + '</div>'
       : '') +
-    '<details class="field dgroup" data-collapse="details"' + (sectionCollapsed('details') ? '' : ' open') + '><summary>Details</summary>' +
     /* Full width rather than sharing a grid2 with Bucket: a column name like
        "Reviewing" needs the room a slider half that wide wouldn't give
        its label, where the old <select> never had to fit the whole word next

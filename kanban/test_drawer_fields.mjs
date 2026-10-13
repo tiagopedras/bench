@@ -95,13 +95,13 @@ try {
     if (els.some(e => !e)) return false;
     for (let i = 1; i < els.length; i++) if (!(els[i-1].compareDocumentPosition(els[i]) & Node.DOCUMENT_POSITION_FOLLOWING)) return false;
     const last = [...d.children].pop();
-    return last.querySelector('.tagchips') && !last.matches('details') && !d.querySelector('details, hr.dsep');
+    return last.querySelector('.tagchips') && !last.matches('details') && !d.querySelector('details:not([data-collapse=notes]), hr.dsep');
   })()`))
-  check('Bucket and Theme sit above it, outside it, straight after Description', await evalJS(`(() => {
-    const d = ${dsel}, b = document.querySelector('#f-bucket-dd'), th = document.querySelector('#f-theme-dd');
-    const desc = document.querySelector('details[data-collapse=notes]');
-    const f = Node.DOCUMENT_POSITION_FOLLOWING;
-    return !d.contains(b) && !d.contains(th) && (desc.compareDocumentPosition(b) & f) && (b.compareDocumentPosition(th) & f) && (th.compareDocumentPosition(d) & f);
+  check('Bucket and Description are the first two things in Details, Theme after them', await evalJS(`(() => {
+    const d = ${dsel}, kids = [...d.querySelectorAll(':scope > .field')];
+    const th = document.querySelector('#f-theme-dd');
+    return !!kids[0]?.querySelector('[data-pick-host="f-bucket"]') && kids[1]?.matches('details[data-collapse=notes]') &&
+      (!th || kids[2]?.contains(th));
   })()`))
   check('the pickers inside the closed section still mounted', await evalJS(`!!document.querySelector('#f-tier [role=slider]') && !!document.querySelector('#f-impact [role=slider]') && !!document.querySelector('#f-to-dd .tenon-dropdown__button') && !!document.querySelector('#f-dates .tenon-date-button') && !!document.querySelector('.tagchips .tenon-tag-chip')`))
   await evalJS(`${dsel}.open = true`)

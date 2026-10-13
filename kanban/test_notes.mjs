@@ -92,6 +92,7 @@ await evalJS(`(async () => {
   DRAWER_HIDDEN.jira = false;
   DRAWER_HIDDEN.prompts = false;
   DRAWER_HIDDEN.deps = false;
+  setSectionCollapsed('details', false);
   state.locked = true;
   state.lockedLabel = 'notes test';
   return 'locked';
