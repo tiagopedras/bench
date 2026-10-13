@@ -487,6 +487,7 @@ check('at rest the stripe sits at the card edge over a clear left border', await
   `(() => { const el = ${holdCard}, cs = getComputedStyle(el), b = getComputedStyle(el, '::before');
     return cs.borderLeftColor === 'rgba(0, 0, 0, 0)' && parseFloat(cs.borderLeftWidth) > 0 &&
       parseFloat(b.left) === -parseFloat(cs.borderLeftWidth) && parseFloat(cs.borderTopWidth) === 1; })()`))
+await evalJS(`window.__fev = []; ['board:focus', 'board:unfocus'].forEach(n => window.addEventListener(n, e => __fev.push(n + ':' + e.detail.kind + ':' + e.detail.taskId + ':' + (e.detail.el === ${holdCard}))))`)
 await evalJS(`(() => { const el = ${holdCard}; const r = el.getBoundingClientRect(); window.__pt = [r.x + 20, r.y + 20];
   __ptr('pointerdown', el, ...__pt); })()`)
 check('pressing a card stops text selection', await evalJS(`document.body.classList.contains('card-pressing')`))
@@ -519,20 +520,72 @@ check('while held, another card gets no hover and the pointer is not over it', a
    getComputedStyle(${otherCard}).pointerEvents === 'none'`))
 check('the held card keeps its hover look with the pointer moved off', await evalJS(
   `!${holdCard}.matches(':hover') && +getComputedStyle(${holdCard}).opacity === 1 && state.openTask !== 'bd0002'`))
-check('a held card cannot start a drag', await evalJS(
-  `(() => { const e = new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: new DataTransfer() });
-    ${holdCard}.dispatchEvent(e); return e.defaultPrevented && state.openTask !== 'bd0002'; })()`))
 await evalJS(`__ptr('pointerup', null, ...__pt); ${holdCard}.click()`)
-await evalJS(`new Promise(r => setTimeout(r, 50))`)
-check('releasing drops the held class and calls the end hook', await evalJS(
-  `!${holdCard}.classList.contains('is-held') && __holds.join() === 'start:bd0002,end:bd0002' &&
-   !document.body.classList.contains('card-pressing')`))
+await evalJS(`new Promise(r => setTimeout(r, 300))`)
+check('releasing keeps the card held and the page dimmed', await evalJS(
+  `${holdCard}.classList.contains('is-held') && ${holdCard}.classList.contains('spot-on') &&
+   document.body.classList.contains('spotlit') && __holds.join() === 'start:bd0002' &&
+   !document.body.classList.contains('card-pressing')`), await evalJS(`[${holdCard}.className, document.body.className, __holds.join()].join(' | ')`))
+check('the click after a hold does not open the drawer', await evalJS(`state.openTask !== 'bd0002'`))
+await evalJS(`__ptr('pointerdown', ${holdCard}, ...__pt); __ptr('pointerup', null, ...__pt)`)
+check('a press inside the held card does not end the focus', await evalJS(`${holdCard}.classList.contains('is-held')`))
+await evalJS(`document.body.insertAdjacentHTML('beforeend', '<div data-focus-keep id="__keep"><button>x</button></div>')`)
+await evalJS(`__ptr('pointerdown', document.querySelector('#__keep button'), 5, 5); __ptr('pointerup', null, 5, 5)`)
+check('a press inside a [data-focus-keep] element does not end the focus', await evalJS(
+  `${holdCard}.classList.contains('is-held') && !document.querySelector('#__keep').classList.contains('spot-dim') &&
+   getComputedStyle(document.querySelector('#__keep')).pointerEvents === 'auto'`))
+await evalJS(`__ptr('pointerdown', document.body, 5, 5)`)
+check('a press outside ends it, with the release fade, and calls the end hook', await evalJS(
+  `!${holdCard}.classList.contains('is-held') && ${holdCard}.classList.contains('is-releasing') &&
+   __holds.join() === 'start:bd0002,end:bd0002'`))
+await evalJS(`window.__clicked = 0; document.addEventListener('click', () => __clicked++); ${otherCard}.click()`)
+check('the click after that press is swallowed', await evalJS(`__clicked === 0 && state.openTask !== 'bd0001'`))
+await evalJS(`__ptr('pointerup', null, 5, 5)`)
 await evalJS(`new Promise(r => setTimeout(r, 250))`)
-check('after release the dim is gone and the card is back to rest', await evalJS(
+check('after the focus ends the dim is gone and the card is back to rest', await evalJS(
   `document.querySelectorAll('.spot-dim, .spot-undim, .is-releasing, .is-held').length === 0 &&
+   !document.body.classList.contains('spotlit') &&
    __eff(document.querySelector('#board .tenon-card[data-id="bd0001"]')) ===
      +getComputedStyle(document.querySelector('#board .tenon-card[data-id="bd0001"]')).opacity &&
    ['none', 'normal'].includes(getComputedStyle(${holdCard}, '::after').content)`))
+check('board:focus and board:unfocus fire with the card', await evalJS(
+  `__fev.join() === 'board:focus:task:bd0002:true,board:unfocus:task:bd0002:true'`), await evalJS(`__fev.join()`))
+/* Esc, and Esc beating the drawer's own. */
+await evalJS(`closeDrawer(); openDrawer('bd0001'); __fev.length = 0; (() => { const el = ${holdCard}; __ptr('pointerdown', el, ...__pt); })()`)
+await evalJS(`new Promise(r => setTimeout(r, 900))`)
+await evalJS(`__ptr('pointerup', null, ...__pt)`)
+await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+check('Esc ends the focus and leaves the drawer open', await evalJS(
+  `!${holdCard}.classList.contains('is-held') && state.openTask === 'bd0001' && !document.body.classList.contains('spotlit')`))
+await evalJS(`new Promise(r => setTimeout(r, 250))`)
+await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+check('with no focus Esc still closes the drawer', await evalJS(`state.openTask === null`))
+check('endFocus() ends a focus from code', await evalJS(`(async () => {
+  const el = ${holdCard}; __ptr('pointerdown', el, ...__pt); await new Promise(r => setTimeout(r, 900));
+  __ptr('pointerup', null, ...__pt);
+  const on = el.classList.contains('is-held') && BoardUI.focusedElement() === el;
+  BoardUI.endFocus(); await new Promise(r => setTimeout(r, 50));
+  return on && !el.classList.contains('is-held') && BoardUI.focusedElement() === null; })()`))
+await evalJS(`document.querySelector('#__keep').remove(); new Promise(r => setTimeout(r, 250))`)
+check('dragging a focused card ends the focus so drop zones can be reached', await evalJS(`(async () => {
+  const el = ${holdCard}; __ptr('pointerdown', el, ...__pt); await new Promise(r => setTimeout(r, 900));
+  __ptr('pointerup', null, ...__pt);
+  const on = document.body.classList.contains('spotlit');
+  const e = new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: new DataTransfer() });
+  el.dispatchEvent(e); await new Promise(r => setTimeout(r, 50));
+  return on && !document.body.classList.contains('spotlit') && !el.classList.contains('is-held'); })()`))
+await evalJS(`dragId = null; closeDrawer(); renderBoard()`)
+check('the press that ends a focus starts no hold on the card it lands on', await evalJS(`(async () => {
+  const el = ${holdCard}, other = ${otherCard}; __ptr('pointerdown', el, ...__pt); await new Promise(r => setTimeout(r, 900));
+  __ptr('pointerup', null, ...__pt);
+  __holds.length = 0;
+  __ptr('pointerdown', other, 5, 5); await new Promise(r => setTimeout(r, 900));
+  const ok = !document.body.classList.contains('spotlit') && !other.classList.contains('is-held') &&
+    !document.body.classList.contains('card-pressing') && __holds.join() === 'end:bd0002';
+  __ptr('pointerup', null, 5, 5); return ok; })()`))
+await wait(300)
 await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: oc[0] + 1, y: oc[1] + 1 })
 await wait(100)
 check('after release another card takes hover again', await evalJS(`${otherCard}.matches(':hover')`))
@@ -540,7 +593,6 @@ await evalJS(`(() => { spotlight(${holdCard}); clearSpotlight(); clearSpotlight(
 await wait(300)
 check('clearing the spotlight twice leaves nothing behind', await evalJS(
   `document.querySelectorAll('.spot-dim, .spot-undim, .spot-on').length === 0 && !document.body.classList.contains('spotlit')`))
-check('the click after a hold does not open the drawer', await evalJS(`state.openTask !== 'bd0002'`))
 await evalJS(`(() => { const el = ${holdCard}; __ptr('pointerdown', el, ...__pt); __ptr('pointerup', null, ...__pt); el.click(); })()`)
 check('a short click still opens the card', await evalJS(`state.openTask === 'bd0002'`))
 await evalJS(`closeDrawer(); (() => { const el = ${holdCard}; __ptr('pointerdown', el, ...__pt);

@@ -2237,13 +2237,13 @@
   /* spotlight() in js/09a-spotlight.js: everything but the held card steps back.
      !important so it beats the faded states below (.done, .waiting) and their
      hover rules; .spot-undim only carries the slower return. */
-  .spot-dim{opacity:.35 !important; transition:opacity .2s ease}
+  .spot-dim:not([data-focus-keep]){opacity:.35 !important; transition:opacity .2s ease}
   .spot-undim{transition:opacity .15s ease}
   /* While one element is spotlit nothing else reacts to the pointer: no hover,
      no cursor, no title tooltip. The held card keeps the look hover gives it
      (opacity:1 above) for as long as the hold lasts. */
   body.spotlit *{pointer-events:none}
-  body.spotlit .spot-on, body.spotlit .spot-on *{pointer-events:auto}
+  body.spotlit .spot-on, body.spotlit .spot-on *, body.spotlit [data-focus-keep], body.spotlit [data-focus-keep] *{pointer-events:auto}
   @media (prefers-reduced-motion: reduce){
     .spot-dim, .spot-undim{transition:none}
     :is(.tenon-card, .holdable).is-held.is-held{animation:none}

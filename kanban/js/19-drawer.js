@@ -1859,6 +1859,14 @@ function wireDrawerHold(){
   BoardUI.bindHold($('#dbody'), {
     selector: '.sub, .dcol > .field, .dcol > details',
     own: BoardUI.DRAWER_OWN_PRESS,
+    describe: el => {
+      const taskId = state.openTask || null;
+      if (el.classList.contains('sub')) {
+        return { kind: 'subtask', taskId, subIndex: Array.from($('#dbody').querySelectorAll('.sub')).indexOf(el) };
+      }
+      const head = el.querySelector(':scope > summary, :scope > span, :scope > label > span, :scope > .fieldhead');
+      return { kind: 'section', taskId, section: (head ? head.textContent : '').replace(/\s+/g, ' ').trim() };
+    },
     onStart: el => spotlight(el),
     onEnd: () => clearSpotlight()
   });

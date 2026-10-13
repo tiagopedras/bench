@@ -17,7 +17,7 @@ import type { DragEvent, KeyboardEvent, PointerEvent } from 'react'
 import { Card, Pill, Tag } from '@tiagopedras/tenon'
 import type { PillTone, TagTone } from '@tiagopedras/tenon'
 import { InlineMd } from './InlineMd'
-import { beginHold, OWN_PRESS, RELEASE_MS } from './hold'
+import { beginHold, endFocus, OWN_PRESS, RELEASE_MS } from './hold'
 
 export interface Chip {
   /** One of Tenon's `Tag` tones — draws a Tenon `Tag`. Set instead of `cls`. */
@@ -117,6 +117,8 @@ export function TaskCard(props: TaskCardProps) {
     if ((e.target as Element).closest(OWN_PRESS)) return
     const el = e.currentTarget
     stop.current = beginHold(e.clientX, e.clientY, {
+      el,
+      info: { kind: 'task', taskId: m.id },
       onStart: () => {
         heldRef.current = true
         setHeld(true)
@@ -163,7 +165,7 @@ export function TaskCard(props: TaskCardProps) {
 
   return (
     <Card
-      className={(m.cls + (dragging ? ' dragging' : '') + (held ? ' is-held' : '') + (fading && !held ? ' is-releasing' : '')).trim()}
+      className={(m.cls + (dragging ? ' dragging' : '') + (held ? ' is-held spot-on' : '') + (fading && !held ? ' is-releasing' : '')).trim()}
       accent={stripe}
       draggable={still ? false : draggable}
       dragging={dragging}
@@ -174,7 +176,9 @@ export function TaskCard(props: TaskCardProps) {
       onKeyDown={still ? undefined : key}
       onPointerDown={still ? undefined : press}
       onDragStart={still || !onDragStart ? undefined : e => {
-        if (heldRef.current) { e.preventDefault(); return }
+        // A drag out of a focused card ends the focus first: the page is shut
+        // to the pointer while it lasts, and a drop zone could not be reached.
+        if (heldRef.current) endFocus()
         onDragStart(e, m.id)
       }}
       onDragEnd={still || !onDragEnd ? undefined : e => onDragEnd(e, m.id)}

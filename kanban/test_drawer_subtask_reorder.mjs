@@ -143,6 +143,8 @@ try {
   const sib = `document.querySelector('#dbody .dcol > details[data-collapse="sugg:history"]')`
   const row = `document.querySelector('#f-subs .sub')`
   check('the drawer has sections and a sibling section to dim', await evalJS(`!!${sec} && !!${sib}`))
+  await evalJS(`window.__fev = []; ['board:focus', 'board:unfocus'].forEach(n => window.addEventListener(n, e =>
+    __fev.push(n + ':' + e.detail.kind + ':' + e.detail.taskId + ':' + (e.detail.section || e.detail.subIndex))))`)
   await evalJS(`(() => { const p = __mid(${sec}.querySelector('summary')); __ptr('pointerdown', ${sec}.querySelector('summary'), ...p) })()`)
   await wait(950)
   check('holding a section gives it the held class', await evalJS(`${sec}.classList.contains('is-held')`))
@@ -152,8 +154,14 @@ try {
   check('a section hold draws the ring', await evalJS(`getComputedStyle(${sec}, '::after').content !== 'none'`))
   await evalJS(`__ptr('pointerup', null, 0, 0)`)
   await wait(350)
-  check('releasing clears the held class and the fade',
+  check('releasing leaves the section held', await evalJS(`${sec}.classList.contains('is-held') && document.body.classList.contains('spotlit')`))
+  await evalJS(`__ptr('pointerdown', document.body, 0, 0); __ptr('pointerup', null, 0, 0)`)
+  await wait(350)
+  check('a press outside clears the held class and the fade',
     await evalJS(`document.querySelectorAll('.is-held, .is-releasing, .holdable, .spot-dim, .spot-undim').length === 0`))
+  check('the section focus events carry the task and the section name', await evalJS(
+    `__fev.length === 2 && __fev[0] === 'board:focus:section:' + state.openTask + ':' + __fev[0].split(':').pop() && !/undefined$/.test(__fev[0])`),
+    await evalJS(`__fev.join()`))
 
   await evalJS(`(() => { const r = ${row}; __ptr('pointerdown', r.querySelector('.subtext'), ...__mid(r.querySelector('.subtext'))) })()`)
   await wait(950)
@@ -161,9 +169,15 @@ try {
     await evalJS(`${row}.classList.contains('is-held') && !${row}.closest('.dcol > .field').classList.contains('is-held')`))
   check('the other sub-task cards and the other sections fade',
     await evalJS(`__eff(document.querySelectorAll('#f-subs .sub')[1]) <= 0.35 && __eff(${sib}) <= 0.35 && __eff(${row}) === +getComputedStyle(${row}).opacity`))
-  await evalJS(`__ptr('pointerup', null, 0, 0); ${row}.click()`)
+  await evalJS(`__fev.length = 0; __ptr('pointerup', null, 0, 0); ${row}.click()`)
   await wait(350)
   check('the click after a hold does not open the sub-task', await evalJS(`!document.querySelector('#subpanel').classList.contains('open')`))
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+  await wait(350)
+  check('Esc ends the sub-task focus and leaves the drawer open',
+    await evalJS(`!${row}.classList.contains('is-held') && !!state.openTask && $('#drawer').classList.contains('open') && __fev.join() === 'board:unfocus:subtask:' + state.openTask + ':0'`),
+    await evalJS(`__fev.join()`))
   check('nothing is left held after the sub-task hold',
     await evalJS(`document.querySelectorAll('.is-held, .is-releasing, .holdable, .spot-dim, .spot-undim').length === 0`))
 
