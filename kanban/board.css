@@ -2657,7 +2657,7 @@
   .suggwhere.draft{color:var(--tenon-text-warning); font-weight:600}
   /* Each suggestion card, drawer side: no clamp of its own, so a long one is
      capped here and scrolls inside its card. Covers message and agenda cards. */
-  .sugg .msg{max-height:240px; overflow-y:auto}
+  .sugg .msg{max-height:116px; overflow-y:auto}
 
   /* Dependencies, both directions. Two columns rather than one merged list —
      "waiting on" and "blocks" answer different questions, and a slug that is
