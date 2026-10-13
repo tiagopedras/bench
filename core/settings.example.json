@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "models": {
+    "default": null,
+    "plan": null,
+    "implement": null,
+    "chat": null,
+    "brief": null,
+    "planner": null
+  },
+  "agents": {
+    "plan": { "start": "scheduled" },
+    "implement": { "start": "scheduled" }
+  }
+}

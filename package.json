@@ -1,0 +1,26 @@
+{
+  "name": "bench-ui",
+  "private": true,
+  "version": "0.0.0",
+  "description": "The React half of the to-do board. See IMPROVEMENTS.md, 'The board has no component layer'.",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "watch": "vite build --watch",
+    "check": "tsc --noEmit",
+    "test": "node kanban/ui/test_primitives.mjs"
+  },
+  "dependencies": {
+    "@tiagopedras/tenon": "github:tiagopedras/tenon#v0.16.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "thinking-orbs": "^0.3.2"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "@vitejs/plugin-react": "4.3.4",
+    "typescript": "5.6.3",
+    "vite": "5.4.21"
+  }
+}

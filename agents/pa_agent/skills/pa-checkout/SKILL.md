@@ -1,0 +1,157 @@
+---
+name: pa-checkout
+description: Walk through everything sitting in Doing or Reviewing on the owner's master to-do list, at data/<dataset>/todo.md in the Bench checkout (<dataset> named by data/.current), one task at a time, and help the owner decide whether it moves forward, needs more detail, or is stuck for a reason worth naming. Opens with the total number of tasks it will go through and the count in each of the two states, then numbers them as it goes. Use whenever the owner asks to clear the backlog, go through what's stuck, review what's blocked or waiting, chase what's sitting in Doing, or asks something like "let's go through what's stuck", "what's been sitting there", "help me close some of this out", or "what's blocked right now". Top-level tasks only, a sub-step has no state of its own, it inherits its parent's. Do not use this for a general status read, which is pa-checkin, or for a re-prioritisation, which is pa, or for pulling meeting actions, which is pa-retrieve-tasks. This skill only reviews and asks; the pa skill does the actual writing.
+---
+
+# Unsticking Doing and Reviewing
+
+`$BENCH_ROOT` is the Bench checkout: the `BENCH_ROOT` environment variable, or `~/Code/bench` when unset. Before running any command or reading any file below, `cd "${BENCH_ROOT:-$HOME/Code/bench}"`. Paths in this skill are relative to the checkout.
+
+**Read `agents/pa_agent/PA.md` first, then `CONVENTIONS.md`.** The first holds who the owner is, where the list lives, how the owner prioritises, the standing rules and the tone. The second holds the file format. Neither is repeated below.
+
+Two states on the list are not really about the work, they are a claim about
+where it sits: **Doing** says it is live, **Reviewing** says it is finished and
+sitting with somebody else. Neither carries a date that expires, so a task can
+sit in either for weeks without ever surfacing as overdue — Doing has no
+deadline of its own, and Reviewing is deliberately not chased by the checker
+(see `check_overdue` in `../pa/scripts/check_todo.py`). That is exactly the
+shape of thing that goes quiet. Blocked tasks sit in Reviewing; there is no Blocked column.
+
+This skill exists to make that go loud instead, on request rather than on a
+schedule: count what is sitting in each state, then go through them one at a
+time and ask.
+
+## What counts
+
+Top-level tasks only, in the two states named above, read from the live board
+rather than assumed.
+
+A `blocked-by:` tag points at another task on the list rather than an external
+hold-up; this skill reads the column, not the tag. A task blocked-by an
+unfinished task but still sitting in Doing is out of scope here — that is what the Overview's dependency chain and
+the task drawer's own Dependencies section are for.
+
+## The three moves
+
+### 1. Count
+
+Read the file, group by state, and open with the numbers before anything else:
+the **total** the owner is about to walk through, then how many in Doing, how many in
+Reviewing, across which buckets. The total comes first
+and is said as a number of tasks — "5 to go through: 2 in Reviewing,
+3 in Doing" — so the owner knows the length of the session before it starts. Say it
+plainly enough that it is a real answer on its own, not just a lead-in to the rest.
+
+If a state is empty, say so and skip it rather than asking the owner to sit through
+nothing.
+
+The count is not the deliverable, it is the lead-in. Move straight from it into
+move 2 in the same turn — do not stop and wait after the count, and do not
+report the count as if it were the whole answer.
+
+### 2. Walk through, one at a time
+
+**Every task in the two states, not a sample of them.** The count in move 1
+is a promise about how many are coming — if it said 11 in Reviewing, the owner
+gets 11, not four picked out as representative. Cutting the list short is a
+different failure to reading it out as a batch, but it is still a failure: the
+whole point is that nothing sitting in these states goes unseen.
+
+**One task per message.** Show it, ask about it, then stop and wait for the owner's
+actual reply before naming the next one. Do not describe several tasks and
+their questions in a single message and call that "walking through" them —
+that is a report, not the conversation this move is for. The owner answers, you react
+to what the owner actually said, then you move on.
+
+**Number them.** Every task opens with its position against the total from move
+1 — `3 of 6` — so the owner can see how far in the owner is without counting. The numbering
+runs across both states in one sequence rather than restarting per state,
+and the total never changes mid-session even if something gets ticked on the way
+through.
+
+**How to react before moving on.** What you say about the task just discussed
+depends on whether it is settled:
+
+- **Settled** — one line, no more. What is being written, or that nothing is.
+  `Moved to Reviewing, noted Morgan has it.` Then the next task.
+- **Not settled** — stay on it. Ask the follow-up, as long as it needs to be,
+  and **do not show the owner the next task** until it has an outcome. A new task
+  named while the last one is still open turns the conversation into two at
+  once, which is the thing this move exists to avoid.
+
+**Leave two blank lines** between that one-line close on the previous task and
+the opening of the next one, so the two read as separate beats rather than one
+block of text.
+
+Order: Reviewing first, then Doing — the ones most likely to need a decision
+before the ones that are probably fine as they are. Within a
+state, soonest due first, then undated ones last, the same ordering the board
+itself uses.
+
+For each task, show what is already known before asking anything: the title,
+the bucket, how long it has carried a `[to:: ]` or a note naming who has it (if
+any), and its due date if it has one. Do not make the owner re-explain what the file
+already says.
+
+Then one question, shaped to the state it is in:
+
+- **Reviewing** — "any word back, or still waiting?" If it names who has it,
+  ask whether it is worth a nudge. A note saying what it is waiting on is the
+  thing to read back to the owner, not just the title — if there is no such note, that
+  is worth naming, since a task with no reason written down is not really
+  trackable.
+- **Doing** — "still live, or has it stalled?" Doing is the owner's own claim that
+  something is in flight; a task that has quietly stopped being worked belongs
+  somewhere else, not left implying progress that is not happening.
+
+Take whatever the owner says and turn it into one of a small set of outcomes — do not
+invent more:
+
+- **Move it** to a different state (Doing → Reviewing, Reviewing → Doing, and
+  so on).
+- **Tick it done.**
+- **Add or update a note** — who has it, what it is blocked on, a date something
+  unblocks. This is usually the actual value of the pass: half of what is "stuck"
+  turns out to just be missing the one line that would make its state legible
+  next time.
+- **Leave it**, when it is genuinely fine where it is. Not every stuck-looking
+  task is a problem — say so and move on rather than manufacturing an edit.
+
+Batch a few before writing if the owner answers quickly through several in a row, but
+do not let more than a handful pile up unwritten — a batch lost to a dropped
+session is worse than writing after every one.
+
+### 3. Hand the writing to pa
+
+This skill does not touch todo.md itself. Once the owner has answered for the ones the owner
+wants to act on, invoke `pa` with the list of changes — bucket and state moves,
+ticks, and note text — and let it apply them, run the checker, and stamp
+`Last updated`. Same reason every other skill here does this: `pa` is the one
+writer, and a second path that edits the file by hand is how the two drift.
+
+## Judgement calls that come up
+
+**A task has been in the same state for what looks like a long time.** Nothing
+in the file records when a task entered a state, so do not claim an exact
+duration — say what you can see (no note, no date, nothing to suggest recent
+movement) and let the owner supply the "since when."
+
+**The owner wants to skip a whole state.** Fine — go straight to the one the owner named.
+Do not insist on covering both just because the skill can.
+
+**A Reviewing task's wait has obviously ended** (the note names something
+that has since happened). Say so and ask directly whether it should move,
+rather than asking the generic question and making the owner notice it themself.
+
+**Something in Reviewing is actually done** — it came back clear and just
+was never ticked. Tick it, do not move it to Doing first.
+
+**The owner answers with a batch instruction** ("move everything in Reviewing to
+Doing"). Confirm the list before applying it — a blanket instruction over
+several tasks is exactly where one of them turns out to be the exception.
+
+## Tone
+
+See `agents/pa_agent/PA.md`.
+
+The count in move 1 is a sentence, not a table, and the question for each task is one line. This is a conversation to move through quickly, not a form.

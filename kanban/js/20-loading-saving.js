@@ -1,0 +1,217 @@
+'use strict';
+
+/* =========================================================================
+   6. Loading & saving
+   ========================================================================= */
+
+function load(text, name, opts){
+  opts = opts || {};
+  const doc = parseDoc(text);
+  if (!doc.buckets.length) throw new Error('No task buckets found — expected headings like "## 1. People".');
+  state.doc = doc;
+  const renamed = renameParked(state.doc);
+  const stamped = stampDoneDates(state.doc);
+  const minted = mintMissingIds(state.doc);
+  /* Never on a document that cannot be written back. The demo and a backup
+     preview are both records of something else, and rolling their dates forward
+     would show dates that are nowhere on disk — the demo would also silently
+     lose its example agenda to a Previous agenda note. `state.locked` is set by
+     the caller after this returns, so it cannot be the guard here. */
+  const rolled = opts.readOnly ? { n:0, carried:0, moved:0, archived:[] } : rollRecurring(state.doc);
+  state.originalText = text;
+  state.fileName = name || 'todo.md';
+  $('#start').classList.add('hidden');
+  $('#board').classList.remove('hidden');
+  $('#hdr').classList.remove('hidden');
+  // The bucket strip is a second bar under the header now, so it comes and goes
+  // with it — there is nothing to filter before a document is loaded.
+  $('#bucketBar').classList.remove('hidden');
+  // The URL's bucket slug can only be matched against a real bucket once the
+  // file naming them has actually loaded — that's now, so it gets one shot
+  // here and is cleared either way, so a later reload of a different dataset
+  // doesn't reapply a slug that belonged to the URL, not to this file.
+  if (state.pendingBucketSlug !== null) {
+    state.bucketFilter = bucketFilterFromSlugs(state.pendingBucketSlug);
+    state.pendingBucketSlug = null;
+  }
+  // A dataset switch can land here carrying a filter full of names from the
+  // *previous* dataset's buckets — drop whichever ones this file doesn't have
+  // rather than showing an empty board because every toggled name is stale.
+  state.bucketFilter.forEach(name => { if (!doc.buckets.some(b => b.name === name)) state.bucketFilter.delete(name); });
+  markClean('');
+  state.migratedOnly = false;
+  checkAgentsSetup();
+  renderView();
+  if (renamed) { markDirty(); $('#status').textContent = 'renamed “Parked” to “Backlog” — save to apply'; }
+  if (minted) { markDirty(); $('#status').textContent = 'gave ' + minted + ' task' + (minted === 1 ? '' : 's') +
+    ' an id — save to apply'; }
+  if (stamped) {
+    markDirty();
+    $('#status').textContent = 'dated ' + stamped + ' finished task' + (stamped === 1 ? '' : 's') +
+      ' as done today — save to apply';
+  }
+  /* Said out loud, because this one moved a date and cleared a tick on a task the owner
+     did not touch. Last, so it is the message left standing when more than one
+     fixup ran: it is the only one of the three that changes what a card says. */
+  /* `moved` on its own is the pass that brings a recurring card back into To do
+     as its day arrives, with nothing rolled — a load in the middle of a cycle
+     rather than the one just after it turned over. It changes which column a
+     card is in, so it is a save to make and a thing to say either way. */
+  if (!rolled.n && rolled.moved) {
+    markDirty();
+    $('#status').textContent = 'moved ' + rolled.moved + ' recurring task' + (rolled.moved === 1 ? '' : 's') +
+      ' into To do — save to apply';
+  }
+  if (rolled.n) {
+    markDirty();
+    $('#status').textContent = 'rolled ' + rolled.n + ' recurring task' + (rolled.n === 1 ? '' : 's') +
+      ' onto the next date' +
+      /* Said separately, because it is the one part the owner might disagree with: an
+         agenda that was never ticked off is treated as still pending and moves
+         with the card rather than being filed as last cycle's. */
+      (rolled.carried
+        ? ', ' + (rolled.carried === 1 ? 'one' : rolled.carried) +
+          ' carrying an agenda that was never ticked off'
+        : '') +
+      // A finished one moving columns is a bigger change to the board than a
+      // date quietly ticking forward, so it gets its own clause rather than
+      // hiding inside "rolled".
+      (rolled.moved
+        ? ', ' + (rolled.moved === 1 ? 'one' : rolled.moved) +
+          ' parked in To do or Backlog'
+        : '') +
+      ' — save to apply';
+  }
+  flushAgendaHistory(rolled.archived);
+  // After, not before: the rename/stamp fixups above are auto-applied on every
+  // load, not something to undo back out of, so the freshly loaded (and fixed)
+  // document is what "nothing to undo yet" means.
+  resetUndo();
+  // Set last: markDirty clears it, and both migrations go through markDirty.
+  state.migratedOnly = !!(renamed || stamped || rolled.n || rolled.moved);
+}
+
+/* A link naming a task arrives before there is a document to find it in, so it
+   waits in state.pendingTask until one is loaded. Called by the loaders rather
+   than by load() itself: the drawer draws itself read-only or not off
+   state.locked, and that isn't settled until the caller has finished — load()
+   runs before loadDemo has said the demo may not be written to. */
+function applyPendingTask(){
+  if (!state.pendingTask) return;
+  const key = state.pendingTask;
+  state.pendingTask = '';
+  openTaskByKey(key);
+}
+
+function showErr(msg){
+  $('#start').classList.remove('hidden');
+  $('#board').classList.add('hidden');
+  $('#colTabs').classList.add('hidden');
+  $('#hdr').classList.add('hidden');
+  $('#bucketBar').classList.add('hidden');
+  $('#startErr').innerHTML = '<div class="err">' + msg + '</div>';
+}
+
+/* Read todo.md from the project root, one folder up from this page. Needs the local
+   launcher running — a browser will not let a page opened straight off the disk read
+   files around it. */
+async function loadFile(){
+  try {
+    const res = await fetchList();
+    if (!res.ok) throw new Error('the server answered ' + res.status);
+    load(await res.text(), 'todo.md');
+    state.diskStamp = res.headers.get('Last-Modified') || null;
+    state.diskHash = res.headers.get('X-Todo-Hash') || null;
+    /* A real list always wins: whatever was standing in for it stops here. */
+    state.demo = false;
+    state.locked = false;
+    state.lockedLabel = '';
+    updateLockUI();
+    applyPendingTask();
+    drainAttachQueue();
+    drainTickQueue();
+  } catch (err) {
+    /* A folder opened on the hosted page that can no longer be read — moved,
+       renamed, or its permission withdrawn. Forgotten, so the demo below does
+       not try to reopen it straight away. See 21-datasets.js. */
+    if (listFolder) {
+      listFolder = null;
+      forgetFolder();
+      setDataMenuLabel('');
+      showToast('Could not read todo.md in that folder any more.', 'bad');
+    }
+    if (await loadDemo()) return;
+    showErr('<strong>Could not read todo.md.</strong><br>Close this tab and start the board by ' +
+            'double-clicking <strong>run.command</strong> in the to-dos folder. ' +
+            'Opening this page directly from Finder will not work — browsers block a page on disk ' +
+            'from reading files beside it.<br><span style="opacity:.75">(' + esc(String(err.message || err)) + ')</span>');
+  }
+}
+
+/* A plan written by a run that does not go through this tab reaches the list as
+   a tick in tick-queue.json, and nothing but a drain turns that into the review's
+   `Plan:` line. So the queue is drained again whenever the tab comes back into
+   view, which is when the owner would next look at a card, and not on a timer of its
+   own. */
+function drainOnReturn(){
+  if (document.visibilityState === 'hidden') return;
+  drainTickQueue();
+}
+window.addEventListener('focus', drainOnReturn);
+document.addEventListener('visibilitychange', drainOnReturn);
+
+/* A run started from this tab (Run the Plan agent now) is watched until it
+   finishes, then the queue is drained once. The check rides the file watcher's
+   existing tick (watchTick() in 24-autosave-watching.js) rather than a timer of
+   its own, and asks nothing while no run from here is going. The lock can take
+   a moment to appear, so "not live" only counts as finished once the run has
+   been seen live, or after a minute of never seeing it. */
+let runStartedHere = null;
+function watchRunStartedHere(){
+  runStartedHere = { since: Date.now(), seenLive: false };
+}
+async function checkRunStartedHere(){
+  const run = runStartedHere;
+  if (!run) return;
+  let live;
+  try { live = !!(await getJSON('/planning-agent.json')).live; } catch (err) { return; }
+  if (live) { run.seenLive = true; return; }
+  if (!run.seenLive && Date.now() - run.since < 60 * 1000) return;
+  if (runStartedHere === run) runStartedHere = null;
+  drainTickQueue();
+}
+
+/* Read the Jira boards, if there are any. Absent is the ordinary case: the file
+   is gitignored, so a fresh clone has none and the buttons simply do not show.
+   It falls back to a committed example the same way the list falls back to
+   demo.md, so the public deployment can still show what the feature looks like
+   without a real site or account id being committed to a public repo.
+
+   Never throws and never blocks the list: a board that cannot read this file is
+   a board with no Jira buttons, which is a smaller problem than a board that
+   will not open. */
+async function loadJira(){
+  for (const url of [JIRA_URL, '/kanban/jira.demo.json']) {
+    try {
+      const cfg = await getJSON(url);
+      if (!cfg || !cfg.site || !Array.isArray(cfg.boards) || !cfg.boards.length) continue;
+      state.jira = cfg;
+      if (state.doc) renderView();
+      return;
+    } catch (err) { /* malformed or missing: no buttons, no complaint */ }
+  }
+}
+
+/* Every task's cached briefing, written by agents/plan-agent/brief.py
+   overnight. Absent is the ordinary case for a fresh clone or a task that
+   has not been through a brief pass yet — taskDescription() in
+   10-reference-sections.js falls back to raw notes exactly as it did before
+   this existed, so a board that cannot read this file works exactly as one
+   that predates it. */
+async function loadBriefings(){
+  try {
+    const data = await getJSON('/briefings.json');
+    state.briefings = (data && data.briefed) || {};
+  } catch (err) { /* no cache yet, or unreadable: every chat seeds from raw notes */ }
+}
+

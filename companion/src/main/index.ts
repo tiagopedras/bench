@@ -1,0 +1,463 @@
+/* The desktop companion: a tray icon and a small window, replacing the
+   AppKit menu bar app that used to live at companion/app.py (retired
+   alongside this). Same contract as before — reads data/<list>/todo.md and
+   friends straight off disk, never writes todo.md, says one thing per board each
+   working morning — with room to actually show the planning agent's plans
+   instead of only saying "it happened".
+
+   Run it in dev with `npm run dev` (dev.command), or:
+     python3 ... not required at runtime except as digest.py's own
+     interpreter, which this shells out to once a tick — see digest.ts.
+*/
+
+import { fileURLToPath } from 'node:url'
+import path from 'node:path'
+import fs from 'node:fs'
+import os from 'node:os'
+import { app, BrowserWindow, ipcMain, Menu, Notification, Tray, clipboard, nativeImage } from 'electron'
+import type { Digest, Snapshot } from '../shared/types.js'
+import { runDigest } from './digest.js'
+import { planListing } from './plans.js'
+import { readNightRun } from './night.js'
+import { drainAll } from './notifyQueue.js'
+import { listBoards, readList, readState, writeList, writeState, type CompanionState, type ListName } from './state.js'
+import { readBucketColors } from './buckets.js'
+import { openBoard } from './boardUrl.js'
+
+const dirname_ = fileURLToPath(new URL('.', import.meta.url))
+// out/main/ -> this app's own resources (the compiled JS, the tray icons).
+// Only used to find those, and even then only as a starting guess — see
+// findRepoRoot below.
+const APP_DIR = path.resolve(dirname_, '..', '..')
+
+/** The live to-dos checkout, where data/, digest.py and Bench.app
+    actually are — not necessarily APP_DIR's parent. A packaged .app is a
+    frozen copy of this whole project under Contents/Resources/app, cut off
+    from the real repo, so `../data` from there doesn't exist. The old
+    launcher script solved the same problem the same way: guess from where
+    this is running, and fall back to a recorded path when the guess comes up empty (companion/package.command records the
+    checkout's path in repo-root.txt inside the app when it packages). */
+function findRepoRoot(): string {
+  const guess = path.resolve(APP_DIR, '..')
+  if (fs.existsSync(path.join(guess, 'data'))) return guess
+  // Packaged, so APP_DIR is a frozen copy. package.command wrote the repo's
+  // path beside it; $BENCH_ROOT overrides that.
+  const fromEnv = process.env.BENCH_ROOT
+  if (fromEnv && fs.existsSync(path.join(fromEnv, 'data'))) return fromEnv
+  try {
+    const recorded = fs.readFileSync(path.join(APP_DIR, 'repo-root.txt'), 'utf8').trim()
+    if (recorded && fs.existsSync(path.join(recorded, 'data'))) return recorded
+  } catch {
+    // not recorded: fall through
+  }
+  return path.join(os.homedir(), 'bench')
+}
+
+const ROOT = findRepoRoot()
+// Always the live companion/ next to the live data/ — never this app's own
+// bundled copy — so digest.py (which finds its own root the same relative
+// way) reads the real todo.md whether this is running from source or from a
+// packaged, frozen .app.
+const COMPANION_DIR = path.join(ROOT, 'companion')
+
+const TICK_MS = 60_000
+// Each board's morning notification fires at the first tick at or after
+// this, on a working day, and not after NOTIFY_UNTIL.
+const NOTIFY_AT = { hour: 9, minute: 0 }
+// The notify queue's window opens where it always did; the morning
+// briefing moving to 09:00 does not move it.
+const QUEUE_FROM = { hour: 8, minute: 30 }
+const NOTIFY_UNTIL = { hour: 20, minute: 0 }
+
+const LOG_PATH = path.join(os.homedir(), 'Library', 'Logs', 'To-Do Companion.log')
+
+function log(message: string): void {
+  const line = `${new Date().toTimeString().slice(0, 8)}  ${message}`
+  console.log(line)
+  try {
+    fs.mkdirSync(path.dirname(LOG_PATH), { recursive: true })
+    fs.appendFileSync(LOG_PATH, line + '\n')
+  } catch {
+    // a companion that cannot log is still a companion
+  }
+}
+
+let tray: Tray | null = null
+let window_: BrowserWindow | null = null
+// Which list this watches; the tray's List menu moves it. Read again at start.
+let dataset: ListName = ''
+let state: CompanionState = {}
+let snapshot: Snapshot | null = null
+let quitting = false
+
+function minutesOf(t: { hour: number; minute: number }): number {
+  return t.hour * 60 + t.minute
+}
+
+function nowMinutes(d: Date): number {
+  return d.getHours() * 60 + d.getMinutes()
+}
+
+function taskKeyLabel(message: { where: string; task: string }): string {
+  return message.where || message.task
+}
+
+/** Same wording as app.py's status_line(): what today's quiet, or when the
+    next notification is due. */
+function statusLine(d: Digest, now: Date): string {
+  const today = now.toISOString().slice(0, 10)
+  if (state.notified === today) {
+    return 'Notified today' + (state.notified_at ? ' at ' + state.notified_at : '')
+  }
+  if (d.today_status.holidays.length) {
+    const [, firstName] = d.today_status.holidays[0]
+    const regions = d.today_status.holidays.map(([r]) => r).join(' & ')
+    return `Quiet — ${firstName} (${regions})`
+  }
+  const day = now.getDay()
+  if (day === 0 || day === 6) return 'Quiet at the weekend'
+  if (nowMinutes(now) > minutesOf(NOTIFY_UNTIL)) return 'Too late in the day to notify'
+  const label = new Intl.DateTimeFormat('en-GB', { hour: 'numeric', minute: '2-digit' })
+  return `Notifying at ${label.format(new Date(0, 0, 0, NOTIFY_AT.hour, NOTIFY_AT.minute))}`
+}
+
+function dayHeading(now: Date, short = false): string {
+  return new Intl.DateTimeFormat(
+    'en-GB',
+    short ? { weekday: 'short', day: 'numeric', month: 'short' } : { weekday: 'long', day: 'numeric', month: 'long' }
+  ).format(now)
+}
+
+/** "work-and-career" -> "Work and career". */
+function boardLabel(name: string): string {
+  const spaced = name.replace(/-/g, ' ')
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
+}
+
+function postNotification(title: string, body: string, task?: string, view?: string): void {
+  if (!Notification.isSupported()) {
+    log('notifications unsupported on this machine')
+    return
+  }
+  const note = new Notification({ title, body })
+  note.on('click', () => {
+    log(`banner clicked → ${task || view || 'the board'}`)
+    openBoard(ROOT, task, view)
+  })
+  note.show()
+  log('notification delivered')
+}
+
+/** One board's morning notification: its name and the day, then what is
+    owed. Null when nothing is, so that board stays quiet. */
+function morningBriefing(name: string, d: Digest): { title: string; body: string } | null {
+  const due = d.today.length
+  const overdue = d.overdue.length
+  if (!due && !overdue) return null
+  let body = `${due} due today`
+  if (overdue) body += `, ${overdue} overdue`
+  return { title: `${boardLabel(name)} — ${dayHeading(new Date(), true)}`, body }
+}
+
+let notifying = false
+
+/** Every board (a data/<name>/ holding a todo.md, found now) is told once a
+    day, in its own companion.json. Boards already told today are skipped
+    without running their digest. Reading another board's state never
+    touches the chosen list's in-memory `state`. */
+async function maybeNotify(): Promise<void> {
+  if (notifying) return
+  const now = new Date()
+  const today = now.toISOString().slice(0, 10)
+  const mins = nowMinutes(now)
+  if (mins < minutesOf(NOTIFY_AT) || mins > minutesOf(NOTIFY_UNTIL)) return
+  notifying = true
+  try {
+    for (const name of listBoards(ROOT)) {
+      const own = name === dataset
+      const saved = own ? state : readState(ROOT, name)
+      if (saved.notified === today) continue
+      const d = await runDigest(COMPANION_DIR, name)
+      if (d.error || !d.today_status.working) continue
+      const note = morningBriefing(name, d)
+      if (note) postNotification(note.title, note.body)
+      // Re-read the chosen list's state: a switch during the await may have
+      // replaced it, and a board must be marked in its own file.
+      const target = name === dataset ? state : readState(ROOT, name)
+      target.notified = today
+      target.notified_at = new Intl.DateTimeFormat('en-GB', { hour: 'numeric', minute: '2-digit' }).format(new Date())
+      writeState(ROOT, name, target)
+    }
+  } finally {
+    notifying = false
+  }
+}
+
+/** A repeat: meeting with a time and an agenda ready pops on its own,
+    independent of the once-a-morning briefing above — that one answers
+    "what's owed today", this one answers "it's 9:15". Checked once a tick
+    against the wall clock rather than a real per-task timer, the same way
+    the morning briefing itself is: this process can be asleep or just
+    started when the minute arrives, and a tick landing a little late still
+    catches it, where a timer armed at boot would not. The popup stays
+    light — the title and that an agenda is ready, not the agenda itself —
+    which renders in full once the owner opens the card it links to. */
+function maybeFireMeetings(d: Digest): void {
+  const now = new Date()
+  const today = now.toISOString().slice(0, 10)
+  const mins = nowMinutes(now)
+  const fired = state.meetingsFired ?? []
+  let changed = false
+  for (const m of d.timed_meetings) {
+    const key = `${today}::${m.task}`
+    if (fired.includes(key)) continue
+    const [hour, minute] = m.time.split(':').map(Number)
+    if (mins < hour * 60 + minute) continue
+    postNotification(m.title, 'Agenda ready.', m.task)
+    fired.push(key)
+    changed = true
+  }
+  if (changed) {
+    // Capped the same way dismissed is — far more than are ever live at
+    // once, so the oldest dropping off costs nothing.
+    state.meetingsFired = fired.slice(-200)
+    writeState(ROOT, dataset, state)
+  }
+}
+
+function drawTray(d: Digest): void {
+  if (!tray) return
+  const alert = Boolean(d.error || d.overdue.length)
+  const iconName = alert ? 'trayAlertTemplate.png' : 'trayTemplate.png'
+  const image = nativeImage.createFromPath(path.join(COMPANION_DIR, 'resources', iconName))
+  image.setTemplateImage(true)
+  tray.setImage(image)
+  tray.setTitle(d.count ? ` ${d.count}` : '')
+  tray.setToolTip(d.line)
+}
+
+async function refresh(): Promise<void> {
+  const list = dataset
+  const [digest, plans] = await Promise.all([
+    runDigest(COMPANION_DIR, list),
+    Promise.resolve(planListing(ROOT, list))
+  ])
+  // The list was switched while the digest ran; that switch started its own
+  // refresh, and this one's answer belongs to the old list.
+  if (dataset !== list) return
+  const now = new Date()
+  const withinWindow = nowMinutes(now) >= minutesOf(QUEUE_FROM) && nowMinutes(now) <= minutesOf(NOTIFY_UNTIL)
+  drainAll(ROOT, dataset, withinWindow, postNotification)
+
+  snapshot = {
+    digest,
+    plans,
+    night: readNightRun(ROOT, dataset),
+    statusLine: statusLine(digest, now),
+    bucketColors: readBucketColors(ROOT, dataset)
+  }
+  drawTray(digest)
+  window_?.webContents.send('companion:snapshot', snapshot)
+  maybeFireMeetings(digest)
+  await maybeNotify()
+}
+
+function toggleWindow(): void {
+  if (!window_) return
+  if (window_.isVisible()) window_.hide()
+  else {
+    window_.show()
+    window_.focus()
+  }
+}
+
+function switchList(name: ListName): void {
+  if (name === dataset) return
+  dataset = name
+  writeList(ROOT, name)
+  state = readState(ROOT, name)
+  void refresh()
+}
+
+function createTray(): void {
+  const image = nativeImage.createFromPath(path.join(COMPANION_DIR, 'resources', 'trayTemplate.png'))
+  image.setTemplateImage(true)
+  tray = new Tray(image)
+  tray.setToolTip('To-do')
+  tray.on('click', toggleWindow)
+  tray.on('right-click', () => {
+    const menu = Menu.buildFromTemplate([
+      { label: 'Open the board', click: () => openBoard(ROOT) },
+      { label: 'Check again', click: () => void refresh() },
+      {
+        label: 'List',
+        submenu: listBoards(ROOT).map((name) => ({
+          label: name,
+          type: 'radio' as const,
+          checked: name === dataset,
+          click: () => switchList(name)
+        }))
+      },
+      { type: 'separator' },
+      {
+        label: 'Quit',
+        click: () => {
+          quitting = true
+          app.quit()
+        }
+      }
+    ])
+    tray?.popUpContextMenu(menu)
+  })
+}
+
+function createWindow(): void {
+  window_ = new BrowserWindow({
+    width: 380,
+    height: 640,
+    show: false,
+    resizable: true,
+    fullscreenable: false,
+    title: 'To-Do Companion',
+    webPreferences: {
+      preload: path.join(dirname_, '../preload/index.mjs'),
+      sandbox: false,
+      contextIsolation: true
+    }
+  })
+
+  window_.on('close', (event) => {
+    if (quitting) return
+    // Closing the window leaves the tray icon up — the window is the
+    // surface, the icon is the process.
+    event.preventDefault()
+    window_?.hide()
+  })
+
+  window_.on('ready-to-show', () => {
+    if (snapshot) window_?.webContents.send('companion:snapshot', snapshot)
+  })
+
+  if (process.env.ELECTRON_RENDERER_URL) {
+    void window_.loadURL(process.env.ELECTRON_RENDERER_URL)
+  } else {
+    void window_.loadFile(path.join(dirname_, '../renderer/index.html'))
+  }
+}
+
+function registerIpc(): void {
+  ipcMain.handle('companion:getSnapshot', () => snapshot)
+  ipcMain.on('companion:openBoard', (_event, task?: string, view?: string) => {
+    openBoard(ROOT, task, view)
+  })
+  ipcMain.on('companion:copyMessage', (_event, key: string) => {
+    const message = snapshot?.digest.messages.find((m) => m.key === key)
+    if (!message) return
+    clipboard.writeText(message.text)
+    log(`copied the message for ${taskKeyLabel(message)}`)
+  })
+  ipcMain.on('companion:copyAgenda', (_event, task: string) => {
+    const meeting = snapshot?.digest.meetings.find((m) => m.task === task)
+    if (!meeting) return
+    // Plain text rather than Markdown, so it pastes cleanly into Slack,
+    // a calendar invite or a doc alike.
+    const name = meeting.title.replace(/^prepare for\s+/i, '').replace(/^./, (c) => c.toUpperCase())
+    const lines = [`${name}, ${meeting.time}`, '']
+    for (const t of meeting.agenda) {
+      lines.push(`• ${t.topic}`)
+      if (t.context) lines.push(`  ${t.context}`)
+    }
+    clipboard.writeText(lines.join('\n'))
+    log(`copied the agenda for ${task}`)
+  })
+  ipcMain.on('companion:dismissMessage', (_event, key: string) => {
+    const seen = state.dismissed ?? []
+    if (!seen.includes(key)) {
+      // Trimmed the same way app.py did: far more than are ever live at
+      // once, so the oldest dropping off only means a sent message
+      // reappears once.
+      state.dismissed = [...seen, key].slice(-200)
+      writeState(ROOT, dataset, state)
+    }
+    void refresh()
+  })
+  ipcMain.on('companion:checkNow', () => void refresh())
+}
+
+/** `--notify-once` / `--notify-test [--task X] [--view Y]` — fire one banner
+    and quit, without touching companion.json or claiming the single-instance
+    lock, so it never contends with an already-running tray. Same shape as
+    app.py's notify_once()/notify_test(). */
+async function runOneShot(argv: string[]): Promise<void> {
+  app.dock?.hide()
+  await app.whenReady()
+  dataset = readList(ROOT)
+  const digest = await runDigest(COMPANION_DIR, dataset)
+
+  if (argv.includes('--notify-test')) {
+    const opt = (name: string): string | undefined => {
+      const i = argv.indexOf(name)
+      return i !== -1 && i + 1 < argv.length ? argv[i + 1] : undefined
+    }
+    let task = opt('--task')
+    const view = opt('--view')
+    let where = 'the board'
+    if (!task && !view) {
+      const pick = digest.headline ?? digest.overdue[0] ?? digest.today[0]
+      if (pick) {
+        task = pick.task
+        where = pick.title
+      }
+    } else if (task) {
+      where = task
+    } else if (view) {
+      where = `the ${view} view`
+    }
+    postNotification('To-do — test', `Press this. It should open ${where}.`, task, view)
+    log(`test banner sent → ${task || view || 'the board'}`)
+  } else {
+    // Fire each board's briefing and quit, without touching companion.json —
+    // the whole reason this flag exists is checking what today's banners would
+    // say without waiting for a morning, so it must not count as having
+    // already sent any.
+    for (const name of listBoards(ROOT)) {
+      const note = morningBriefing(name, name === dataset ? digest : await runDigest(COMPANION_DIR, name))
+      if (note) postNotification(note.title, note.body)
+    }
+  }
+  setTimeout(() => app.quit(), 30_000)
+}
+
+async function main(): Promise<void> {
+  const argv = process.argv.slice(1)
+  if (argv.includes('--notify-once') || argv.includes('--notify-test')) {
+    await runOneShot(argv)
+    return
+  }
+
+  if (!app.requestSingleInstanceLock()) {
+    app.quit()
+    return
+  }
+
+  await app.whenReady()
+  app.dock?.hide()
+  dataset = readList(ROOT)
+  state = readState(ROOT, dataset)
+
+  createWindow()
+  createTray()
+  registerIpc()
+
+  app.on('before-quit', () => {
+    quitting = true
+  })
+  app.on('window-all-closed', () => {
+    // Accessory app: quitting is a tray menu action, not a window closing.
+  })
+
+  await refresh()
+  setInterval(() => void refresh(), TICK_MS)
+}
+
+void main()

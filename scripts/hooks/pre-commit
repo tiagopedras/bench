@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Runs the commit guard on whatever is staged.
+exec "$(git rev-parse --show-toplevel)/scripts/check-private.sh"

@@ -1,0 +1,7 @@
+# One word per line. Case-insensitive, whole words only.
+# Blank lines and lines starting with # are ignored.
+# Replace these placeholders with real entries in data/private-words.txt.
+# your surname
+# your employer
+# colleagues' first names
+# your street or town

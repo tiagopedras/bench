@@ -1,0 +1,44 @@
+# Your lists and everything derived from them
+data/
+
+# Obsidian
+.obsidian/
+.trash/
+[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].md
+Untitled*.md
+*.canvas
+
+# Scratch copies
+*.local.md
+scratch/
+*.bak
+
+# OS and Python
+.DS_Store
+__pycache__/
+*.py[cod]
+
+# Built launchers and the companion app
+Bench.app/
+To-Do Companion.app
+companion/node_modules/
+companion/out/
+companion/dist/
+companion/repo-root.txt
+companion/bundle-id.local
+
+# Claude Code and tool state
+.claude/
+.omc/
+
+# Locks
+*.lock
+
+# Board build
+node_modules/
+kanban/dist/
+node_modules/.cache-board-ui-*
+
+# Private working files
+COORDINATION.md
+IMPROVEMENTS.md

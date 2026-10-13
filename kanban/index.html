@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en"><!-- data-theme="1984">-->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bench</title>
+<link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48dGV4dCB5PSIuOWVtIiBmb250LXNpemU9IjkwIj7inIU8L3RleHQ+PC9zdmc+">
+<!-- Tenon, the design system. Copied out of the installed package into
+     kanban/dist/ by the vite build, beside board-ui.js, so the one path works
+     both here and on Vercel, where there is no server and no node_modules.
+     Every colour, radius, shadow and text style on the page is defined here and
+     board.css only reads them, so this link has to come first: a --tenon- name
+     read before it is defined falls back to nothing, silently. -->
+<link rel="stylesheet" href="/kanban/dist/tenon.css">
+<!-- Tenon's components. A page-level stylesheet rather than something the
+     bundle carries, because the half of the board that is still HTML strings
+     draws .tenon-card and .tenon-column too, and could not reach it there. -->
+<link rel="stylesheet" href="/kanban/dist/tenon-react.css">
+<!-- The chat window's own arrangement around Tenon's components, served live
+     from ai_chat_engine/dist. It reads Tenon's tokens and needs the two links
+     above first; only the standalone build carries its own copy. -->
+<link rel="stylesheet" href="/ai-chat/chat.css">
+<!-- The board's own styling. Absolute rather than relative for the same reason
+     DEMO_URL is: the page is served at / on Vercel and at /kanban/ locally, and a
+     relative href would only resolve in one of the two. -->
+<link rel="stylesheet" href="/kanban/board.css">
+<!-- The Agents view's own stylesheet, from PACKAGES/agents-engine/react, which
+     vite writes beside board-ui.js. Every rule in it sits under .agents-ui, so
+     it reaches nothing of the board's. -->
+<link rel="stylesheet" href="/kanban/dist/board-ui.css">
+</head>
+<body>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<div class="lockframe hidden" id="lockFrame" aria-hidden="true"></div>
+<div class="lockbar hidden" id="lockBar">
+  <strong id="lockBarKind">Backup Preview</strong>
+  <span id="lockBarLabel"></span>
+  <span class="spacer"></span>
+  <!-- The hosted page only: open a list folder on this computer instead of the
+       example. Hidden unless the browser can (Chrome, Edge). See 21-datasets.js. -->
+  <button class="btn hidden" id="openFolder">Open a folder…</button>
+  <button class="btn" id="exitLock">Return to today's list</button>
+</div>
+
+<header id="hdr" class="hidden">
+  <h1>Bench</h1>
+  <span id="viewToggle"></span>
+  <span class="spacer"></span>
+  <span class="status" id="status">read only</span>
+  <button class="btn hidden" id="archiveBtn"></button>
+  <span class="menugroup dropdown" id="dataMenu">
+    <span class="menulabel" id="dataMenuLabel">Data</span>
+    <button class="btn" id="dataMenuBtn" aria-haspopup="true" aria-expanded="false">Lists ▾</button>
+
+    <div class="dropdown-panel alignright hidden" id="dataMenuPanel" role="menu" aria-label="Data actions">
+
+      <div class="dropdown-divider hidden" id="datasetMenu">
+        <span class="dropdown-label">Lists</span>
+        <div id="datasetList"></div>
+      </div>
+
+      <div class="dropdown-divider" id="datasetMenu">
+        <span class="dropdown-label">Options</span>
+        <button class="dropdown-item" id="undo" disabled role="menuitem" title="Undo the last change (⌘Z)">Undo</button>
+        <button class="dropdown-item" id="download" role="menuitem">Download copy</button>
+        <button class="dropdown-item" id="backupsBtn" role="menuitem">Backups</button>
+        <button class="dropdown-item" id="settingsBtn" role="menuitem">Settings</button>
+        <!-- The Plan agent: what it has cost and what runs on a clock, and a button to
+             start it now. They were reached from the Plans view until it went. -->
+        <button class="dropdown-item" id="refCardsBtn" role="menuitem">Spend and schedules</button>
+        <!-- Which private folder under data/ the board is pointed at. Hidden
+             until loadDatasets() hears back from /datasets.json — an older
+             server with no such route leaves the board exactly as it was
+             before this existed. -->
+      </div>
+
+    </div>
+  </span>
+</header>
+
+<!-- Which bucket the board is showing, and the two editors for the headings the
+     board is built out of. Out of the header and down here because it is a
+     choice about the columns underneath it rather than one more control in the
+     top bar, and a sibling of <main> rather than a child of it because main is
+     a horizontal scroll container — anything sticky inside it measures its top
+     against main and never tracks the page (see .tlscroll in board.css). -->
+<div class="bucketbar hidden" id="bucketBar">
+  <span id="bucketFilters" style="display:contents"></span>
+  <button class="iconbtn" id="editBuckets" aria-label="Edit buckets"
+          title="Rename, reorder, add or remove the buckets">
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+  </button>
+  <!-- The two chips are drawn here by React (HeaderBars.tsx), display:contents
+       so they sit in this row as if they were its own children. -->
+  <span id="filterChips" style="display:contents"></span>
+  <span class="spacer"></span>
+  <!-- Hidden on every view. The column set is settled and shared by every
+       bucket, so editing it is a rare, wide-reaching change that does not
+       belong one click from the filter bar it sits in. Since 19 Sep 2026 the
+       way in is a pencil in each column's own head, built in renderBoard()
+       (18-timeline.js) and opening this same openTierEditor() — the sheet is
+       still the whole list, and the pencil only says which row to focus.
+       Left here rather than deleted: removing the class is how a toolbar
+       button comes back if the per-column one ever turns out to be wrong.
+       Stood alone since 22 Sep 2026, when the Urgent or due toggle and the
+       Status dropdown that used to sit beside it went. -->
+  <button class="iconbtn hidden" id="editTiers" aria-label="Edit columns"
+          title="Rename, reorder, add or remove the columns (states) tasks move through">
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h4v16H4zM10 4h4v16h-4zM16 4h4v16h-4z"/></svg>
+  </button>
+  <input type="search" id="q" placeholder="Search tasks…">
+</div>
+
+<!-- A second row, only ever visible under exactly one bucket tab: the themes
+     that bucket is declared to have (data/<dataset>/bucket-themes.json),
+     [theme:: ] on the task line. Built by renderThemeTabs() (07-render-board.js),
+     which is also what keeps this hidden the rest of the time. -->
+<div class="bucketbar themebar hidden" id="themeBar">
+  <span id="themeFilters" style="display:contents"></span>
+</div>
+
+<!-- Which column is on screen, and how many there are. Phone only: at that
+     width every column is the screen's width and snaps, so the only clue that
+     five more sit to the right is a sliver of the next one's edge, and nothing
+     names the one you are on once its head has scrolled away. A sibling of
+     <main> rather than a child, because main is what scrolls horizontally and
+     anything inside it would scroll away with the columns. Built by
+     renderColTabs() in 18-timeline.js. -->
+<div class="coltabs hidden" id="colTabs"></div>
+
+<main id="main">
+  <div class="headline hidden" id="headline"></div>
+  <div class="board hidden" id="board"></div>
+  <!-- Move to column, Move to bucket, Delete — for whatever shift- or cmd/ctrl-
+       clicking a card has put in state.selectedIds. Hidden until that holds
+       something; built by renderBulkBar() in 19-drawer.js. -->
+  <div class="bulkbar hidden" id="bulkBar"></div>
+  <div id="lists" class="hidden"></div>
+  <section class="start" id="start">
+    <h2 id="startTitle">Loading todo.md…</h2>
+    <div id="startErr"></div>
+    <p style="margin-top:14px"><button class="btn primary" id="retry">Try again</button></p>
+  </section>
+</main>
+<!-- Board and Plans as one tall surface, one above the other, rather than two
+     tabs side by side. A second route to the same two views: the tab strip is
+     untouched and every tab stays where it is, so a route that turns out not to
+     be used costs a button. -->
+
+<div class="scrim" id="scrim"></div>
+<aside id="drawer">
+  <div class="dgrip" id="dgrip" title="Drag to resize · double-click to reset"></div>
+  <!-- One row, and no footer under the body: what used to sit at the bottom of
+       the panel was a Delete button and a line saying the panel saves itself,
+       both of which are about the panel as a whole and neither of which was
+       worth a strip of chrome pinned under a column you scroll. The save line
+       reads as a caption on the title, so it sits next to it; the three buttons
+       are all decisions about the task as a whole, so they are one group at the
+       other end, drawn at one size (see .dhead .btn in the stylesheet). -->
+  <div class="dhead">
+    <strong id="drawerTitle">Edit task</strong>
+    <span class="help" id="dheadHelp">Changes save automatically</span>
+    <span class="spacer"></span>
+    <button class="hlpin hidden" id="dheadHl" type="button">Make headline</button>
+    <button class="btn danger" id="del">Delete task</button>
+    <button class="btn ghost" id="closeDrawer">Close</button>
+  </div>
+  <div class="dbody" id="dbody"></div>
+</aside>
+<!-- A sub-task opens here, over the task drawer rather than in place of it, so
+     the task it belongs to is still there, faded, when it closes. As wide as
+     the drawer's left column. See openSubtaskDrawer() in 19-drawer.js. -->
+<div class="scrim subscrim" id="subscrim"></div>
+<aside id="subpanel" aria-label="Sub-task">
+  <div class="dhead">
+    <strong id="subTitle">Sub-task</strong>
+    <span class="help" id="subHelp">Changes save automatically</span>
+    <span class="spacer"></span>
+    <button class="btn ghost" id="closeSub" type="button">Close</button>
+  </div>
+  <div class="dbody" id="sbody"></div>
+</aside>
+
+<!-- The chat window itself is mounted by ai_chat_engine's ai-chat.js the first
+     time a chat is opened, see AIChat.create() further down. It sits outside
+     this document's own DOM on purpose, same reasoning as before: a chat
+     outlives the panel that started it. -->
+
+<!-- The chat window lives one level up, in ai_chat_engine/, so any app can load
+     the same module. It is React, built into one script that carries its own
+     copy of React and Tenon and sets window.AIChat. server.py serves it at
+     /ai-chat/ straight from that sibling folder's dist/, see its README.md. -->
+<script src="/ai-chat/ai-chat.js"></script>
+<!-- The to-do format itself: parsing, serialising, sub-steps and recurrence.
+     Classic rather than a module, and before the inline script below, because
+     that script is classic and inline and would otherwise run first. See the
+     header of core/todo.js. -->
+<script src="/core/todo.js"></script>
+<!-- An agent's face: avatarSvg()/agentAvatarHTML(), seeded by name off
+     AGENT_NAMES just above. Classic, same reasons as core/todo.js, and loaded
+     right after it so both are plain globals before any board script runs. -->
+<script src="/core/avatar.js"></script>
+<!-- The board's own script, split into one classic <script> per banner-marked
+     section rather than kept as one 7,900-line inline block — see
+     IMPROVEMENTS.md, "The rest of index.html could be split the same way".
+     Classic and in source order on purpose: separate <script src> tags share
+     one global environment the same way one inline script's top-level
+     declarations do, as long as nothing runs immediately at the top of an
+     earlier file that reaches into a later one — checked section by section
+     when this was split, and boot.js last is where the two genuine exceptions
+     that turned up now live. Keep new sections in this same list, in the same
+     relative order they'd have had inside the old single script. -->
+<script src="/owner.js"></script>
+<script src="js/01-markdown-model.js"></script>
+<script src="js/02-state.js"></script>
+<script src="js/03-tier-one-impact-effort.js"></script>
+<script src="js/04-tier-two-the-one-thing.js"></script>
+<script src="js/05-undo.js"></script>
+<script src="js/06-dates-substeps.js"></script>
+<script src="js/07-render-board.js"></script>
+<script src="js/08-buckets.js"></script>
+<script src="js/09-columns.js"></script>
+<script src="js/10-reference-sections.js"></script>
+<script src="js/11-chat-cards.js"></script>
+<script src="js/12-reports.js"></script>
+<script src="js/13-agent-run.js"></script>
+<script src="js/14-schedule.js"></script>
+<script src="js/15-backups.js"></script>
+<script src="js/16-backup-preview.js"></script>
+<script src="js/17-matrix.js"></script>
+<script src="js/18-timeline.js"></script>
+<script src="js/19-drawer.js"></script>
+<script src="js/20-loading-saving.js"></script>
+<script src="js/21-datasets.js"></script>
+<script src="js/22-what-changed.js"></script>
+<script src="js/23-conflict-modal.js"></script>
+<script src="js/24-autosave-watching.js"></script>
+<script src="js/25-archiving.js"></script>
+<script src="js/26-projects.js"></script>
+<script src="js/27-agents.js"></script>
+<script src="js/28-agent-runs.js"></script>
+<script src="js/29-settings.js"></script>
+<!-- The React half, built from kanban/ui/ by vite into kanban/dist/. An IIFE
+     hanging one global, BoardUI, loaded as an ordinary classic script so it
+     joins the source order above rather than being deferred past it the way a
+     module would. It sits before boot.js because boot.js is the tail that
+     starts everything, and after the views because a ported view reads BoardUI
+     at render time rather than at parse time — but nothing is ported yet, so
+     today this only has to be present and not throw. run.command builds it
+     before starting the server, so it is never stale. -->
+<script src="dist/board-ui.js"></script>
+<script src="js/boot.js"></script>
+</body>
+</html>

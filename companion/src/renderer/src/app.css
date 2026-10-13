@@ -1,0 +1,414 @@
+/* This window's own layout. Everything visual it stands on — the colour
+   tokens, the card, the button, the base type — comes from board-ui.css,
+   which is the board's own CSS lifted across. What is here is only what the
+   board has no equivalent of: the two screens, the section cards, and the
+   slide between them. */
+
+.app {
+  position: relative;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--tenon-background-default);
+}
+
+.app.loading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tenon-dimension-150);
+  align-items: center;
+  justify-content: center;
+  color: var(--tenon-text-faint);
+  font-size: var(--tenon-typography-size-sm);
+}
+
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--tenon-background-default);
+}
+
+/* ---------- the bar over the header ---------- */
+
+.topbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 8px 12px 0;
+  background: var(--tenon-background-raised);
+}
+
+.iconbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--tenon-stroke-default);
+  background: var(--tenon-background-raised);
+  color: var(--tenon-text-subtle);
+  border-radius: 7px;
+  padding: 4px 9px;
+  font-size: var(--tenon-typography-size-sm);
+  font-weight: 560;
+}
+
+.iconbtn:hover {
+  border-color: var(--tenon-text-faint);
+  color: var(--tenon-text-default);
+}
+
+.iconbtn-glyph {
+  font-size: var(--tenon-typography-size-sm);
+  line-height: 1;
+}
+
+/* ---------- header ---------- */
+
+header {
+  background: var(--tenon-background-raised);
+  border-bottom: 1px solid var(--tenon-stroke-default);
+  padding: 8px 16px 12px;
+}
+
+.heading {
+  font-size: var(--tenon-typography-size-lg);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.status {
+  margin-top: 2px;
+}
+
+.line {
+  margin-top: 7px;
+  font-size: var(--tenon-typography-size-sm);
+  color: var(--tenon-text-subtle);
+}
+
+.error {
+  margin-top: 7px;
+  font-size: var(--tenon-typography-size-sm);
+  color: var(--tenon-text-error);
+}
+
+main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ---------- the one thing, and the section cards ---------- */
+
+.card-hit {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+
+.cardsub {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.sectioncard {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 11px 12px 12px;
+  border: 1px solid var(--tenon-stroke-default);
+  border-radius: 9px;
+  background: var(--tenon-background-raised);
+  color: var(--tenon-text-default);
+  box-shadow: 0 1px 1px rgba(16, 20, 28, 0.04);
+  text-align: left;
+}
+
+.sectioncard:hover {
+  border-color: var(--tenon-text-faint);
+}
+
+.sectioncard.empty {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.sectioncard.empty:hover {
+  border-color: var(--tenon-stroke-default);
+}
+
+.sectioncard-icon {
+  font-size: var(--tenon-typography-size-lg);
+  line-height: 1;
+}
+
+.sectioncard-count {
+  font-size: var(--tenon-typography-size-2xl);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.sectioncard-title {
+  font-size: var(--tenon-typography-size-sm);
+  font-weight: 560;
+  color: var(--tenon-text-subtle);
+  line-height: 1.25;
+}
+
+.parked,
+.quiet {
+  color: var(--tenon-text-faint);
+  font-size: var(--tenon-typography-size-sm);
+  padding: 2px 2px 0;
+}
+
+/* What the night did, over the section cards. Quiet as the rest of this size
+   of text, until the night did not finish — which is the one thing here the owner
+   would want to act on. */
+.nightline {
+  color: var(--tenon-text-faint);
+  font-size: var(--tenon-typography-size-sm);
+  padding: 0 2px 2px;
+}
+
+.nightline.unfinished {
+  color: var(--tenon-text-error);
+}
+
+/* ---------- the screen that slides in ---------- */
+
+/* Animated rather than transitioned, so it does not depend on a second
+   render landing between mount and paint: a window that is hidden — which
+   this one is, most of the time — runs no requestAnimationFrame callbacks,
+   and a transition set up that way would never start. */
+.detail-screen {
+  transform: translateX(0);
+  animation: slide-in 0.26s cubic-bezier(0.32, 0.72, 0, 1);
+  box-shadow: -8px 0 24px rgba(10, 12, 16, 0.12);
+}
+
+.detail-screen.closing {
+  transform: translateX(100%);
+  animation: slide-out 0.26s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-out {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--tenon-background-raised);
+  border-bottom: 1px solid var(--tenon-stroke-default);
+}
+
+/* The night a plan was written. In the accent while it is unread, which is
+   what the board does with the same date (.repdate on an unread plan). */
+.tag.night {
+  background: transparent;
+  border: 1px solid var(--tenon-stroke-default);
+  color: var(--tenon-text-faint);
+  font-weight: 550;
+}
+
+.tag.night.new {
+  color: var(--tenon-text-accent);
+  border-color: color-mix(in srgb, var(--tenon-stroke-accent) 40%, transparent);
+  font-weight: 640;
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: none;
+  background: none;
+  color: var(--tenon-text-accent);
+  font-size: var(--tenon-typography-size-sm);
+  font-weight: 560;
+  padding: 2px 4px 2px 0;
+}
+
+.back-chevron {
+  font-size: var(--tenon-typography-size-xl);
+  line-height: 1;
+}
+
+.detail-title {
+  font-size: var(--tenon-typography-size-sm);
+  font-weight: 650;
+}
+
+.detail-body .card {
+  cursor: pointer;
+}
+
+/* ---------- a message card ---------- */
+
+.message-card {
+  position: relative;
+}
+
+/* Who the message is to. One line, clipped rather than wrapped, and kept
+   clear of the dismiss button sitting in the corner above it. */
+.msgwho {
+  display: block;
+  color: var(--tenon-text-subtle);
+  text-transform: none;
+  font-size: var(--tenon-typography-size-sm);
+  letter-spacing: 0;
+  padding-right: 22px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.msgtext {
+  font-weight: 450;
+  color: var(--tenon-text-subtle);
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.copyhint {
+  margin-left: auto;
+  font-size: var(--tenon-typography-size-sm);
+  color: var(--tenon-text-faint);
+}
+
+.dismiss {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  border: none;
+  background: none;
+  color: var(--tenon-text-faint);
+  font-size: var(--tenon-typography-size-lg);
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 5px;
+}
+
+.dismiss:hover {
+  background: var(--tenon-background-neutral);
+  color: var(--tenon-text-error);
+}
+
+/* ---------- meetings today, and the agenda screen ---------- */
+
+.meetings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.group-title {
+  font-size: var(--tenon-typography-size-sm);
+  font-weight: 600;
+  color: var(--tenon-text-subtle);
+  padding: 0 2px;
+}
+
+.meeting-card .title {
+  font-weight: 560;
+}
+
+.tag.meeting-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--tenon-text-default);
+}
+
+.meeting-count {
+  font-size: var(--tenon-typography-size-sm);
+  color: var(--tenon-text-subtle);
+}
+
+.meeting-count.none {
+  color: var(--tenon-text-faint);
+}
+
+.agenda {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.agenda-when {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--tenon-typography-size-sm);
+  color: var(--tenon-text-subtle);
+}
+
+.tag.agenda-ready {
+  background: var(--tenon-background-success-subtle);
+  color: var(--tenon-text-success);
+}
+
+.agenda-topics {
+  margin: 0;
+  padding: 0 0 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.agenda-topics li::marker {
+  color: var(--tenon-text-subtle);
+}
+
+.agenda-topic {
+  font-size: var(--tenon-typography-size-sm);
+  font-weight: 600;
+  color: var(--tenon-text-default);
+}
+
+.agenda-context {
+  margin-top: 3px;
+  font-size: var(--tenon-typography-size-sm);
+  line-height: 1.4;
+  color: var(--tenon-text-subtle);
+}
+
+.agenda-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
