@@ -97,11 +97,11 @@ try {
     const last = [...d.children].pop();
     return last.querySelector('.tagchips') && !last.matches('details') && !d.querySelector('details:not([data-collapse=notes]), hr.dsep');
   })()`))
-  check('Bucket and Description are the first two things in Details, Theme after them', await evalJS(`(() => {
+  check('Bucket and Description are the first two things in Details, and Theme is not in it', await evalJS(`(() => {
     const d = ${dsel}, kids = [...d.querySelectorAll(':scope > .field')];
     const th = document.querySelector('#f-theme-dd');
     return !!kids[0]?.querySelector('[data-pick-host="f-bucket"]') && kids[1]?.matches('details[data-collapse=notes]') &&
-      (!th || kids[2]?.contains(th));
+      !(th && d.contains(th));
   })()`))
   check('the pickers inside the closed section still mounted', await evalJS(`!!document.querySelector('#f-tier [role=slider]') && !!document.querySelector('#f-impact [role=slider]') && !!document.querySelector('#f-to-dd .tenon-dropdown__button') && !!document.querySelector('#f-dates .tenon-date-button') && !!document.querySelector('.tagchips .tenon-tag-chip')`))
   await evalJS(`${dsel}.open = true`)

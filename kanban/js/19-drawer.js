@@ -1192,6 +1192,13 @@ function openDrawer(id, focusTitle){
   };
   const mainFields =
     '<label class="field"><span>Title</span><input type="text" id="f-title" value="' + esc(t.title) + '"' + dis + '></label>' +
+    /* Only when the bucket has declared themes, or the task already carries
+       one the bucket no longer does (see themeSelectHTML above) — most
+       buckets have none, and a field offering an empty dropdown on every
+       task would be a question with no answer worth asking. */
+    (bucketThemes.length || t.theme
+      ? '<div class="field"><span>Theme</span>' + themeSelectHTML(t.theme, bucketThemes, dis) + '</div>'
+      : '') +
     '<details class="field dgroup" data-collapse="details"' + (sectionCollapsed('details') ? '' : ' open') + '><summary>Details</summary>' +
     /* Tenon's Dropdown rather than a native <select> — an <option> cannot carry
        the coloured dot the bucket filter pills at the top of the board already
@@ -1222,13 +1229,6 @@ function openDrawer(id, focusTitle){
       '<div id="f-body-view" class="repdoc noteview"' + (ro ? '' : ' title="Click to edit"') + '></div>' +
       '<div id="f-body-mount"></div>' +
     '</details>' +
-    /* Only when the bucket has declared themes, or the task already carries
-       one the bucket no longer does (see themeSelectHTML above) — most
-       buckets have none, and a field offering an empty dropdown on every
-       task would be a question with no answer worth asking. */
-    (bucketThemes.length || t.theme
-      ? '<div class="field"><span>Theme</span>' + themeSelectHTML(t.theme, bucketThemes, dis) + '</div>'
-      : '') +
     /* Full width rather than sharing a grid2 with Bucket: a column name like
        "Reviewing" needs the room a slider half that wide wouldn't give
        its label, where the old <select> never had to fit the whole word next
