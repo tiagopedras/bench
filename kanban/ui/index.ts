@@ -73,6 +73,9 @@ export type { MatrixBodyProps, MatrixModel, MatrixCell, MatrixDot, MatrixRead } 
 export { TaskCard } from './TaskCard'
 export { bindHold, endFocus, focusedElement, DRAWER_OWN_PRESS } from './hold'
 export type { FocusInfo } from './hold'
+/* The floating PA prompt for a focused element, run from kanban/js/10a-focus-prompt.js. */
+export { FocusPrompt } from './FocusPrompt'
+export type { FocusPromptProps, FocusPromptPhase } from './FocusPrompt'
 export type { TaskCardProps, TaskCardModel, Chip, CardProgress } from './TaskCard'
 export { BoardView } from './BoardView'
 export type { BoardViewProps, BoardColumn, BoardCard } from './BoardView'

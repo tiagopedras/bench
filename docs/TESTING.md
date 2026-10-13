@@ -69,6 +69,14 @@ before it does, records what was attempted, and ends by asserting nothing
 reached `todo.md`; the queue tests stub `/tick-queue.json` rather than read a
 file. `kanban/test_schedule.mjs` (Spend and schedules sheet) does the same.
 
+**`kanban/test_focus_prompt.mjs`** unlocks the tab too, because a locked tab
+shows no focus prompt. It holds cards, sub-tasks and drawer sections and talks
+to the PA through the prompt, with no Claude behind it: a POST to `/claude`
+answers with a stream the test writes into a line at a time, so Working and
+Done can each be looked at while they last. `saveFile` is stubbed and every
+other write is torn out of `fetch`. It tells the board a chat engine is there,
+so unlike `test_chats.mjs` it passes from a worktree.
+
 **`kanban/test_projects.mjs`** covers both halves of the Projects view — the tab
 listing every folder under `data/projects/`, and the drawer that shows what's
 inside one, describes it, and says when it was last touched. It stubs

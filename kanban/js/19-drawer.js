@@ -1864,12 +1864,28 @@ function wireDrawerHold(){
       if (el.classList.contains('sub')) {
         return { kind: 'subtask', taskId, subIndex: Array.from($('#dbody').querySelectorAll('.sub')).indexOf(el) };
       }
-      const head = el.querySelector(':scope > summary, :scope > span, :scope > label > span, :scope > .fieldhead');
-      return { kind: 'section', taskId, section: (head ? head.textContent : '').replace(/\s+/g, ' ').trim() };
+      return { kind: 'section', taskId, section: drawerSectionLabel(el) };
     },
     onStart: el => spotlight(el),
     onEnd: () => clearSpotlight()
   });
+}
+
+/* A drawer section's name, as its head reads: "Description", not the small
+   print and buttons the head carries beside it. The focus events name a
+   section by this, and the focus prompt finds one again by it after the drawer
+   is redrawn. */
+function drawerSectionLabel(el){
+  const head = el.querySelector(':scope > summary, :scope > span, :scope > label > span, :scope > .fieldhead');
+  if (!head) return '';
+  const copy = head.cloneNode(true);
+  copy.querySelectorAll('em, button, .sublabel').forEach(n => n.remove());
+  return copy.textContent.replace(/\s+/g, ' ').trim();
+}
+
+/* The drawer's sections, the ones a hold can take (wireDrawerHold above). */
+function drawerSections(){
+  return Array.from($('#dbody').querySelectorAll('.dcol > .field, .dcol > details'));
 }
 
 function closeDrawer(){

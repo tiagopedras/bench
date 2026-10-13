@@ -759,7 +759,6 @@ function onChatChange(){ if (state.openTask) openDrawer(state.openTask); }
 // answered, so the whole view needs a redraw, not just the drawer.
 function onChatStatusChanged(cfg){
   state.chatsOn = !!cfg;
-  if (cfg) ensurePaBar();
   if (state.doc) renderView();
 }
 
@@ -777,7 +776,9 @@ function saveChatRect(rect){
 }
 
 /* One AIChat instance per open chat, the way ai_canvas keeps one per card, so
-   several can sit minimised or anchored along the bottom edge at once. The
+   several can be open at once, each a free-floating window. Nothing docks to
+   the bottom edge since 13 Oct 2026, when the PA bar there gave way to the
+   focus prompt (10a-focus-prompt.js). The
    `hub` instance is never opened: it holds the status and the sessions index
    the drawer reads, and files and forgets sessions. Each chat window is its
    own instance in `chatWins`, found again by its session id, or by its owner
@@ -811,21 +812,22 @@ function reapChatWins(){
   }
 }
 
-function makeChatWin(newFor, o){
+function makeChatWin(newFor){
   let inst;
   // Set when a message goes out on the PA's key and cleared once the run it
-  // started has ended — see "The PA panel" below. Any window can be carrying
-  // the PA's conversation, a `#!chat=` link to an old one included, so this
-  // is kept per window rather than only on the pinned PA bar.
+  // started has ended — see "The PA panel" below. A PA conversation the focus
+  // prompt started can be opened again as a window, through a `#!chat=` link,
+  // and carried on there, so this is kept per window.
   // It holds what was asked, so the reply read back afterwards is matched to
   // this send rather than to an earlier turn — see paReadReply().
   let paWaiting = null;
   inst = AIChat.create({
     windowed: true,
     thinkingOrbs: true,
-    dockable: true,
-    pinned: !!(o && o.pinned),
     ownerLabel: chatOwnerLabel,
+    // The PA's doing:/done: lines are the focus prompt's status, not part of
+    // the conversation: taken out of what a window shows. See paStripStatus().
+    transport: { run: chatRunStripped, transcript: chatTranscriptStripped },
     readOnlyHelp: '',
     // "Can write" in the head, drawn only while the list's claude.json has
     // "work": true. The server holds a writing run to its cwd and refuses
@@ -847,7 +849,7 @@ function makeChatWin(newFor, o){
   const saved = loadChatRect();
   if (saved) inst.setRect(saved);
   inst.loadStatus();
-  chatWins.set(++chatWinSeq, { inst, newFor, pinned: !!(o && o.pinned) });
+  chatWins.set(++chatWinSeq, { inst, newFor });
   return inst;
 }
 
@@ -862,8 +864,7 @@ function chatWriteNote(on){
 function openChatWin(ownerId, ownerKey, sessionId, seed, o){
   const found = findChatWin(sessionId, ownerKey);
   if (found && found.isOpen()) {
-    // Asked for again: brought forward, and a bar opens up to its panel.
-    if (found.dockState() === 'minimised') found.anchor();
+    // Asked for again: brought forward.
     focusChatWin(found);
     return found;
   }
@@ -900,9 +901,8 @@ const chat = hub ? {
   loadStatus: hub.loadStatus,
   openNew: (ownerId, ownerKey, seed, o) => { openChatWin(ownerId, ownerKey, '', seed, o); },
   openSession: (ownerId, ownerKey, sessionId) => { openChatWin(ownerId, ownerKey, sessionId, ''); },
-  /* Open and not docked: the one in the way of the board. */
-  isOpen: () => [...chatWins.values()].some(w => w.inst.isOpen() && w.inst.dockState() === 'none'),
-  closeChat: () => { for (const w of chatWins.values()) if (w.inst.isOpen() && w.inst.dockState() === 'none') w.inst.closeChat(); },
+  isOpen: () => [...chatWins.values()].some(w => w.inst.isOpen()),
+  closeChat: () => { for (const w of chatWins.values()) if (w.inst.isOpen()) w.inst.closeChat(); },
 } : {
   available: () => false,
   renderSection: () => '',
@@ -943,7 +943,9 @@ function claudeOn(){ return chat.available() && !state.locked; }
 /* ---- The PA panel ----
    A chat about the whole list, owned by the board rather than by a card. See
    IMPROVEMENTS.md, "There is no way to talk to the PA while the board is in
-   front of you." Its one fixed key is both the owner id and the owner key the
+   front of you." Since 13 Oct 2026 it is reached through the focus prompt
+   (10a-focus-prompt.js), about one held element at a time, rather than a bar
+   docked in the bottom-right corner. Its one fixed key is both the owner id and the owner key the
    sessions index files it under, so every path that turns an owner into a
    task (locate(), tasksByChatKey(), chatKeyFor()) simply finds none, and
    chatOwnerLabel() names it instead. It is never written onto a task line:
@@ -959,41 +961,135 @@ function claudeOn(){ return chat.available() && !state.locked; }
 const PA_KEY = 'board-pa';
 let paSaving = Promise.resolve();
 
+/* The first message of a PA conversation, wrapped. The status lines it asks
+   for are what the focus prompt shows while the reply comes in and once it has
+   landed; paStripStatus() takes them out of anything else that shows the
+   reply. */
 function paPreface(ask){
   const ds = state.dataset || '';
   return '/pa ' + ask + '\n\n' +
-    '(Sent from the to-do board\'s PA chat, a conversation about the whole list rather than one task. ' +
+    '(Sent from the to-do board\'s PA prompt, a conversation about the list that starts from one element the owner is holding on the board: ' +
+    'the "Focused element" line names it, and the owner\'s words follow it. ' +
     'The list on screen is ' + (ds ? 'data/' + ds + '/todo.md, the dataset data/.current names' : 'the one data/.current names') +
     '. The board saved its unsaved changes before this message. This chat cannot write todo.md: for any change to the list, ' +
-    'end your reply with a fenced pa-changes block, as the pa skill\'s "From a board chat" section describes, and the board applies it.)';
+    'end your reply with a fenced pa-changes block, as the pa skill\'s "From a board chat" section describes, and the board applies it. ' +
+    PA_STATUS_ASK + ')';
 }
 
-/* The PA chat is always there: a pinned bar in the bottom-right corner from
-   the moment the chat engine answers, with every other docked chat lined up
-   to its left. Closing it only puts it back down as a bar (the engine's
-   `pinned`), so there is one per page, started fresh on each load. */
-function paWin(){
-  for (const w of chatWins.values()) if (w.pinned && w.inst.isOpen()) return w.inst;
-  return null;
+/* What every reply in a PA conversation opens and closes with. Said in full in
+   the first message and repeated short on each one after it. */
+const PA_STATUS_ASK =
+  'Start every reply in this conversation with one line "doing: <5 to 8 words, -ing form>" saying what you are about to do, ' +
+  'and end it with one line "done: <one line, past tense, 10 words at most>" saying what you did, both before any pa-changes block. ' +
+  'The board shows those two lines as the prompt\'s status.';
+const PA_STATUS_AGAIN = '(As before: open with a "doing:" line and close with a "done:" line, before any pa-changes block.)';
+
+/* The two status lines, read out of a reply as far as it has come. A run's
+   text arrives a block at a time, never half a line, so `doing` can be read
+   off the first block. */
+function paStatusLines(text){
+  const lines = String(text || '').split('\n');
+  let doing = '', done = '';
+  for (const l of lines) {
+    const m = /^\s*doing:\s*(.+?)\s*$/i.exec(l);
+    if (m) { doing = m[1]; break; }
+    if (l.trim()) break;
+  }
+  for (const l of lines) { const m = /^\s*done:\s*(.+?)\s*$/i.exec(l); if (m) done = m[1]; }
+  return { doing, done };
 }
 
-function ensurePaBar(){
-  if (!chat.available()) return null;
-  let inst = paWin();
-  if (inst) return inst;
-  inst = makeChatWin(PA_KEY, { pinned: true });
-  inst.openNew(PA_KEY, PA_KEY, '', { preface: paPreface });
-  inst.minimise();
-  return inst;
+/* A reply with its doing: and done: lines taken out, for a window showing a
+   PA conversation. Only a first line and a done: line on its own are touched,
+   so a reply that never had them reads as it always did. */
+function paStripStatus(text){
+  return String(text || '')
+    .replace(/^\s*doing:[^\n]*(\n+|$)/i, '')
+    .replace(/(^|\n)[ \t]*done:[^\n]*(\n|$)/gi, '$1')
+    .replace(/\n{3,}/g, '\n\n');
 }
 
-function openPaChat(){
-  if (state.locked) return null;
-  const inst = ensurePaBar();
-  if (!inst) return null;
-  if (inst.dockState() !== 'anchored') inst.anchor();
-  focusChatWin(inst);
-  return inst;
+/* ---- The chat engine's run, read by the board ----
+   The same POST and the same stream-json lines the engine's own transport
+   reads (ai_chat_engine/src/transport.ts), kept here as well for two callers:
+   the focus prompt, which runs the PA with no window, and every chat window,
+   whose run and transcript go through the two wrappers below so a PA
+   conversation's status lines never show in one. The engine's messages for a
+   run that fails are kept word for word. */
+async function* claudeRunLines(payload, signal){
+  let res;
+  try {
+    res = await fetch('/claude', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Board': '1' },
+      body: JSON.stringify(payload),
+      signal,
+    });
+  } catch (e) {
+    throw new Error(signal && signal.aborted ? 'Stopped.' : 'Could not reach the helper — is it still running?');
+  }
+  if (!res.ok) {
+    let msg = 'The helper refused it (HTTP ' + res.status + ')';
+    try { const j = await res.json(); if (j && j.error) msg = j.error; } catch (e) { /* not JSON */ }
+    throw new Error(msg);
+  }
+  if (!res.body) {
+    // A stubbed fetch in a test hands back a plain body: read it whole.
+    for (const line of (await res.text()).split('\n')) if (line.trim()) yield line.trim();
+    return;
+  }
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  try {
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      buf += dec.decode(chunk.value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (line) yield line;
+      }
+    }
+  } catch (e) {
+    throw new Error('The answer stopped coming: ' + ((e && e.message) || e));
+  }
+  if (buf.trim()) yield buf.trim();
+}
+
+/* One stream line with the status lines taken out of its text, for a PA run. */
+function paStripLine(line){
+  let d;
+  try { d = JSON.parse(line); } catch (e) { return line; }
+  if (d && d.type === 'assistant' && d.message && Array.isArray(d.message.content)) {
+    d.message.content = d.message.content.map(b => b && b.type === 'text' ? Object.assign({}, b, { text: paStripStatus(b.text).trim() }) : b);
+    return JSON.stringify(d);
+  }
+  if (d && d.type === 'result' && typeof d.result === 'string') {
+    d.result = paStripStatus(d.result).trim();
+    return JSON.stringify(d);
+  }
+  return line;
+}
+
+async function* chatRunStripped(payload, signal){
+  const pa = payload && payload.owner === PA_KEY;
+  for await (const line of claudeRunLines(payload, signal)) yield pa ? paStripLine(line) : line;
+}
+
+/* A transcript read back for a window: a turn the focus prompt sent, or any
+   turn of a conversation filed under the PA's key, loses its status lines. */
+async function chatTranscriptStripped(sessionId, cwd){
+  const d = await getJSON('/claude/transcript.json?session=' + encodeURIComponent(sessionId) + '&cwd=' + encodeURIComponent(cwd || ''));
+  const pa = (state.chats[PA_KEY] || []).some(r => r.id === sessionId);
+  (d && d.turns || []).forEach(t => {
+    if (!pa && !/\(Focused element:/.test(t.ask || '')) return;
+    if (t.reply) t.reply = paStripStatus(t.reply).trim();
+    if (Array.isArray(t.parts)) t.parts = t.parts.map(x => x && x.type === 'text' ? Object.assign({}, x, { text: paStripStatus(x.text).trim() }) : x);
+  });
+  return d;
 }
 
 function paBeforeSend(){
@@ -1001,7 +1097,11 @@ function paBeforeSend(){
   paSaving = saveFile(true).catch(() => {});
 }
 
-async function paAfterReply(inst, sent){
+/* Once a PA run has ended: todo.md read back if it moved, then the reply's
+   pa-changes applied. A window's reply is read back from the transcript; the
+   focus prompt, which read the reply off the stream itself, hands it in as
+   `reply` and gets back what the board did with it. */
+async function paAfterReply(inst, sent, reply){
   await paSaving;
   if (state.locked || !state.doc || modalEl) return;
   const { stamp, hash } = await diskVersion();
@@ -1012,10 +1112,14 @@ async function paAfterReply(inst, sent){
     await reload();
     if (quiet) autoStatus('reloaded — the PA changed todo.md');
   }
-  if (!inst) return;
-  const reply = await paReadReply(inst, sent);
+  if (reply === undefined) {
+    if (!inst) return;
+    reply = await paReadReply(inst, sent);
+  }
   if (!reply || state.locked || !state.doc || modalEl) return;
-  paShowOutcome(inst, applyPaChanges(reply));
+  const out = applyPaChanges(reply);
+  paShowOutcome(inst, out);
+  return out;
 }
 
 /* ---- pa-changes: the PA asks, the board writes ----

@@ -2788,11 +2788,69 @@
   .changes .none{font-size: var(--tenon-typography-size-sm); color:var(--tenon-text-faint)}
   .hidden{display:none !important}
 
-  /* ---------- the PA bar ----------
-     The PA chat is pinned: always in the dock row, in the bottom-right
-     corner, with the other docked chats to its left (the engine's dock.ts).
-     A locked tab has no list to talk about, so it is hidden there. */
-  body.locked .aic-pinned{display:none}
+  /* ---------- the focus prompt ----------
+     FocusPrompt.tsx, run from js/10a-focus-prompt.js: a prompt to the PA for
+     the element a hold has put in focus, floating at the bottom centre while
+     it lasts. Its colours are the Figma file's, on Tenon's palette where the
+     palette has them. */
+  .focus-prompt{
+    position:fixed; left:50%; bottom:36px; transform:translateX(-50%); z-index:75;
+    width:300px; display:flex; flex-direction:column; gap:8px; align-items:flex-start;
+    font-family:inherit; transition:opacity .3s ease;
+  }
+  .focus-prompt.is-leaving{opacity:0}
+  .focus-prompt__chip{
+    display:flex; align-items:center; gap:4px; max-width:100%; box-sizing:border-box;
+    padding:1px 8px; border-radius:9999px; background:var(--tenon-color-neutral-800, #373b42);
+    color:#fff; font-size:10px; line-height:14px;
+  }
+  .focus-prompt__dot{flex:0 0 8px; width:8px; height:8px; border-radius:50%; background:var(--tenon-color-blue-350, #83afff)}
+  .focus-prompt__chiptext{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .focus-prompt__chiptext b{font-weight:700}
+  /* The 1px border is a gradient, so it is the wrapper's background showing
+     through a 1px padding, with the box's own fill inside it. */
+  .focus-prompt__box{
+    width:100%; box-sizing:border-box; padding:1px; border-radius:9px;
+    background:linear-gradient(90deg, #f0b355, var(--tenon-color-red-450, #ef5c53));
+    box-shadow:0 0 8px 1px #ff8a85, 0 1px 1px rgba(16,20,28,.04);
+  }
+  /* 32px at the bottom: room for a mic button, bottom left, later. */
+  .focus-prompt__input{
+    display:block; width:100%; box-sizing:border-box; min-height:80px; max-height:240px; resize:none;
+    margin:0; padding:8px 8px 32px; border:0; border-radius:8px; outline:none;
+    background:#1c1f25; color:var(--tenon-color-neutral-50, #f6f7f8);
+    font:inherit; font-size:12px; line-height:16px; overflow-y:auto;
+  }
+  .focus-prompt__input::placeholder{color:var(--tenon-color-neutral-450, #8d94a0)}
+  .focus-prompt__status{
+    width:100%; box-sizing:border-box; display:flex; gap:5px; align-items:flex-start; padding:8px;
+    border-radius:9px; border:1px solid var(--tenon-color-neutral-750, #42474f); background:#1c1f25;
+    transition:opacity .3s ease;
+  }
+  .focus-prompt__status.is-fading{opacity:0}
+  .focus-prompt__avatar{
+    flex:0 0 32px; width:32px; height:32px; border-radius:8px; background:#fff;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .focus-prompt__lines{min-width:0; display:flex; flex-direction:column; gap:2px}
+  .focus-prompt__who{font-size:10px; line-height:14px; font-weight:400; color:var(--tenon-color-neutral-50, #f6f7f8)}
+  .focus-prompt__name{font-weight:500}
+  .focus-prompt__line{font-size:12px; line-height:16px; color:#f0855a; overflow-wrap:anywhere}
+  .focus-prompt__status--done{background:var(--tenon-color-green-900, #042913)}
+  .focus-prompt__status--done .focus-prompt__who{color:var(--tenon-color-green-400, #67b680)}
+  .focus-prompt__status--done .focus-prompt__line{color:var(--tenon-color-neutral-50, #f6f7f8)}
+  .focus-prompt__status--error .focus-prompt__line{color:#d98b86}
+  /* What the PA changed, outlined while Done shows, then faded with it. An
+     attribute rather than a class, so a React redraw of the card keeps it.
+     !important because a card still held sets outline:none four classes deep,
+     and the outline sits 2px out, clear of the held ring. */
+  [data-pa-changed]{outline:1px solid var(--tenon-color-green-450, #53a970) !important; outline-offset:2px}
+  [data-pa-changed][data-pa-fading]{outline-color:transparent !important; transition:outline-color .3s ease}
+  /* The toasts sit at the bottom centre as well: lifted clear while the prompt is there. */
+  body.focus-prompting .toasts{bottom:200px}
+  @media (prefers-reduced-motion: reduce){
+    .focus-prompt, .focus-prompt__status, [data-pa-changed]{transition:none}
+  }
 
   /* ---------- toasts ----------
      Anything that stops an action the user just took — a drag onto Done, a

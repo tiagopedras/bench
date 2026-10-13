@@ -356,17 +356,20 @@ check('the picker lists what is on disk', picked.rows === 1, `${picked.rows} row
 check('picking one closes the picker', picked.closed)
 check('and attaches it', !!picked.attachCall)
 
-// ---- One window per open chat, minimised and anchored ----
+// ---- One window per open chat, free-floating ----
 // See IMPROVEMENTS.md, "A chat can only be open or closed". Each open chat is
-// its own AIChat instance; the engine docks them along the bottom edge.
+// its own AIChat instance. Since 13 Oct 2026 none of them docks: the PA bar
+// that sat in the bottom-right corner gave way to the focus prompt
+// (test_focus_prompt.mjs), and a task's chat opens as a window and nothing else.
 const until = async (expr, ms = 3000) => {
   for (let t = 0; t < ms; t += 50) { if (await evalJS(expr)) return true; await new Promise(r => setTimeout(r, 50)) }
   return false
 }
 const S1 = '11111111-1111-1111-1111-111111111111', S3 = '33333333-3333-3333-3333-333333333333'
-// The pinned PA bar is set aside here, so the counts below are only the
-// chats this section opens; "The PA panel" further down brings it back.
-await evalJS(`(() => { for (const [k, w] of chatWins) { if (w.pinned) { w.inst.destroy(); chatWins.delete(k); } else w.inst.closeChat(); } })()`)
+check('nothing is docked at the bottom of the board on load', await evalJS(`
+  !document.querySelector('.aic-docked, .aic-pinned, .aic-minimised, .aic-anchored') &&
+  typeof ensurePaBar === 'undefined' && typeof openPaChat === 'undefined' && typeof paWin === 'undefined'`))
+await evalJS(`(() => { for (const w of chatWins.values()) w.inst.closeChat(); })()`)
 await until(`chatWins.size === 0`)
 await evalJS(`chat.openSession('${built.ids[0]}', 'aaaaaa', '${S1}')`)
 check('opening a chat makes one window for it', await until(`chatWins.size === 1 && document.querySelectorAll('.tenon-window.aic-box').length === 1`),
@@ -375,21 +378,9 @@ await evalJS(`chat.openSession('${built.ids[1]}', 'bbbbbb', '${S3}')`)
 check('a second chat opens beside it rather than replacing it', await until(`chatWins.size === 2 && document.querySelectorAll('.tenon-window.aic-box').length === 2`))
 await evalJS(`chat.openSession('${built.ids[0]}', 'aaaaaa', '${S1}')`)
 check('re-opening an open chat focuses it rather than duplicating it', await until(`chatWins.size === 2 && document.querySelectorAll('.tenon-window.aic-box').length === 2`))
-await evalJS(`findChatWin('${S1}').minimise()`)
-check('minimising docks it as a bar on the bottom-right edge', await until(`(() => {
-  const el = document.querySelector('.aic-minimised'); if (!el) return false;
-  const r = el.getBoundingClientRect();
-  return Math.abs(r.bottom - innerHeight) < 2 && innerWidth - r.right < 40;
-})()`))
-check('  and it is no longer the window in the way of the board', await evalJS(`chat.isOpen() === true && findChatWin('${S1}').dockState() === 'minimised'`))
-await evalJS(`findChatWin('${S3}').minimise()`)
-check('two minimised chats line up leftwards', await until(`(() => {
-  const bars = [...document.querySelectorAll('.aic-minimised')].map(e => e.getBoundingClientRect());
-  return bars.length === 2 && Math.abs(bars[0].bottom - bars[1].bottom) < 2 && Math.abs(bars[0].left - bars[1].left) >= 300;
-})()`))
-await evalJS(`chat.openSession('${built.ids[0]}', 'aaaaaa', '${S1}')`)
-check('re-opening a minimised chat opens it anchored', await until(`findChatWin('${S1}').dockState() === 'anchored' && !!document.querySelector('.aic-anchored')`))
-check('  with buttons to minimise and expand it', await evalJS(`!!document.querySelector('.aic-anchored .aic-minimise') && !!document.querySelector('.aic-anchored .aic-expand')`))
+check('  a chat window has no buttons to minimise or dock it', await evalJS(`
+  !document.querySelector('.aic-box .aic-minimise, .aic-box .aic-expand') && findChatWin('${S1}').dockState() === 'none'`))
+check('  and is the window in the way of the board', await evalJS(`chat.isOpen() === true`))
 // The test list has no claude.json, so "work" is off and a board chat cannot
 // be switched to writing. The switch itself is covered in ai_chat_engine's
 // own suite.
@@ -400,55 +391,31 @@ await evalJS(`findChatWin('${S1}').closeChat()`)
 check('closing a chat takes its instance down', await until(`chatWins.size === 1 && !findChatWin('${S1}') && document.querySelectorAll('[data-ai-chat]').length === 1`),
   await evalJS(`chatWins.size + ' instances, ' + document.querySelectorAll('[data-ai-chat]').length + ' roots'`))
 await evalJS(`findChatWin('${S3}').closeChat()`)
-check('  and the last one leaves nothing docked', await until(`chatWins.size === 0 && !document.querySelector('.aic-docked')`))
+check('  and the last one leaves no window behind', await until(`chatWins.size === 0 && !document.querySelector('.tenon-window.aic-box')`))
 
-// ---- The PA panel ----
+// ---- A PA conversation, opened as a window ----
 // See IMPROVEMENTS.md, "There is no way to talk to the PA while the board is
-// in front of you." A chat owned by the board, not a task, opened from a
-// pinned bar in the bottom-right corner; it saves before each send and reads todo.md
+// in front of you." The focus prompt starts these; one opened again as a
+// window and carried on there still saves before each send and reads todo.md
 // back once the reply lands. The run is the fetch guard's canned '{}', so the
 // reply "lands" at once; saveFile, diskVersion and reload are stubbed and
 // restored, so nothing here reaches disk either.
 const paOpen = await evalJS(`(() => {
   window.__realAvail = chat.available;
   chat.available = () => true;
-  const bar = ensurePaBar();
-  const barDock = bar && bar.dockState();
   const before = JSON.stringify(state.doc.buckets.map(b => b.tiers.map(t => t.tasks.map(x => x.chat || ''))));
   const dirtyBefore = state.dirty;
-  openPaChat();
+  chat.openNew(PA_KEY, PA_KEY, '', { preface: paPreface });
   const w = [...chatWins.values()].find(w => w.newFor === PA_KEY);
   const after = JSON.stringify(state.doc.buckets.map(b => b.tiers.map(t => t.tasks.map(x => x.chat || ''))));
-  return { barDock, pinned: !!(w && w.pinned), found: !!w, dock: w && w.inst.dockState(), noTaskKeyed: before === after, dirtyUnchanged: state.dirty === dirtyBefore };
+  return { found: !!w, dock: w && w.inst.dockState(), noTaskKeyed: before === after, dirtyUnchanged: state.dirty === dirtyBefore };
 })()`)
-check('the PA starts as a pinned, minimised bar', paOpen.barDock === 'minimised' && paOpen.pinned, JSON.stringify(paOpen))
-check('opening the PA anchors that same chat', paOpen.found, JSON.stringify(paOpen))
-check('  anchored bottom-right by default', paOpen.dock === 'anchored' && await until(`(() => {
-  const el = document.querySelector('.aic-anchored'); if (!el) return false;
-  const r = el.getBoundingClientRect();
-  return Math.abs(r.bottom - innerHeight) < 2 && innerWidth - r.right < 40;
-})()`))
+check('a PA conversation opens as a free-floating window', paOpen.found && paOpen.dock === 'none' &&
+  await until(`document.querySelectorAll('.tenon-window.aic-box').length === 1 && !document.querySelector('.aic-docked')`), JSON.stringify(paOpen))
 check('  owned by the board, not a task', await until(`(() => {
-  const el = document.querySelector('.aic-anchored .aic-for');
+  const el = document.querySelector('.aic-box .aic-for');
   return !!el && el.textContent === 'The board · PA';
 })()`) && paOpen.noTaskKeyed && paOpen.dirtyUnchanged)
-check('  and minimisable', await evalJS(`!!document.querySelector('.aic-anchored .aic-minimise')`))
-check('  with no close button', await evalJS(`!document.querySelector('.aic-pinned [aria-label="Close"]')`))
-const other = await evalJS(`(() => {
-  const inst = makeChatWin('other-key');
-  inst.openNew('other-key', 'other-key', '', {});
-  inst.minimise();
-  window.__other = inst;
-  return true;
-})()`)
-check('another docked chat lines up to the left of the PA', other && await until(`(() => {
-  const pa = document.querySelector('.aic-pinned'), o = [...document.querySelectorAll('.aic-docked')].find(e => !e.classList.contains('aic-pinned'));
-  if (!pa || !o) return false;
-  return o.getBoundingClientRect().right <= pa.getBoundingClientRect().left && innerWidth - pa.getBoundingClientRect().right < 40;
-})()`))
-await evalJS(`window.__other.closeChat()`)
-await evalJS(`openPaChat()`)
-check('opening the PA again brings the same one forward', await evalJS(`[...chatWins.values()].filter(w => w.newFor === PA_KEY).length === 1`))
 
 const paTurn = await evalJS(`(async () => {
   const real = { saveFile, diskVersion, reload, fetch: window.fetch };
@@ -465,11 +432,11 @@ const paTurn = await evalJS(`(async () => {
   state.diskHash = 'before';
   state.dirty = true;
   state.migratedOnly = false;
-  const ta = document.querySelector('.aic-anchored .aic-input');
+  const ta = document.querySelector('.aic-box .aic-input');
   Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(ta, 'What is due this week?');
   ta.dispatchEvent(new Event('input', { bubbles: true }));
   await new Promise(r => setTimeout(r, 50));
-  document.querySelector('.aic-anchored .aic-send').click();
+  document.querySelector('.aic-box .aic-send').click();
   for (let i = 0; i < 60 && !log.includes('reload'); i++) await new Promise(r => setTimeout(r, 50));
   Object.assign(window, { fetch: real.fetch });
   saveFile = real.saveFile; diskVersion = real.diskVersion; reload = real.reload;
@@ -479,21 +446,43 @@ const paTurn = await evalJS(`(async () => {
   try { const j = JSON.parse(body); prompt = j.prompt; owner = j.owner; } catch (e) {}
   return { log, prompt, owner, dataset: state.dataset };
 })()`)
-check('sending on the PA chat saves unsaved changes first', paTurn.log[0] === 'save' && paTurn.log.indexOf('run') > 0, JSON.stringify(paTurn.log))
+check('sending on a PA window saves unsaved changes first', paTurn.log[0] === 'save' && paTurn.log.indexOf('run') > 0, JSON.stringify(paTurn.log))
 check('  and reloads todo.md once the reply has landed', paTurn.log[paTurn.log.length - 1] === 'reload', JSON.stringify(paTurn.log))
 check('the run is filed under the board’s PA key', paTurn.owner === 'board-pa', paTurn.owner)
-check('the first message is seeded for /pa with the current dataset',
-  paTurn.prompt.startsWith('/pa What is due this week?') && paTurn.prompt.includes("PA chat") &&
+check('the first message is seeded for /pa with the current dataset and asks for the status lines',
+  paTurn.prompt.startsWith('/pa What is due this week?') && paTurn.prompt.includes('PA prompt') &&
+  paTurn.prompt.includes('"doing:') && paTurn.prompt.includes('"done:') &&
   (!paTurn.dataset || paTurn.prompt.includes('data/' + paTurn.dataset + '/todo.md')), paTurn.prompt)
-check('closing the PA only minimises it', await evalJS(`(() => {
-  const inst = paWin(); inst.closeChat();
-  return inst.isOpen() && inst.dockState() === 'minimised';
+check('closing a PA window closes it, rather than putting it down as a bar', await evalJS(`(() => {
+  const w = [...chatWins.values()].find(w => w.newFor === PA_KEY || w.inst.session() === '');
+  if (w) w.inst.closeChat();
+  return !document.querySelector('.aic-docked, .aic-minimised');
 })()`))
 await evalJS(`(() => {
-  for (const [k, w] of chatWins) { if (w.pinned) { w.inst.destroy(); chatWins.delete(k); } else w.inst.closeChat(); }
+  for (const w of chatWins.values()) w.inst.closeChat();
   chat.available = window.__realAvail;
 })()`)
 await until(`chatWins.size === 0`)
+
+// The doing: and done: lines are the focus prompt's, not the conversation's:
+// a window showing a PA conversation never has them.
+const stripped = await evalJS(`(async () => {
+  const real = window.fetch;
+  window.fetch = (url, opts) => String(url).startsWith('/claude/transcript.json')
+    ? Promise.resolve(new Response(JSON.stringify({ turns: [
+        { ask: '(Focused element: task x "A".)\\n\\nGo', reply: 'doing: Adding a note to the task\\nAdded it.\\ndone: Added a note\\n\\u0060\\u0060\\u0060pa-changes\\n[]\\n\\u0060\\u0060\\u0060' },
+        { ask: 'A task chat', reply: 'doing: is just a word here' } ] }), { status: 200 }))
+    : real(url, opts);
+  const d = await chatTranscriptStripped('55555555-5555-5555-5555-555555555555', '');
+  window.fetch = real;
+  const line = paStripLine(JSON.stringify({ type: 'assistant', message: { id: 'm', content: [{ type: 'text', text: 'doing: Reading the list\\nThree are due.\\ndone: Read the list' }] } }));
+  return { pa: d.turns[0].reply, other: d.turns[1].reply, live: JSON.parse(line).message.content[0].text,
+           lines: paStatusLines('doing: Reading the list\\nThree are due.\\ndone: Read the list') };
+})()`)
+check('a PA turn read back for a window loses its status lines', !/doing:|done:/.test(stripped.pa) && stripped.pa.startsWith('Added it.') && stripped.pa.includes('pa-changes'), JSON.stringify(stripped.pa))
+check('  a turn from any other chat is left as it was', stripped.other === 'doing: is just a word here', stripped.other)
+check('  and so is a PA reply streaming into a window', stripped.live === 'Three are due.', JSON.stringify(stripped.live))
+check('the status lines read out of a reply', stripped.lines.doing === 'Reading the list' && stripped.lines.done === 'Read the list', JSON.stringify(stripped.lines))
 
 // ---- pa-changes: the PA asks, the board writes ----
 // See IMPROVEMENTS.md, "A chat started on the board has no safe way to ask the
