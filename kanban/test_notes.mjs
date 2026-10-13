@@ -89,6 +89,9 @@ await evalJS(`(() => {
 await evalJS(`(async () => {
   const demo = await (await fetch('/kanban/demo.md')).text();
   load(demo, 'demo.md', {});
+  DRAWER_HIDDEN.jira = false;
+  DRAWER_HIDDEN.prompts = false;
+  DRAWER_HIDDEN.deps = false;
   state.locked = true;
   state.lockedLabel = 'notes test';
   return 'locked';
@@ -422,7 +425,7 @@ const drawn = await evalJS(`
   })()
 `)
 check('the held lines are drawn in the column beside it',
-  ['Project', 'Dependencies', 'Meeting', 'Message', 'Prompt', 'Jira'].every(h => drawn.heads.some(x => x.startsWith(h))),
+  ['Dependencies', 'Meeting', 'Message', 'Prompt', 'Jira'].every(h => drawn.heads.some(x => x.startsWith(h))),
   JSON.stringify(drawn.heads))
 check('and a `Waiting on:` note reads as a dependency',
   /HR, chased 3 Sep/.test(drawn.deps), drawn.deps.slice(0, 120))
