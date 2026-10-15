@@ -1458,6 +1458,29 @@ _DONE_RE = re.compile(r"^planned\s+(.*?)\s+(\d+)s\s+\$([0-9.]+)\s*$")
 _FAIL_RE = re.compile(r"^failed\s(.{1,50})\s+(\S.*)$")
 
 
+def agents_status():
+    """Whether the agents can run on this machine: the `claude` CLI on the
+    path, and agents-engine next to this repo. Either missing and every run
+    dies the moment it starts, so the board hides what would start one and the
+    run routes refuse rather than answer "started".
+
+    AGENTS_RUNNER_CLAUDE is the binary agents-engine's runner uses in place of
+    `claude`, so it counts here too."""
+    claude = bool(os.environ.get("AGENTS_RUNNER_CLAUDE") or shutil.which("claude"))
+    engine = agents_routes is not None
+    return {"claude": claude, "engine": engine, "ready": claude and engine}
+
+
+def agents_missing():
+    """Why no agent can run here, in a line for the owner, or None."""
+    st = agents_status()
+    if not st["claude"]:
+        return "Claude Code is not installed on this machine, so no agent can run"
+    if not st["engine"]:
+        return "agents-engine is not next to this repo, so no agent can run"
+    return None
+
+
 def start_planning_agent_run():
     """Kick off a batch now, from the board's button.
 
@@ -1483,6 +1506,9 @@ def start_planning_agent_run():
         # A test server over a throwaway data root: a real run would spend
         # money and plan against whatever run.sh resolves, not this folder.
         return None, {"error": "not started from a server on a scratch data root"}
+    missing = agents_missing()
+    if missing:
+        return None, {"error": missing}
     script = os.path.join(ROOT, "agents", "plan-agent", "run.sh")
     if not os.path.isfile(script):
         return None, {"error": "agents/plan-agent/run.sh is not here"}
@@ -2000,6 +2026,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # agent.
         if not agents_routes.origin_allowed(self.headers.get("Origin")):
             return self._json(403, {"error": "origin not allowed"})
+        if route == "/run":
+            missing = agents_missing()
+            if missing:
+                return self._json(409, {"error": missing})
         try:
             body = json.loads((self._body() or b"{}").decode("utf-8"))
         except (UnicodeDecodeError, ValueError):
@@ -2275,6 +2305,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # schedules sheet.
         if path == "/planning-agent.json":
             return self._json(200, planning_agent_run())
+        if path == "/agents-status.json":
+            return self._json(200, agents_status())
         # Every stream manifest under the workspace folder, with whatever is wrong with each.
         # Read-only and read by nobody yet: the board still gets its columns
         # from 02-state.js. This is here so the views can be moved onto it one

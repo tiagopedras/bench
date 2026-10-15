@@ -46,6 +46,7 @@ let agentsRoot = null;
    Until the briefs have answered, or where there is no server to ask (the
    demo build), it counts as set up, so nothing is hidden on a guess. */
 function agentsSetUp(){
+  if (!agentsCanRun()) return false;
   if (state.agentsSetup !== false) return true;
   return listHasAgentWork();
 }
@@ -80,6 +81,39 @@ async function checkAgentsSetup(){
   if (agentsSetUp() !== was && state.doc) refreshView();
 }
 
+/* ---- Can an agent run on this machine? ----
+
+   The agents need the `claude` CLI and agents-engine. Without either, a run
+   dies the moment it starts, so the board leaves out everything that would
+   start one: agents under Delegate to, Delegate to Claude on Overview, the
+   agent options in Settings, and the Data menu's Spend and Run the Plan agent.
+   The Agents tab says what is missing instead. The rest of the board does not
+   need them. */
+function agentsCanRun(){ return state.agentsReady !== false; }
+
+async function loadAgentsStatus(){
+  let got;
+  try { got = await getJSON('/agents-status.json'); } catch (err) { return; }
+  const was = agentsCanRun();
+  state.agentsReady = !!(got && got.ready);
+  state.agentsMissing = got && !got.claude ? 'claude' : 'engine';
+  syncFolderButton();
+  if (agentsCanRun() !== was && state.doc) refreshView();
+}
+
+function agentsMissingHTML(){
+  const why = state.agentsMissing === 'claude'
+    ? 'Agents need Claude Code, and it is not installed on this machine. Install it, ' +
+      'log in, then reload the board.'
+    : 'Agents need the agents-engine package next to this folder, and it is not there. ' +
+      'Add it, then restart the board.';
+  return '<section class="agentsetup">' +
+    '<h1>Agents</h1>' +
+    '<p>' + esc(why) + '</p>' +
+    '<p>Everything else on the board works without them.</p>' +
+    '</section>';
+}
+
 /* One card per agent. `highlight` names the card to mark, which is how the
    setup wizard ends on the agent it has just set up. */
 function agentCardsHTML(highlight){
@@ -101,6 +135,11 @@ function agentCardsHTML(highlight){
 function renderAgentsView(){
   const lists = $('#lists');
   if (!lists) return;
+  if (!agentsCanRun()) {
+    leaveAgentsView();
+    lists.innerHTML = '<div class="agentsview">' + agentsMissingHTML() + '</div>';
+    return;
+  }
   if (!agentsSetUp()) {
     /* Nothing to schedule yet, so the hour tracks wait until there is. */
     leaveAgentsView();

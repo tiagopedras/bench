@@ -409,7 +409,10 @@ function syncFolderButton(){
   /* In folder mode the Data menu is open for the first time on this page, and
      three of its items only talk to the helper. Off rather than failing. */
   ['#closeFolder'].forEach(id => $(id) && $(id).classList.toggle('hidden', !listFolder));
-  ['#backupsBtn', '#refCardsBtn', '#runAgentBtn'].forEach(id => $(id) && $(id).classList.toggle('hidden', !!listFolder));
+  $('#backupsBtn') && $('#backupsBtn').classList.toggle('hidden', !!listFolder);
+  /* Spend and the Plan agent's run are about agents, so they go too where no
+     agent can run (state.agentsReady, 27-agents.js). */
+  ['#refCardsBtn', '#runAgentBtn'].forEach(id => $(id) && $(id).classList.toggle('hidden', !!listFolder || state.agentsReady === false));
 }
 
 /* Last visit's folder. Opened straight away if the browser still grants it;

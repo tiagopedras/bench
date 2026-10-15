@@ -250,7 +250,39 @@ await wait(300)
 // stay; what matters is that React let go of it and drew nothing into it.
 check('leaving the tab unmounts it', await evalJS(`agentsRoot === null && !document.querySelector('#agentsRoot .agents-ui')`))
 
+/* ---- a machine where no agent can run ---- */
+await evalJS(`state.agentsReady = false; state.agentsMissing = 'claude'; state.view = 'agents'; renderView()`)
+await wait(300)
+check('with no Claude Code, the tab says so instead of offering setup', await evalJS(`
+  document.querySelector('#lists .agentsetup').textContent.includes('Claude Code') &&
+  !document.querySelector('#lists [data-agent-setup]') && !document.querySelector('#lists .agents-ui')`))
+check('and no list counts as set up, delegated tasks included', await evalJS(`(() => {
+  const t = state.doc.buckets[0].tiers.find(ti => ti.tasks.length).tasks[0];
+  t.to = 'Plan agent'; const on = agentsSetUp(); t.to = ''; return on === false;
+})()`))
+check('Delegate to offers no agents', await evalJS(`!delegateSelectHTML('', '').includes('Plan agent')`))
+check('the Data menu leaves out Spend and schedules, and Run the Plan agent now', await evalJS(`syncFolderButton();
+  $('#refCardsBtn').classList.contains('hidden') && $('#runAgentBtn').classList.contains('hidden')`))
+check('Settings leaves out the agent options', await evalJS(`loadSettingsDraft(false).then(d => {
+  const html = settingsFormHTML(d.draft, [], false);
+  return !html.includes('data-agent-options') && html.includes('Agents are off on this machine');
+})`))
+check('a hand-over set to start now starts nothing', await evalJS(`(async () => {
+  window.__blocked = []; queueAgentStart('plan'); await flushAgentStarts();
+  return !window.__blocked.some(b => b.includes('/planning_agent/run'));
+})()`))
+await evalJS(`state.agentsReady = null; state.agentsMissing = ''; syncFolderButton(); state.view = 'board'; renderView()`)
+await wait(300)
+check('with the answer unknown, nothing is hidden', await evalJS(`!$('#refCardsBtn').classList.contains('hidden') && !$('#runAgentBtn').classList.contains('hidden')`))
+check('Run the Plan agent now asks first', await evalJS(`(() => {
+  $('#runAgentBtn').click();
+  const asked = !!modalEl && modalEl.textContent.includes('Run the Plan agent now?');
+  closeModal(); return asked;
+})()`))
+
 /* ---- the real route ---- */
+const status = await evalJS(`window.__real('/agents-status.json').then(r => r.json()).then(j => JSON.stringify(j))`)
+check('the server says whether agents can run here', /"ready": ?(true|false)/.test(status) && /"claude": ?(true|false)/.test(status), status)
 const real = await evalJS(`window.__real('/agents-api/state.json').then(r => r.json()).then(j => (j.agents || []).map(a => a.id).sort().join(','))`)
 check('the server lists only this repo agents', real === 'implement-agent,plan-agent', real)
 const refused = await evalJS(`window.__real('/agents-api/run', { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } }).then(r => r.status)`)
