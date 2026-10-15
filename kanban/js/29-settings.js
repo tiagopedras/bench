@@ -106,6 +106,7 @@ function settingsFormHTML(draft, choices, first){
     '<span class="help fielderr" data-err="country" hidden></span></label>' +
     '<label class="field" data-region-field' + (draft.regions.length ? '' : ' hidden') + '><span>Region</span>' +
     '<select data-region>' + settingsRegionOptions(draft) + '</select></label>' +
+    (agentsCanRun() ?
     '<details class="agentopts" data-agent-options><summary>Agent options</summary>' +
     '<div class="agentopts__body">' +
     settingsModelField('default', 'Default model', 'Used by any model below that is left on Use default.', draft, choices) +
@@ -119,7 +120,8 @@ function settingsFormHTML(draft, choices, first){
     '<span class="help">Every agent’s scheduled runs stop for the day once this is spent, whatever its own budget. Empty means no limit.</span>' +
     '<span class="help fielderr" data-err="budget" hidden></span></label></div>' +
     '</div></details>' +
-    '<p class="help agentopts__note">Set each agent’s hours later in the board’s Agents tab.</p>' +
+    '<p class="help agentopts__note">Set each agent’s hours later in the board’s Agents tab.</p>'
+    : '<p class="help agentopts__note">Agents are off on this machine. The Agents tab says why.</p>') +
     '</div>';
 }
 
@@ -431,6 +433,7 @@ function queueAgentStart(agent){ pendingAgentStarts.add(agent); }
 
 async function flushAgentStarts(){
   if (!pendingAgentStarts.size) return;
+  if (!agentsCanRun()) { pendingAgentStarts.clear(); return; }
   const want = Array.from(pendingAgentStarts);
   pendingAgentStarts.clear();
   let set;

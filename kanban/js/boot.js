@@ -27,6 +27,9 @@ checkStreamManifest();
 // false and the prompts keep the link they always had. onStatusChanged, set
 // on AIChat.create() above, redraws the view once the answer is in.
 chat.loadStatus();
+// Can an agent run here at all. Without the CLI or agents-engine the board
+// leaves out everything that starts a run. See 27-agents.js.
+loadAgentsStatus();
 // First run: no profile (or its Name is still the template's placeholder), or
 // no list yet. A welcome that cannot be dismissed. See 29-settings.js.
 maybeOnboard();
