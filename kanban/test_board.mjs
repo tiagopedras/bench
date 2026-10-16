@@ -385,6 +385,35 @@ check('project, theme and start date are outlined Tenon Pills, and none is a .ta
   pillCheck.proj === 'demo' && pillCheck.theme === 'Tokens' && pillCheck.start && pillCheck.tags === 0,
   JSON.stringify(pillCheck))
 
+/* The theme chip carries its theme's colour as a dot, the same colour the
+   theme's tab uses, and a theme the bucket does not declare gets no dot.
+   State only, put back, nothing saved. */
+const themeDot = await evalJS(`(() => {
+  const b = state.doc.buckets.find(b => b.tiers.some(x => x.tasks.some(t => t.id === 'bd0003')));
+  const t = b.tiers.flatMap(x => x.tasks).find(x => x.id === 'bd0003');
+  const saved = { theme: t.theme, themes: state.bucketThemes[b.name] };
+  state.bucketThemes[b.name] = ['Tokens', 'Docs'];
+  t.theme = 'Docs';
+  renderView();
+  const pill = document.querySelector('#board .tenon-card[data-id="bd0003"] .tenon-pill.themechip');
+  const out = {
+    dot: !!pill?.querySelector('.tenon-pill__dot'),
+    colour: pill?.style.getPropertyValue('--chip-colour'),
+    want: themeColor(b.name, 'Docs'),
+    second: BUCKET_COLOR[1],
+  };
+  t.theme = 'Nope';
+  renderView();
+  out.undeclaredDot = !!document.querySelector('#board .tenon-card[data-id="bd0003"] .tenon-pill.themechip .tenon-pill__dot');
+  t.theme = saved.theme;
+  if (saved.themes) state.bucketThemes[b.name] = saved.themes; else delete state.bucketThemes[b.name];
+  renderView();
+  return out;
+})()`)
+check('a declared theme chip has a dot in the theme tab colour',
+  themeDot.dot && themeDot.colour === themeDot.want && themeDot.want === themeDot.second, JSON.stringify(themeDot))
+check('an undeclared theme chip has no dot', themeDot.undeclaredDot === false, JSON.stringify(themeDot))
+
 /* ---- defaultAddBucket() reads the bucket filter ---- */
 
 /* A second bucket, added to state directly rather than through the fixture,

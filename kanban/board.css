@@ -2355,6 +2355,9 @@
   }
   /* The same gate on a card, where the chip is Tenon's outlined `Pill`. */
   .tenon-pill.startdate{border-style:dashed; color:var(--tenon-text-faint)}
+  /* The theme chip's dot, in the theme's own colour (themeColor(), 02-state.js),
+     so it matches the theme's tab above the board. */
+  .tenon-pill.themechip .tenon-pill__dot{background:var(--chip-colour); opacity:1}
   /* Still what 19-drawer.js and 18-timeline.js draw a due-date chip as — they
      are not React yet, so they still write the class literally rather than
      asking cardModel() for a tone. The board's own two cards ask for the

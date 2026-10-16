@@ -362,7 +362,8 @@ function cardModel(t, opts){
   /* The bucket's own sub-organisation — `[theme:: ]`, values declared per
      bucket (see state.bucketThemes in 02-state.js). Beside the project chip:
      both answer "what does this belong to", one level up and one level down. */
-  if (t.theme) chips.push({ pill: 'neutral', text: t.theme, title: 'Theme: ' + t.theme });
+  if (t.theme) chips.push({ pill: 'neutral', cls: 'themechip', text: t.theme, title: 'Theme: ' + t.theme,
+    color: opts.bucket ? themeColor(opts.bucket, t.theme) : '' });
   // Says it once, on the card, rather than leaving a gap that reads as "low".
   if (unscored(t) && !t.done) chips.push({ tone: 'warning', text: 'needs scoring' });
   /* A cancellation is a tick plus a tag (CONVENTIONS.md, Cancelling a task), so
