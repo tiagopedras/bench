@@ -345,6 +345,14 @@ function bucketColor(name, index){
   return (state.bucketColors && state.bucketColors[name]) ||
     BUCKET_COLOR[((index % BUCKET_COLOR.length) + BUCKET_COLOR.length) % BUCKET_COLOR.length];
 }
+/* A theme's colour: its position in the bucket's declared list, cycling the
+   same ten swatches. The theme tab and the card's theme chip both read it, so
+   the two always agree. '' for a theme the bucket does not declare. */
+function themeColor(bucket, theme){
+  const themes = (state.bucketThemes && state.bucketThemes[bucket]) || [];
+  const i = themes.indexOf(theme);
+  return i < 0 ? '' : BUCKET_COLOR[i % BUCKET_COLOR.length];
+}
 /* A real heading: first in a bucket, far right on the board,
    and where a ticked task lives. The name comes from core/todo.js, which reads
    and writes it too. */

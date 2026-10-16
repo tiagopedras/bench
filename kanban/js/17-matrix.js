@@ -107,7 +107,7 @@ function showMatrixPreview(dot, pin){
      flushed because placeMatrixPreview() below measures it. */
   BoardUI.mountFlushed(el, BoardUI.h(BoardUI.Fragment, null,
     BoardUI.h(BoardUI.TaskCard, {
-      model: cardModel(loc.task, { muted: loc.tier.name === WAIT_COL, tier: loc.tier.name }),
+      model: cardModel(loc.task, { muted: loc.tier.name === WAIT_COL, tier: loc.tier.name, bucket: loc.bucket.name }),
       stripe: color, bucketLabel: where, draggable: false, dragging: false, static: true
     }),
     pin ? BoardUI.h('button', {

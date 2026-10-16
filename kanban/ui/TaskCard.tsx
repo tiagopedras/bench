@@ -13,7 +13,7 @@
  * over it.
  */
 import { useEffect, useRef, useState } from 'react'
-import type { DragEvent, KeyboardEvent, PointerEvent } from 'react'
+import type { CSSProperties, DragEvent, KeyboardEvent, PointerEvent } from 'react'
 import { Card, Pill, Tag } from '@tiagopedras/tenon'
 import type { PillTone, TagTone } from '@tiagopedras/tenon'
 import { InlineMd } from './InlineMd'
@@ -39,6 +39,9 @@ export interface Chip {
    *  the delegated chip when `[to::]` names an agent (agentAvatarHTML(),
    *  core/avatar.js), '' or unset for a person. */
   avatarHTML?: string
+  /** With `pill`, a colour for a dot before the text: the theme chip's, so it
+   *  matches the theme's tab (themeColor(), kanban/js/02-state.js). */
+  color?: string
 }
 
 export type CardProgress = { kind: 'steps', done: number, total: number, pct: number }
@@ -95,7 +98,8 @@ function ChipSpan({ c }: { c: Chip }) {
     : null
   if (c.tone) return <Tag tone={c.tone} title={c.title}>{avatar}{c.text}</Tag>
   if (c.pill) return (
-    <Pill tone={c.pill} className={c.cls} data-project={c.project} title={c.title}>{avatar}{c.text}</Pill>
+    <Pill tone={c.pill} className={c.cls} data-project={c.project} title={c.title}
+      dot={!!c.color} style={c.color ? { '--chip-colour': c.color } as CSSProperties : undefined}>{avatar}{c.text}</Pill>
   )
   return (
     <span className={c.cls} data-project={c.project} title={c.title}>{avatar}{c.text}</span>

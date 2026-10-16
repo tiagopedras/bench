@@ -182,7 +182,7 @@ function renderThemeTabs(){
   BoardUI.mountFlushed(wrap, BoardUI.h(BoardUI.FilterTabs, {
     tabs: themes.map((name, i) => ({
       key: name, label: name, on: state.themeFilter.has(name),
-      color: BUCKET_COLOR[i % BUCKET_COLOR.length],
+      color: themeColor(only, name),
       title: 'tasks under this theme — click to toggle, several can be on at once'
     })),
     label: 'Themes',

@@ -1025,12 +1025,12 @@ function renderBoard(){
            does the same for a file written before that was true. */
         const tier = bucket.tiers.find(t => t.name === DONE_COL);
         if (tier) tier.tasks.forEach(t => {
-          if (matches(t, DONE_COL)) entries.push({ t, color, label });
+          if (matches(t, DONE_COL)) entries.push({ t, color, label, bucket: bucket.name });
         });
       } else {
         const tier = bucket.tiers.find(t => t.name === name);
         if (tier) tier.tasks.forEach(t => {
-          if (!t.done && matches(t, name)) entries.push({ t, color, label });
+          if (!t.done && matches(t, name)) entries.push({ t, color, label, bucket: bucket.name });
         });
       }
     });
@@ -1042,7 +1042,7 @@ function renderBoard(){
         .map(x => x.e);
     }
     const cards = entries.map(e => ({
-      model: cardModel(e.t, { muted: name === WAIT_COL, tier: name }),
+      model: cardModel(e.t, { muted: name === WAIT_COL, tier: name, bucket: e.bucket }),
       stripe: e.color,
       bucketLabel: e.label,
       draggable: !state.locked
