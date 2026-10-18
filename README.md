@@ -26,6 +26,10 @@ The board's Settings screen changes your name, country, models and when each age
 
 Models live in one optional file, `data/settings.json`, which git ignores. Copy `core/settings.example.json` to start it. `models` picks `opus`, `sonnet` or `haiku` per job (`plan`, `implement`, `chat`, `brief`) with `default` for the rest. Without the file, or with a null, every job runs on the model it used before. `BENCH_MODEL_<JOB>` in the environment wins over the file, and a list's own `claude.json` still wins for its chat. `agents.plan.start` and `agents.implement.start` are `scheduled` (wait for the agent's hours, the default) or `now` (the board starts a run as soon as a task is handed over, or a plan approved, and saved). The board reads and writes it at `/settings.json`.
 
+The same file can name a memory folder, `memory_root`, for when the facts about you are kept outside Bench so agents elsewhere can share them. The profile and each list's people are facts about you rather than board state, so with it set Bench reads `<memory_root>/me/profile.md` and `<memory_root>/bench/<list>/people.md` first and falls back to `data/` for any that are not there. Boards, queues, locks, history and runs stay in `data/`. Bench also keeps `<memory_root>/boards.md`, one line per list with the current one marked, rewritten when a list is made, when the current list changes and each time the board starts, so an agent outside Bench can see which boards exist without reading `data/`. Bench knows nothing about what a list is for or whether it is frozen, so whatever follows a list's folder on its line, and any mark besides `current`, is carried over from the file as it was. Unset, nothing changes. It is under Settings on the board.
+
+Each list can also name its own projects folder, under `projects_roots`, a map from list name to folder, for keeping that list's project folders outside Bench. For a list in it, a task's `data/projects/<name>` note is looked for in that folder first and at `data/<list>/projects/<name>/` after, the board starts new projects there, and the board's chats may write there. The Projects view of a list shows its own folder and its `data/` one, never another list's, which is why two lists cannot name the same folder. A list with none keeps `data/<list>/projects/`, and with the key unset nothing changes. It is under Settings, for the list that is open.
+
 Three sibling folders are optional. Each is looked up as `../PACKAGES/<name>` next to this repo, and without it the board still starts:
 
 | Folder | Without it |
@@ -134,9 +138,10 @@ would for any other list: the first time something is saved into it.
 ### Projects
 
 Some work carries more context than a task line can hold: a plan, a ticket history, source
-documents, a decision and the reason behind it. That goes in `data/projects/<name>/`, one
-folder per project, with a `CLAUDE.md` inside holding the background and the sources next to
-it. The task in `todo.md` stays short and points at the folder.
+documents, a decision and the reason behind it. That goes in `data/projects/<name>/` (in
+the list's projects folder when set, see Settings above), one folder per project, with a
+`CLAUDE.md` inside holding the background and the sources next to it. The task in
+`todo.md` stays short and points at the folder.
 
 `data/` rather than the repo root, for the same reason everything else private sits there:
 a project folder holds real names and real dates, and a folder cannot be forgotten by the
@@ -161,13 +166,14 @@ the buckets — the presentation is Design System work, the deck review that fee
 work, and the columns are right to keep them apart. Which also means a task without the note
 is missing from it.
 
-A project can also live in a folder of your own, anywhere on disk. The note then carries its
-absolute path, `- Project: /home/me/Work/client-a`, and the server answers for it only once
-that folder sits inside one approved in `data/<dataset>/project-folders.json`. The drawer's
-Project section writes that file (after asking), starts a new folder under `data/projects/`
-with a `CLAUDE.md` in it, and opens a folder in Finder. `core/project_folders.py` holds the one
-check every route and the planning agent use: real paths compared with `os.path.commonpath`,
-so a symlink or a `..` cannot lead out of an approved folder.
+A project can also live in a folder of your own, anywhere on disk. The note then carries
+its absolute path, `- Project: /home/me/Work/client-a`, and the server answers for it only
+once that folder sits inside one approved in `data/<dataset>/project-folders.json`. The
+drawer's Project section writes that file (after asking), starts a new folder under the
+list's projects folder when set, otherwise under `data/projects/`, with a `CLAUDE.md` in
+it, and opens a folder in Finder. `core/project_folders.py` holds the one check every
+route and the planning agent use: real paths compared with `os.path.commonpath`, so a
+symlink or a `..` cannot lead out of an approved folder.
 
 The board reads the pointer and nothing else. It never opens the folder, so what is in there
 can be in any shape the work needs.

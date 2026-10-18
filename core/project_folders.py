@@ -6,6 +6,13 @@ own. The default place, `data/<dataset>/projects/`, is always allowed. Anything
 else has to sit inside a folder listed in `data/<dataset>/project-folders.json`,
 which only the board writes, and only after the person has confirmed it.
 
+A list may name its own projects folder, under `projects_roots` in
+data/settings.json (core/settings.py). Then a bare name is looked for in that
+folder first and under `data/<dataset>/projects/` after, and a folder started
+from the board is made in the first (`home()`). No two lists share one, so a
+list never sees another's projects. `homes()` names them in order; a folder in
+any of them needs no approval.
+
 Everything that turns a note into a path on disk goes through `resolve()`: the
 server's /project.json, its open-folder route, and the planning agent when it
 decides which folders a planner may read. The check compares real paths with
@@ -17,6 +24,8 @@ for a child of "/work" the way a string-prefix test would take it.
 import json
 import os
 import re
+
+import settings  # sits beside this file
 
 APPROVED_FILE = "project-folders.json"
 DEFAULT = "projects"
@@ -30,7 +39,35 @@ _PATH_RE = re.compile(r"^\s*-\s*Project:\s*(?:`(/[^`]+)`|(/\S+))")
 
 
 def default_dir(dataset_dir):
+    """The list's own place, `data/<dataset>/projects/`, setting or not."""
     return os.path.join(dataset_dir, DEFAULT)
+
+
+def chosen_dir(dataset_dir):
+    """The list's own projects folder from settings, when it names one that is there."""
+    dataset_dir = os.path.abspath(dataset_dir)
+    return settings.projects_root(os.path.basename(dataset_dir), os.path.dirname(dataset_dir))
+
+
+def homes(dataset_dir):
+    """Where a bare name is looked for, in order: the list's projects folder,
+    then data/<dataset>/projects/."""
+    chosen = chosen_dir(dataset_dir)
+    return ([chosen] if chosen else []) + [default_dir(dataset_dir)]
+
+
+def home(dataset_dir):
+    """Where a new project folder is made."""
+    return homes(dataset_dir)[0]
+
+
+def locate(name, dataset_dir):
+    """The path a bare name stands for: the first home holding it, else where
+    it would be made. Not checked; resolve() is the check."""
+    for h in homes(dataset_dir):
+        if os.path.isdir(os.path.join(h, name)):
+            return os.path.join(h, name)
+    return os.path.join(home(dataset_dir), name)
 
 
 def approved_path(dataset_dir):
@@ -62,18 +99,19 @@ def resolve(ref, dataset_dir):
     """A note's folder reference, as a real path on disk, or the reason it isn't one.
 
     Returns (path, None) or (None, (status, message)). `ref` is either a bare
-    folder name, looked for under the default place, or an absolute path, which
-    has to land inside an approved folder once every symlink is followed.
+    folder name, looked for in each of homes() in turn, or an absolute path,
+    which has to land inside an approved folder or a home once every symlink
+    is followed.
     """
     ref = (ref or "").strip()
     if not ref:
         return None, (400, "no project named")
-    default = os.path.realpath(default_dir(dataset_dir))
+    places = [os.path.realpath(h) for h in homes(dataset_dir)]
     if os.path.isabs(ref):
         real = os.path.realpath(ref)
         roots = [os.path.realpath(f) for f in read_approved(dataset_dir)]
-        ok = any(inside(r, real) for r in roots) or (
-            real != default and inside(default, real))
+        ok = any(inside(r, real) for r in roots) or any(
+            real != p and inside(p, real) for p in places)
         if not ok:
             return None, (403, "that folder is not one you have approved")
     else:
@@ -81,9 +119,19 @@ def resolve(ref, dataset_dir):
         # it is a way out of the default place.
         if ref.startswith(".") or "/" in ref or "\\" in ref:
             return None, (400, "bad project name")
-        real = os.path.realpath(os.path.join(default, ref))
-        if real == default or not inside(default, real):
-            return None, (403, "that folder is outside data/projects")
+        real = None
+        for place in places:
+            candidate = os.path.join(place, ref)
+            if not os.path.lexists(candidate):
+                continue
+            real = os.path.realpath(candidate)
+            # A symlink in a home that leads out of it is refused, not skipped
+            # over for a folder of the same name further down.
+            if real == place or not inside(place, real):
+                return None, (403, "that folder is outside data/projects")
+            break
+        if real is None:
+            return None, (404, "no such project")
     if not os.path.isdir(real):
         return None, (404, "no such project")
     return real, None

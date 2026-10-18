@@ -172,6 +172,211 @@ class SettingsTest(unittest.TestCase):
         self.write({"machine": {"code_root": "~/Elsewhere"}})
         self.assertNotIn("machine", settings.load(self.root))
 
+    # ---- memory_root ----------------------------------------------------
+
+    def memory(self):
+        path = os.path.join(self.root, "MEMORY")
+        os.makedirs(path, exist_ok=True)
+        return path
+
+    def test_memory_root_unset_is_absent(self):
+        self.write({"models": {"plan": "opus"}})
+        self.assertNotIn("memory_root", settings.load(self.root))
+        self.assertIsNone(settings.memory_root(self.root))
+        self.write({"memory_root": "   "})
+        self.assertIsNone(settings.memory_root(self.root))
+
+    def test_memory_root_read_and_must_exist(self):
+        mem = self.memory()
+        self.write({"memory_root": mem})
+        self.assertEqual(settings.load(self.root)["memory_root"], mem)
+        self.assertEqual(settings.memory_root(self.root), mem)
+        self.write({"memory_root": os.path.join(self.root, "gone")})
+        self.assertIsNone(settings.memory_root(self.root))
+
+    def test_memory_root_validated(self):
+        mem = self.memory()
+        self.assertIsNone(settings.validate({"memory_root": mem}))
+        self.assertIsNone(settings.validate({"memory_root": ""}))
+        self.assertIsNone(settings.validate({"memory_root": None}))
+        self.assertIn("folder path", settings.validate({"memory_root": 3}))
+        self.assertIn("full path", settings.validate({"memory_root": "MEMORY"}))
+        self.assertIn("no folder", settings.validate({"memory_root": os.path.join(self.root, "gone")}))
+
+    def test_memory_root_save_keep_and_clear(self):
+        mem = self.memory()
+        saved, err = settings.save(self.root, {"memory_root": mem})
+        self.assertIsNone(err)
+        self.assertEqual(saved["memory_root"], mem)
+        settings.save(self.root, {"models": {"plan": "opus"}})
+        self.assertEqual(settings.load(self.root)["memory_root"], mem)
+        saved, _ = settings.save(self.root, {"memory_root": ""})
+        self.assertNotIn("memory_root", saved)
+        with open(os.path.join(self.root, "settings.json")) as fh:
+            self.assertNotIn("memory_root", json.load(fh))
+
+    def test_people_path_falls_back_to_the_list(self):
+        mem = self.memory()
+        here = os.path.join(self.root, "work", "people.md")
+        self.assertEqual(settings.people_path("work", self.root), here)
+        self.write({"memory_root": mem})
+        self.assertEqual(settings.people_path("work", self.root), here)
+        there = os.path.join(mem, "bench", "work", "people.md")
+        os.makedirs(os.path.dirname(there))
+        open(there, "w").close()
+        self.assertEqual(settings.people_path("work", self.root), there)
+        self.assertEqual(settings.people_path("home", self.root),
+                         os.path.join(self.root, "home", "people.md"))
+
+    def test_boards_md_lists_and_marks(self):
+        text = settings.boards_md(["work", "home"], "work", "/C/bench/data", "/C/MEMORY")
+        self.assertTrue(text.startswith(settings.BOARDS_HEADER))
+        self.assertIn("Only PA changes boards", text)
+        self.assertEqual(text.split("\n\n", 2)[2].splitlines(), [
+            "- home: `bench/data/home/`",
+            "- work (current): `bench/data/work/`"])
+        # A memory folder that is not beside the repo gets full paths.
+        self.assertIn("- home: `/C/bench/data/home/`",
+                      settings.boards_md(["home"], None, "/C/bench/data", "/Elsewhere/MEMORY"))
+
+    def test_boards_md_carries_marks_and_descriptions(self):
+        previous = (
+            "# Boards\n\nWritten by hand.\n\n"
+            "- work (current): `bench/data/work/`, the live list\n"
+            "- old (frozen, never write): `bench/data/old/`, kept for posterity\n"
+            "- gone: `bench/data/gone/`, removed since\n")
+        text = settings.boards_md(["work", "old", "home", "new"], "home",
+                                  "/C/bench/data", "/C/MEMORY", previous)
+        self.assertEqual(text.split("\n\n", 2)[2].splitlines(), [
+            "- work: `bench/data/work/`, the live list",
+            "- old (frozen, never write): `bench/data/old/`, kept for posterity",
+            "- home (current): `bench/data/home/`",
+            "- new: `bench/data/new/`"])
+        self.assertNotIn("Written by hand", text)
+
+    def test_write_boards_only_with_a_memory_folder(self):
+        data = os.path.join(self.root, "data")
+        os.makedirs(data)
+        self.assertIsNone(settings.write_boards(["work"], "work", data))
+        mem = self.memory()
+        with open(os.path.join(data, "settings.json"), "w") as fh:
+            json.dump({"memory_root": mem}, fh)
+        target = settings.write_boards(["work", "home"], "work", data)
+        self.assertEqual(target, os.path.join(mem, "boards.md"))
+        with open(target) as fh:
+            self.assertIn("- work (current): `data/work/`", fh.read())
+        self.assertEqual(sorted(os.listdir(mem)), ["boards.md"])
+        settings.write_boards(["home"], "home", data)
+        with open(target) as fh:
+            got = fh.read()
+        self.assertIn("- home (current)", got)
+        self.assertNotIn("work", got.split("\n\n", 2)[2])
+
+    # ---- projects_roots -------------------------------------------------
+
+    def projects(self, name="PROJECTS"):
+        path = os.path.join(self.root, name)
+        os.makedirs(path, exist_ok=True)
+        return path
+
+    def lists(self, *names):
+        for n in names:
+            os.makedirs(os.path.join(self.root, n), exist_ok=True)
+            open(os.path.join(self.root, n, "todo.md"), "w").close()
+
+    def test_projects_roots_unset_is_absent(self):
+        self.write({"models": {"plan": "opus"}})
+        self.assertNotIn("projects_roots", settings.load(self.root))
+        self.assertIsNone(settings.projects_root("work", self.root))
+        self.write({"projects_roots": {"work": "  "}})
+        self.assertNotIn("projects_roots", settings.load(self.root))
+        self.write({"projects_roots": "nope"})
+        self.assertIsNone(settings.projects_root("work", self.root))
+
+    def test_projects_root_is_per_list_and_must_exist(self):
+        proj = self.projects()
+        self.write({"projects_roots": {"work": proj}})
+        self.assertEqual(settings.load(self.root)["projects_roots"], {"work": proj})
+        self.assertEqual(settings.projects_root("work", self.root), proj)
+        self.assertIsNone(settings.projects_root("home", self.root))
+        self.write({"projects_roots": {"work": os.path.join(self.root, "gone")}})
+        self.assertIsNone(settings.projects_root("work", self.root))
+
+    def test_projects_roots_validated(self):
+        self.lists("work", "home")
+        proj, other = self.projects(), self.projects("OTHER")
+        ok = lambda d: settings.validate({"projects_roots": d}, self.root)
+        self.assertIsNone(ok({"work": proj}))
+        self.assertIsNone(ok({"work": proj, "home": other}))
+        self.assertIsNone(ok({"work": "", "gone": None}))
+        self.assertIn("object", ok(["work"]))
+        self.assertIn("no list called nobody", ok({"nobody": proj}))
+        self.assertIn("folder path", ok({"work": 3}))
+        self.assertIn("full path", ok({"work": "PROJECTS"}))
+        self.assertIn("no folder", ok({"work": os.path.join(self.root, "gone")}))
+        self.assertIn("cannot share", ok({"work": proj, "home": proj}))
+        self.assertIn("cannot share", ok({"work": proj, "home": proj + "/"}))
+        # A clash with a list already on disk counts too, and moving it off clears it.
+        self.write({"projects_roots": {"work": proj}})
+        self.assertIn("cannot share", ok({"home": proj}))
+        self.assertIsNone(ok({"home": proj, "work": None}))
+
+    def test_projects_roots_same_folder_by_another_spelling(self):
+        self.lists("work", "home")
+        proj = self.projects("Proj")
+        other = os.path.join(self.root, "proj")
+        if not os.path.isdir(other):
+            self.skipTest("the test volume is case-sensitive")
+        ok = lambda d: settings.validate({"projects_roots": d}, self.root)
+        self.assertIn("cannot share", ok({"work": proj, "home": other}))
+        self.write({"projects_roots": {"work": proj}})
+        self.assertIn("cannot share", ok({"home": other}))
+
+    def test_projects_roots_same_folder_through_a_symlink(self):
+        self.lists("work", "home")
+        proj = self.projects()
+        link = os.path.join(self.root, "link")
+        os.symlink(proj, link)
+        self.write({"projects_roots": {"work": proj}})
+        self.assertIn("cannot share",
+                      settings.validate({"projects_roots": {"home": link}}, self.root))
+
+    def test_projects_roots_save_per_list(self):
+        self.lists("work", "home")
+        proj, other = self.projects(), self.projects("OTHER")
+        saved, err = settings.save(self.root, {"projects_roots": {"work": proj}})
+        self.assertIsNone(err)
+        self.assertEqual(saved["projects_roots"], {"work": proj})
+        settings.save(self.root, {"projects_roots": {"home": other}})
+        settings.save(self.root, {"models": {"plan": "opus"}})
+        self.assertEqual(settings.load(self.root)["projects_roots"], {"work": proj, "home": other})
+        saved, err = settings.save(self.root, {"projects_roots": {"home": proj}})
+        self.assertIn("cannot share", err)
+        saved, _ = settings.save(self.root, {"projects_roots": {"work": None}})
+        self.assertEqual(saved["projects_roots"], {"home": other})
+        saved, _ = settings.save(self.root, {"projects_roots": {"home": ""}})
+        self.assertNotIn("projects_roots", saved)
+        with open(os.path.join(self.root, "settings.json")) as fh:
+            self.assertNotIn("projects_roots", json.load(fh))
+
+    def test_project_homes_follow_the_list(self):
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import project_folders
+        work = os.path.join(self.root, "work")
+        own = os.path.join(work, "projects")
+        self.assertEqual(project_folders.homes(work), [own])
+        self.assertEqual(project_folders.locate("idea", work), os.path.join(own, "idea"))
+        proj = self.projects()
+        self.write({"projects_roots": {"work": proj}})
+        self.assertEqual(project_folders.homes(work), [proj, own])
+        self.assertEqual(project_folders.home(work), proj)
+        self.assertEqual(project_folders.locate("idea", work), os.path.join(proj, "idea"))
+        os.makedirs(os.path.join(own, "idea"))
+        self.assertEqual(project_folders.locate("idea", work), os.path.join(own, "idea"))
+        os.makedirs(os.path.join(proj, "idea"))
+        self.assertEqual(project_folders.locate("idea", work), os.path.join(proj, "idea"))
+        home = os.path.join(self.root, "home")
+        self.assertEqual(project_folders.homes(home), [os.path.join(home, "projects")])
 
 if __name__ == "__main__":
     unittest.main()

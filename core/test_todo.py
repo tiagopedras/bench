@@ -562,6 +562,34 @@ def check_profile():
         if not owner_profile.needs_setup(os.path.join(root, "nowhere")):
             print("FAIL profile needs_setup with no file")
             failures += 1
+    # With memory_root set, the memory folder's me/profile.md wins, data/profile.md
+    # is the fallback, and write_basics writes whichever was read.
+    with tempfile.TemporaryDirectory() as root:
+        memory = os.path.join(root, "MEMORY")
+        os.makedirs(os.path.join(memory, "me"))
+        with open(os.path.join(root, "profile.md"), "w", encoding="utf-8") as fh:
+            fh.write("## About\n\n- Name: Local\n")
+        with open(os.path.join(root, "settings.json"), "w", encoding="utf-8") as fh:
+            json.dump({"memory_root": memory}, fh)
+        if owner_profile.owner_name(root) != "Local":
+            print("FAIL profile falls back to data/profile.md when the memory folder has none")
+            failures += 1
+        shared = os.path.join(memory, "me", "profile.md")
+        with open(shared, "w", encoding="utf-8") as fh:
+            fh.write("## About\n\n- Name: Shared\n")
+        if owner_profile.owner_name(root) != "Shared" or owner_profile.profile_path(root) != shared:
+            print("FAIL profile reads the memory folder's copy first")
+            failures += 1
+        owner_profile.write_basics(root, "Sam")
+        if "- Name: Sam" not in open(shared, encoding="utf-8").read() or \
+                "- Name: Local" not in open(os.path.join(root, "profile.md"), encoding="utf-8").read():
+            print("FAIL profile write_basics writes where the profile was found")
+            failures += 1
+        with open(os.path.join(root, "settings.json"), "w", encoding="utf-8") as fh:
+            json.dump({}, fh)
+        if owner_profile.owner_name(root) != "Local":
+            print("FAIL profile with memory_root unset reads data/profile.md")
+            failures += 1
     print("profile — %s" % ("all agree" if not failures else "%d failed" % failures))
     return failures
 

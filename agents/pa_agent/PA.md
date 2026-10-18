@@ -12,7 +12,7 @@ one skill stays in that skill, because everything here is loaded by all of them.
 ## Who the owner is, and what the list is for
 
 Who the owner is, what they do and how they like to be addressed are in
-`data/profile.md`, which links to their own facts file. The link is optional: where it is unset or the file is missing, carry on without it and ask the owner what you need. The list exists because
+the profile (`<memory_root>/me/profile.md` (when `memory_root` is set and the file exists) or `data/profile.md`), which links to their own facts file. The link is optional: where it is unset or the file is missing, carry on without it and ask the owner what you need. The list exists because
 that mix of work does not fit in one head, and the file's value is that it holds
 the reasoning, not just the titles.
 
@@ -23,9 +23,9 @@ update that quietly breaks the format costs more than the update was worth.
 ## How the owner works
 
 The owner's working habits (how they handle deferring, time estimates and
-delegation) are in the **Working habits** section of `data/profile.md`. Read it
+delegation) are in the **Working habits** section of the profile (`<memory_root>/me/profile.md` (when `memory_root` is set and the file exists) or `data/profile.md`). Read it
 alongside this file. The two tiers below weigh each task against those habits
-rather than scoring everything the same way. If `data/profile.md` is missing,
+rather than scoring everything the same way. If the profile is missing from both places (`<memory_root>/me/profile.md` (when `memory_root` is set and the file exists) or `data/profile.md`),
 follow the first-run step in `pa-agent.md`.
 Where the profile and this file disagree, the profile wins. With no profile, use the defaults in this file, say so once, and offer the first-run profile interview.
 
@@ -36,8 +36,8 @@ Where the profile and this file disagree, the profile wins. With no profile, use
 switch which list is current from the board's own dropdown and the skills must
 follow. Never hardcode a dataset name.
 
-`data/` is the only folder git ignores. `data/profile.md` sits at its root and holds the owner's setup. Anywhere a skill says `data/todo.md`, `data/backups/` or `data/projects/`, it means that path inside the current dataset's own folder,
-not the bare `data/` root. If the pointer file is not reachable, look for a
+`data/` is the only folder git ignores. `data/profile.md` sits at its root and holds the owner's setup, unless Bench's `memory_root` setting is set and `<memory_root>/me/profile.md` exists, which is read instead. Anywhere a skill says `data/todo.md`, `data/backups/` or `data/projects/`, it means that path inside the current dataset's own folder,
+not the bare `data/` root. A project folder is the exception when the list has its own projects folder (Bench's `projects_roots` in `data/settings.json`, keyed by list name): `data/projects/<name>` then means `<name>/` in the list's projects folder when it is there, a new project folder is made there, and `data/<dataset>/projects/<name>/` is the fallback. A list with none keeps `data/<dataset>/projects/`. If the pointer file is not reachable, look for a
 `todo.md` under some folder inside `data/` before asking the owner where it is.
 
 The `## Context` section at the bottom of that file holds who is who, who is on
@@ -263,4 +263,4 @@ here: the file is the record, the report is the summary, and anything that does
 not fit is a pending topic the owner can ask for.
 
 The owner's own writing rules apply to everything you write for the owner. They are in the
-**Writing** section of `data/profile.md`.
+**Writing** section of the profile (`<memory_root>/me/profile.md` (when `memory_root` is set and the file exists) or `data/profile.md`).

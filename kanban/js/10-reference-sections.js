@@ -855,7 +855,7 @@ function makeChatWin(newFor){
 
 function chatWriteNote(on){
   return on
-    ? '(Writing is now switched on for this conversation: you can create and edit files inside this list\'s project folders (data/<list>/projects/), and nothing outside them. ' +
+    ? '(Writing is now switched on for this conversation: you can create and edit files inside this list\'s project folders (the list\'s projects folder when set, otherwise data/<list>/projects/), and nothing outside them. ' +
       'Anything said earlier about not being able to write no longer holds. The lists\' todo.md files stay refused: ' +
       'for a change to the list, end your reply with a fenced pa-changes block as before, and the board applies it.)'
     : '(Writing is now switched off again for this conversation: you can read, but not create or edit files.)';

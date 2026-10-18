@@ -95,9 +95,9 @@ Where the score is worth explaining, it goes on a note line of its own, named th
 
 ## Projects
 
-Some work carries more context than a task line can hold: a plan, a ticket history, source documents, a decision and the reason it went the way it did. That goes in `data/<dataset>/projects/<name>/`, one folder per project, with a `CLAUDE.md` inside holding the background and the source files beside it. Under `data/` rather than at the repo root, because a project folder is full of real names and real dates, and a folder cannot be forgotten by the ignore rules the way a new file can.
+Some work carries more context than a task line can hold: a plan, a ticket history, source documents, a decision and the reason it went the way it did. That goes in `<name>/` in the list's projects folder when set, otherwise in `data/<dataset>/projects/<name>/`, one folder per project, with a `CLAUDE.md` inside holding the background and the source files beside it. A list's projects folder is set in Bench's Settings and kept in `data/settings.json` under `projects_roots`. Under `data/` or that folder rather than at the repo root, because a project folder is full of real names and real dates, and a folder cannot be forgotten by the ignore rules the way a new file can.
 
-The task in todo.md stays short and points at the folder, as an ordinary note on the task, first in its notes and above the stream line. The note itself stays written as `data/projects/<name>` — short for the current dataset's own folder, the same shorthand as everywhere else in this skill:
+The task in todo.md stays short and points at the folder, as an ordinary note on the task, first in its notes and above the stream line. The note itself stays written as `data/projects/<name>` — short for the project's folder, looked for in the list's projects folder first when set and in the current dataset's own folder after, the same shorthand as everywhere else in this skill:
 
 ```
 - [ ] **Q3 planning: redefine the initiative and deliver it** [impact:: high] [effort:: L] [due:: 2026-09-02] [ai:: partial]
@@ -342,7 +342,7 @@ Anything with `due:` or `urgent` jumps the queue regardless of impact and effort
 
 **Working days only.** Weekend deadlines get pulled back to the previous Friday. The exception is a step that waits on someone else replying, which pushes to the following Monday instead, because a Friday deadline on someone else's reply is really a Monday deadline.
 
-**Public holidays count as non-working days.** Which apply is the `Country:` line in `data/profile.md` (for example `Country: GB`) and an optional `Region:` (`GB-SCT`). The days come from Nager.Date and are cached in `data/holidays/`; offline, England and Wales and Portugal fall back to built-in tables. An older `Holidays: UK, PT` line still works, and with none of these both built-in calendars apply.
+**Public holidays count as non-working days.** Which apply is the `Country:` line in the profile (`<memory_root>/me/profile.md` (when `memory_root` is set and the file exists) or `data/profile.md`) (for example `Country: GB`) and an optional `Region:` (`GB-SCT`). The days come from Nager.Date and are cached in `data/holidays/`; offline, England and Wales and Portugal fall back to built-in tables. An older `Holidays: UK, PT` line still works, and with none of these both built-in calendars apply.
 
 **Back-plan from the formal deadline.** A review formally due Sunday 6 September closes Friday 4 September in this file, and every sub-step is dated backwards from there. Never leave the formal date as the working date.
 

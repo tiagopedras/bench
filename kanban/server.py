@@ -150,7 +150,22 @@ def dataset_dir(name):
 
 
 def people_path(name=None):
-    return os.path.join(dataset_dir(name or current_dataset()), "people.md")
+    # The memory folder's copy first when settings.json names one (see
+    # core/settings.py), else beside the list's todo.md.
+    name = name or current_dataset()
+    if not name:
+        return os.path.join(dataset_dir(None), "people.md")
+    return settings.people_path(name, DATA_ROOT)
+
+
+def publish_boards():
+    """Rewrite <memory_root>/boards.md, when settings.json names a memory
+    folder. A failure is printed and the board carries on: the file is for
+    agents outside Bench, and nothing here reads it back."""
+    try:
+        settings.write_boards(list_datasets(), current_dataset(), DATA_ROOT)
+    except OSError as err:
+        print("Could not write boards.md in the memory folder: %s" % err)
 
 
 def read_people(text):
@@ -406,13 +421,21 @@ def reports_dir(name=None):
 
 
 def projects_dir(name=None):
-    # Where a task's own "- Project: data/projects/<name>" note points, and the
-    # one place a project may be without being approved in project-folders.json.
+    # Where a task's own "- Project: data/projects/<name>" note points, and
+    # where the board starts a new one: the list's projects folder when
+    # settings.json names one (see core/project_folders.py), else
+    # data/<list>/projects/.
     # Nothing here is a fact todo.md tracks — a folder appears the moment
     # someone creates it and vanishes the moment someone deletes it, with no
     # signal from the list either way. project_listing() below is what lets a
     # folder be seen before, or after, any task happens to mention it.
-    return os.path.join(dataset_dir(name or current_dataset()), "projects")
+    return project_folders.home(dataset_dir(name or current_dataset()))
+
+
+def project_homes(name=None):
+    # Every place a project may be without being approved, in the order a
+    # bare name is looked for: projects_dir() first, the list's own after.
+    return project_folders.homes(dataset_dir(name or current_dataset()))
 
 
 # "Opened 26 Aug 2026." — the line every project CLAUDE.md written by the PA
@@ -569,25 +592,26 @@ def project_listing():
     """Every project folder on disk, alphabetically — live or not.
 
     taskProject() (kanban/js/06-dates-substeps.js) only ever finds a folder
-    some task's own body happens to mention. This walks projects_dir()
+    some task's own body happens to mention. This walks project_homes()
     directly, so a folder nothing on the list points at yet, or any more,
-    still shows up. After those come the folders the owner has approved elsewhere on
+    still shows up. A name in more than one is listed once, as the folder it
+    resolves to. After those come the folders the owner has approved elsewhere on
     disk (data/<dataset>/project-folders.json), each one a project in itself
     and named by its path, which is what a task's note carries for one.
     """
-    pdir = projects_dir()
     ddir = dataset_dir(current_dataset())
+    names = set()
+    for pdir in project_homes():
+        if os.path.isdir(pdir):
+            names.update(n for n in os.listdir(pdir) if not n.startswith("."))
     out = []
-    if os.path.isdir(pdir):
-        for name in sorted(os.listdir(pdir)):
-            if name.startswith("."):
-                continue
-            # Through the same check /project.json uses, so a symlink leading
-            # out of data/projects/ is not listed as though it were inside.
-            real, err = project_folders.resolve(name, ddir)
-            meta = project_meta(real, name) if real else None
-            if meta:
-                out.append(meta)
+    for name in sorted(names):
+        # Through the same check /project.json uses, so a symlink leading
+        # out of data/projects/ is not listed as though it were inside.
+        real, err = project_folders.resolve(name, ddir)
+        meta = project_meta(real, name) if real else None
+        if meta:
+            out.append(meta)
     for folder in project_folders.read_approved(ddir):
         real, err = project_folders.resolve(folder, ddir)
         meta = project_meta(real, folder) if real else None
@@ -632,6 +656,9 @@ def start_project(name, title):
     target = os.path.join(pdir, slug)
     if not project_folders.inside(os.path.realpath(pdir), os.path.realpath(target)):
         return None, (400, "bad project name")
+    # The same name in a later home would be shadowed by this one.
+    if any(os.path.lexists(os.path.join(h, slug)) for h in project_homes()):
+        return None, (409, "there is already a project folder called \u201c%s\u201d" % slug)
     try:
         os.mkdir(target)
     except FileExistsError:
@@ -1847,7 +1874,7 @@ def ai_chat_for(name):
         # write mode takes neither and has no write mode to guard either.
         try:
             engine = Engine(write_denies=CHAT_WRITE_DENIES,
-                            write_allows=[projects_dir(name)], **paths)
+                            write_allows=project_homes(name), **paths)
         except TypeError:
             engine = Engine(**paths)
         # A list's claude.json names its own model and wins. Without one, the
@@ -2041,6 +2068,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             ds = current_dataset()
             if ds:
                 rest = p[len(prefix):]
+                shared = self._shared_project(ds, rest)
+                if shared:
+                    return shared
                 real = super().translate_path(prefix + "/" + ds + rest)
                 if SCRATCH:
                     # Same resolution, then moved from ROOT/data to the
@@ -2052,6 +2082,29 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     return os.path.join(DATA_ROOT, rel)
                 return real
         return super().translate_path(path)
+
+    def _shared_project(self, ds, rest):
+        # /data/projects/<name>/... for a folder that resolves under the
+        # list's projects folder, outside data/: the file inside it, or None
+        # to serve from data/ as before. The part after the name is cleaned by
+        # the normal file server first, so a .. in it climbs no further than
+        # the folder.
+        m = re.match(r"^/projects/([^/]+)(/.*)?$", rest)
+        if not m:
+            return None
+        ddir = dataset_dir(ds)
+        chosen = project_folders.chosen_dir(ddir)
+        if not chosen:
+            return None
+        from urllib.parse import unquote
+        real, err = project_folders.resolve(unquote(m.group(1)), ddir)
+        if err or not project_folders.inside(os.path.realpath(chosen), real):
+            return None
+        base = super().translate_path("/")
+        full = super().translate_path(m.group(2) or "/")
+        rel = os.path.relpath(full, base)
+        out = real if rel == "." else os.path.join(real, rel)
+        return out + "/" if full.endswith("/") and not out.endswith("/") else out
 
     def do_GET(self):
         path = self.path.split("?")[0]
@@ -2391,6 +2444,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             buckets = payload.get("buckets")
             create_dataset(name, buckets if isinstance(buckets, list) else None)
             set_current_dataset(name)
+            publish_boards()
             return self._json(200, {"ok": True, "name": name,
                                     "datasets": list_datasets(), "current": name})
         if path == "/dataset/select":
@@ -2403,6 +2457,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if name not in list_datasets():
                 return self._json(404, {"error": "no list called “%s”" % name})
             set_current_dataset(name)
+            publish_boards()
             return self._json(200, {"ok": True, "current": name})
         ai_chat = ai_chat_for(current_dataset())
         # Both routes below are refused unless the request carries X-Board: 1.
@@ -2432,7 +2487,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json(400, {"error": "body was not valid JSON"})
             got, err = ai_chat.forget(payload.get("owner"), payload.get("session"))
             return self._json(400 if err else 200, err or got)
-        # Start a project: a folder under data/projects/ with a CLAUDE.md in it.
+        # Start a project: a folder under projects_dir() with a CLAUDE.md in it.
         # The Project: note on the task is written by the board, in memory, and
         # saved by autosave — this server never writes todo.md.
         if path == "/project/start":
@@ -2800,13 +2855,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         except (UnicodeDecodeError, ValueError):
             return self._json(400, {"error": "body was not valid JSON"})
         # Both halves are checked before either is written, so a refusal writes nothing.
-        err = settings.validate(body) or settings.budgets_error(body)
+        err = settings.validate(body, DATA_ROOT) or settings.budgets_error(body)
         if err:
             return self._json(400, {"error": err})
         settings.save_budgets(os.environ["AGENTS_FENCES"], body)
         saved, err = settings.save(DATA_ROOT, body)
         if err:
             return self._json(400, {"error": err})
+        if "memory_root" in body:
+            publish_boards()
         return self._json(200, settings_reply(saved))
 
     def _put_profile_basics(self):
@@ -3031,6 +3088,7 @@ def main():
             return 0
         raise
 
+    publish_boards()
     first_weekly = weekly_backup()
     if first_weekly:
         print("weekly backup: %s/%s/backups/%s" % (DATA, ds, first_weekly))

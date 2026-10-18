@@ -10,9 +10,12 @@
    set but no list exists.
 
    Name, Country and Region live in data/profile.md, behind /profile-basics.json.
-   The model per job and when each agent starts live in data/settings.json,
-   behind /settings.json. The daily budgets, one per agent and one for all of
-   them together, go through /settings.json too, but the server writes them to
+   The model per job, when each agent starts, the memory folder and each list's
+   projects folder live in data/settings.json, behind /settings.json. The
+   folders are offered in Settings only, not the welcome, the projects folder
+   for the open list alone, and each is sent only when it changed, so a folder
+   that has since gone missing does not stop the rest saving. The daily
+   budgets, one per agent and one for all of them together, go through /settings.json too, but the server writes them to
    the agents engine's fences file (data/agents/fences.json), where the engine
    reads them. The server keeps no state for any of it, so a save is two PUTs
    and nothing else. The list is made by POST /datasets, the same route the
@@ -106,6 +109,10 @@ function settingsFormHTML(draft, choices, first){
     '<span class="help fielderr" data-err="country" hidden></span></label>' +
     '<label class="field" data-region-field' + (draft.regions.length ? '' : ' hidden') + '><span>Region</span>' +
     '<select data-region>' + settingsRegionOptions(draft) + '</select></label>' +
+    (first ? '' : '<label class="field"><span>Memory folder</span><input type="text" data-memory value="' + escAttr(draft.memoryRoot) + '" placeholder="Not set">' +
+      '<span class="help">A folder outside Bench that keeps facts about you for other agents to share. Set, your profile and each list’s people are read from there first, and Bench lists its boards in boards.md inside it. Empty means none.</span></label>') +
+    (first || !draft.list ? '' : '<label class="field"><span>Projects folder for ' + esc(draft.list) + '</span><input type="text" data-projects value="' + escAttr(draft.projectsRoot) + '" placeholder="Not set">' +
+      '<span class="help">A folder of this list’s own, one folder per project inside it, which no other list may use. Set, a project is looked for there first and new ones are made there. Empty keeps them in data/' + esc(draft.list) + '/projects/.</span></label>') +
     '<details class="agentopts" data-agent-options><summary>Agent options</summary>' +
     '<div class="agentopts__body">' +
     settingsModelField('default', 'Default model', 'Used by any model below that is left on Use default.', draft, choices) +
@@ -142,9 +149,12 @@ async function loadSettingsDraft(first){
   const legacy = prof.legacy_holidays || [];
   const country = legacy.length ? '' : (prof.country || '');
   const region = legacy.length ? '' : (prof.region || '');
+  const memoryRoot = set.memory_root || '';
+  const list = state.dataset || '';
+  const projectsRoot = (set.projects_roots || {})[list] || '';
   return { setup: prof.needs_setup, set, draft: {
-    name: prof.name || '', country, region, legacy,
-    was: { country, region },
+    name: prof.name || '', country, region, legacy, memoryRoot, list, projectsRoot,
+    was: { country, region, memoryRoot, projectsRoot },
     touched: {},
     countries: places.countries || [], regions: legacy.length ? [] : ((places.regions || {})[prof.country] || []),
     models, agents, budget: dollars(set.daily_budget), agentBudgets } };
@@ -204,6 +214,10 @@ function trackSettingsForm(draft, first){
     const r = modalEl.querySelector('[data-region]');
     if (c) draft.country = c.value;
     if (r) draft.region = r.value;
+    const m = modalEl.querySelector('[data-memory]');
+    if (m) draft.memoryRoot = m.value;
+    const pr = modalEl.querySelector('[data-projects]');
+    if (pr) draft.projectsRoot = pr.value;
     modalEl.querySelectorAll('[data-model]').forEach(s => { draft.models[s.dataset.model] = s.value || null; });
     modalEl.querySelectorAll('[data-start]').forEach(s => { draft.agents[s.dataset.start].start = s.value; });
     if (e && e.target && e.target.matches('[data-name]')) draft.touched.name = true;
@@ -258,8 +272,12 @@ async function saveSettingsDraft(draft){
   const dollars = v => v.trim() === '' ? null : Number(v);
   const agentBudgets = {};
   for (const k in draft.agentBudgets) agentBudgets[SETTINGS_BUDGET_IDS[k]] = dollars(draft.agentBudgets[k]);
-  await put('/settings.json', { models: draft.models, agents: draft.agents,
-    daily_budget: dollars(draft.budget), agent_budgets: agentBudgets });
+  const body = { models: draft.models, agents: draft.agents,
+    daily_budget: dollars(draft.budget), agent_budgets: agentBudgets };
+  if (draft.memoryRoot.trim() !== draft.was.memoryRoot) body.memory_root = draft.memoryRoot.trim() || null;
+  if (draft.list && draft.projectsRoot.trim() !== draft.was.projectsRoot)
+    body.projects_roots = { [draft.list]: draft.projectsRoot.trim() || null };
+  await put('/settings.json', body);
 }
 
 /* first: the welcome. needsList: step 2 follows step 1 (no list on disk). */

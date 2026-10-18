@@ -666,7 +666,7 @@ function renderProjectSection(meta){
    server has the folder, and setTaskProject() writes the note in memory for
    autosave. */
 async function startProject(t){
-  const name = prompt('Name the folder for this project. It is made under data/projects/.', t.title);
+  const name = prompt('Name the folder for this project. It is made in the projects folder.', t.title);
   if (name == null) return;
   try {
     const got = await postJSON('/project/start', { name, title: t.title });

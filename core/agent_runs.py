@@ -262,9 +262,9 @@ def main(argv):
         ap.error("output needs the sub-task's id")
     out = {"files": args.file, "project": args.project, "figma": args.figma}
     if args.project and args.file:
-        from project_folders import default_dir  # noqa: E402
-        folder = args.project if os.path.isabs(args.project) else os.path.join(
-            default_dir(os.path.dirname(path)), args.project)
+        from project_folders import locate  # noqa: E402
+        folder = args.project if os.path.isabs(args.project) else locate(
+            args.project, os.path.dirname(path))
         out["drafts"] = read_drafts(folder, args.file)
     if args.branch:
         out["branch"] = {"name": args.branch, "repo": args.repo, "commit": args.commit,

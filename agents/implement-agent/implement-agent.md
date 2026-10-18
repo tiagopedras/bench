@@ -69,9 +69,12 @@ carried out as written is a finding worth more than a half-substituted version
 of it.
 
 **Your output lands in the task's project folder**, named by the `Project:` note
-on the task: `data/projects/<name>` means `data/<dataset>/projects/<name>/`, and an
+on the task: `data/projects/<name>` means `<name>/` in the list's projects folder
+(Bench's `projects_roots` in `data/settings.json`) when set and holding it, otherwise
+`data/<dataset>/projects/<name>/`, and an
 absolute path means that folder, wherever it is. Follow the note as written. If
-the task has no such note, create the folder as a slug of the task title and say
+the task has no such note, create the folder as a slug of the task title, in
+the list's projects folder when set, otherwise in `data/<dataset>/projects/`, and say
 in your report that the task needs a `Project:` pointer. That is a change to
 `todo.md` and goes through the rules below rather than being done on the way
 past. Write a short `CLAUDE.md` in any folder you create, saying what the
