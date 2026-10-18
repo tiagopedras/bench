@@ -528,19 +528,22 @@ EXTRA_DIRS = [_workspace] if _workspace else []
 
 
 def project_dirs(task):
-    """The task's own project folder, when it is one of theirs outside the workspace folder.
+    """The task's own project folder, when it is outside the repo and the workspace folder.
 
     A `Project:` note can carry an absolute path to a folder the owner approved on the
-    board (data/<dataset>/project-folders.json). The planner is sandboxed to the
+    board (data/<dataset>/project-folders.json), and a bare name resolves under
+    the `projects_root` setting when that is set. The planner is sandboxed to the
     repo plus EXTRA_DIRS, so a folder elsewhere is added for this one run, and
-    only once project_folders.resolve() has said it sits inside an approved
-    folder. A bare name is under data/ already and needs nothing.
+    only once project_folders.resolve() has said it may be used. A bare name
+    still under data/ is in the repo already and needs nothing.
     """
     ref = project_folders.note_ref(getattr(task, "body", None))
-    if not ref or not os.path.isabs(ref):
+    if not ref:
         return []
     real, err = project_folders.resolve(ref, paths.data_dir())
     if err:
+        return []
+    if project_folders.inside(os.path.realpath(ROOT), real):
         return []
     if EXTRA_DIRS and project_folders.inside(os.path.realpath(os.path.expanduser(EXTRA_DIRS[0])), real):
         return []

@@ -123,7 +123,8 @@ def _use(target_id):
 
 def targets():
     return [{"id": n, "name": "%s list" % n, "subtitle": os.path.join(ROOT, "data", n),
-             "where": os.path.join("data", n, "projects")} for n in paths.datasets()]
+             "where": project_folders.shared_dir(os.path.join(paths.DATA_ROOT, n))
+             or os.path.join("data", n, "projects")} for n in paths.datasets()]
 
 
 # --------------------------------------------------------------------------
@@ -224,7 +225,8 @@ def project_folder(task):
 
     A note that does not resolve (a folder the owner has not approved, one that is not
     there) is a refusal rather than a fallback: the plan was written for that
-    folder. With no note the folder is `data/<dataset>/projects/<slug>`, the
+    folder. With no note the folder is `<slug>` in project_folders.home(), under
+    projects_root when it is set and `data/<dataset>/projects/` when not, the
     one the interactive agent would create, and the report says the task needs
     a pointer to it.
     """
@@ -234,7 +236,7 @@ def project_folder(task):
         if err:
             return None, "its Project: note does not name a folder it may use (%s)" % err[1]
         return real, None
-    return os.path.join(project_folders.default_dir(paths.data_dir()), plan.slugify(task.title)), None
+    return os.path.join(project_folders.home(paths.data_dir()), plan.slugify(task.title)), None
 
 
 def _improve():
@@ -442,7 +444,7 @@ def options(item, target):
                     tools=["Read", "Grep", "Glob", "Edit", "Write"],
                     disallowed=["Bash", "NotebookEdit", "WebFetch", "WebSearch", "Task", "Agent"])
     folder, _ = project_folder(item["task"])
-    folder = os.path.realpath(folder or os.path.join(paths.data_dir(), "projects"))
+    folder = os.path.realpath(folder or project_folders.home(paths.data_dir()))
     tools = ["Read", "Grep", "Glob", "WebFetch", "WebSearch",
              "Write(/%s/**)" % folder, "Edit(/%s/**)" % folder]
     if item["kind"] == "figma" and figma_ready(item)[0]:
@@ -482,9 +484,13 @@ def _figma(text):
 def _files_output(folder, added, text=""):
     """What a files run left, for the activity feed: the files, the folder as
     the board names a project, and any `.draft.md` message with its text."""
-    default = os.path.realpath(project_folders.default_dir(paths.data_dir()))
     real = os.path.realpath(folder)
-    project = os.path.relpath(real, default) if project_folders.inside(default, real) else real
+    project = real
+    for home in project_folders.homes(paths.data_dir()):
+        home = os.path.realpath(home)
+        if real != home and project_folders.inside(home, real):
+            project = os.path.relpath(real, home)
+            break
     return {"files": sorted(added), "project": project,
             "drafts": agent_runs.read_drafts(folder, added), "figma": _figma(text)}
 

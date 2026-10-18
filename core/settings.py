@@ -28,6 +28,14 @@ nothing raises.
   `<memory_root>/boards.md` listing its lists (see write_boards). Boards,
   queues, locks, history and runs stay under `data/` either way. Unset, the key
   is absent from what load() returns and nothing changes.
+- `projects_root`: optional, a folder outside the repo holding project folders,
+  one per idea and flat across every list. Set, a task's project is looked for
+  at `<projects_root>/<name>/` first and at `data/<list>/projects/<name>/`
+  after, and a project started from the board is made there
+  (core/project_folders.py). `projects_root_except` names lists that keep
+  theirs under `data/<list>/projects/` regardless, a frozen list say. It is
+  written by hand, and save() keeps it. Unset, both keys are absent from what
+  load() returns and nothing changes.
 
 Daily budgets are kept out of this file, in the agents engine's fences file
 (`data/agents/fences.json`, `$AGENTS_FENCES`), because the engine reads them
@@ -81,7 +89,8 @@ def _memory_value(value):
 
 def load(root=None):
     """The settings, with defaults filling anything missing or malformed.
-    `memory_root` is there only when it is set."""
+    `memory_root`, `projects_root` and `projects_root_except` are there only
+    when they are set."""
     out = copy.deepcopy(DEFAULTS)
     try:
         with open(path(root), encoding="utf-8") as fh:
@@ -105,16 +114,36 @@ def load(root=None):
     memory = _memory_value(raw.get("memory_root"))
     if memory:
         out["memory_root"] = memory
+    projects = _memory_value(raw.get("projects_root"))
+    if projects:
+        out["projects_root"] = projects
+    skip = raw.get("projects_root_except")
+    if isinstance(skip, list):
+        skip = [n for n in skip if isinstance(n, str) and n.strip()]
+        if skip:
+            out["projects_root_except"] = skip
     return out
 
 
-def memory_root(root=None):
-    """The memory folder as an absolute path, or None when unset or not there."""
-    value = load(root).get("memory_root")
+def _folder(value):
     if not value:
         return None
     path = os.path.abspath(os.path.expanduser(value))
     return path if os.path.isdir(path) else None
+
+
+def memory_root(root=None):
+    """The memory folder as an absolute path, or None when unset or not there."""
+    return _folder(load(root).get("memory_root"))
+
+
+def projects_root(dataset=None, root=None):
+    """The projects folder as an absolute path, or None when unset, not there,
+    or `dataset` is one of the lists in projects_root_except."""
+    got = load(root)
+    if dataset and dataset in got.get("projects_root_except", ()):
+        return None
+    return _folder(got.get("projects_root"))
 
 
 def start_for(agent, root=None):
@@ -253,15 +282,20 @@ def validate(data):
             return "agents.%s must be an object" % key
         if "start" in entry and entry["start"] not in STARTS:
             return "start for %s must be one of %s" % (key, ", ".join(STARTS))
-    memory = data.get("memory_root")
-    if memory not in (None, ""):
-        if not isinstance(memory, str):
-            return "memory_root must be a folder path, or empty for none"
-        path = os.path.expanduser(memory.strip())
+    for key in ("memory_root", "projects_root"):
+        value = data.get(key)
+        if value in (None, ""):
+            continue
+        if not isinstance(value, str):
+            return "%s must be a folder path, or empty for none" % key
+        path = os.path.expanduser(value.strip())
         if not os.path.isabs(path):
-            return "memory_root must be a full path, starting with / or ~"
+            return "%s must be a full path, starting with / or ~" % key
         if not os.path.isdir(path):
-            return "memory_root: there is no folder at %s" % memory.strip()
+            return "%s: there is no folder at %s" % (key, value.strip())
+    skip = data.get("projects_root_except")
+    if skip is not None and not (isinstance(skip, list) and all(isinstance(n, str) for n in skip)):
+        return "projects_root_except must be a list of list names"
     return None
 
 
@@ -294,12 +328,18 @@ def save(root, data):
     for key, entry in (data.get("agents") or {}).items():
         merged["agents"].setdefault(key, {}).update(entry)
     # Sent empty or null clears it; not sent leaves what is on disk.
-    if "memory_root" in data:
-        memory = _memory_value(data["memory_root"])
-        if memory:
-            merged["memory_root"] = memory
+    for key in ("memory_root", "projects_root"):
+        if key in data:
+            value = _memory_value(data[key])
+            if value:
+                merged[key] = value
+            else:
+                merged.pop(key, None)
+    if "projects_root_except" in data:
+        if data["projects_root_except"]:
+            merged["projects_root_except"] = data["projects_root_except"]
         else:
-            merged.pop("memory_root", None)
+            merged.pop("projects_root_except", None)
     merged["version"] = 1
     target = path(root)
     os.makedirs(os.path.dirname(target), exist_ok=True)

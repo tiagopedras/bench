@@ -12,5 +12,7 @@
     "plan": { "start": "scheduled" },
     "implement": { "start": "scheduled" }
   },
-  "memory_root": null
+  "memory_root": null,
+  "projects_root": null,
+  "projects_root_except": []
 }

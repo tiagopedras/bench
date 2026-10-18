@@ -269,7 +269,8 @@ task with the three as sub-steps, and say that is what you did.
 
 **A task is the owner's but belongs to a project rather than the list.** If it needs a
 plan, a ticket history or source documents behind it, that is
-`data/projects/<name>/`, and the list carries one line pointing at it. Ask rather
+a project folder (under Bench's `projects_root` when it is set, otherwise
+`data/projects/<name>/`), and the list carries one line pointing at it. Ask rather
 than deciding.
 
 **The action item is really a fact about a person.** Somebody going on leave, a

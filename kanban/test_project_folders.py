@@ -17,7 +17,10 @@ What it holds to:
   * an approved folder resolves, and so does a folder inside it;
   * Start a project makes the folder and a CLAUDE.md project_about() reads back,
     refuses a duplicate, and never touches todo.md;
-  * every write route refuses a request that is not from the board.
+  * every write route refuses a request that is not from the board;
+  * with `projects_root` set, a bare name resolves there first and under
+    data/projects/ after, new folders are made there and served from there,
+    and a list in `projects_root_except` never looks there.
 """
 
 import http.server
@@ -204,6 +207,68 @@ def main():
         code, _ = request(base, "POST", "/project/start", json.dumps({"name": "!!!"}), BOARD)
         ok("a name with nothing usable is refused", code == 400, "got %d" % code)
         ok("todo.md was never written", os.stat(todo).st_mtime_ns == before)
+
+        # --- projects_root -----------------------------------------------------
+        shared = os.path.join(tmp, "PROJECTS")
+        for d in (os.path.join(shared, "beta"), os.path.join(shared, "alpha"),
+                  os.path.join(ds, "projects", "gamma")):
+            os.makedirs(d)
+        with open(os.path.join(shared, "beta", "CLAUDE.md"), "w", encoding="utf-8") as fh:
+            fh.write("# Beta\n\nThe shared one.\n")
+        settings_file = os.path.join(tmp, "settings.json")
+
+        def use_settings(data):
+            with open(settings_file, "w", encoding="utf-8") as fh:
+                json.dump(data, fh)
+
+        code, _ = get_project(base, "beta")
+        ok("unset, a folder in the projects folder is not found", code == 404, "got %d" % code)
+        use_settings({"projects_root": shared})
+        code, body = get_project(base, "beta")
+        ok("set, a bare name resolves in the projects folder", code == 200, "got %d %s" % (code, body))
+        ok("still served at /data/projects/", json.loads(body).get("url") == "/data/projects/beta/", body[:200])
+        code, body = request(base, "GET", "/data/projects/beta/CLAUDE.md")
+        ok("and its files are served from there", code == 200 and "The shared one" in body, "got %d" % code)
+        code, body = request(base, "GET", "/data/projects/beta/../../settings.json")
+        ok("a hop in the served path does not climb out", "projects_root" not in body, "got %d" % code)
+        code, _ = get_project(base, "gamma")
+        ok("a name only under data/projects/ falls back there", code == 200, "got %d" % code)
+        code, _ = open_project(base, "alpha")
+        ok("a name in both opens the projects folder's",
+           OPENED[-1] == ["open", os.path.join(shared, "alpha")], repr(OPENED[-1:]))
+        code, _ = get_project(base, os.path.join(shared, "beta"))
+        ok("its absolute path needs no approval", code == 200, "got %d" % code)
+        code, _ = get_project(base, shared)
+        ok("the projects folder itself is not a project", code == 403, "got %d" % code)
+        os.symlink(outside, os.path.join(shared, "leak"))
+        code, _ = get_project(base, "leak")
+        ok("a symlink out of the projects folder is refused", code == 403, "got %d" % code)
+        code, body = request(base, "GET", "/projects.json")
+        names = [p["name"] for p in json.loads(body)["projects"]]
+        ok("the listing walks both, each name once",
+           names.count("alpha") == 1 and "beta" in names and "gamma" in names
+           and "leak" not in names, repr(names))
+        code, body = request(base, "POST", "/project/start", json.dumps({"title": "Shared idea"}), BOARD)
+        ok("a new project is made in the projects folder",
+           code == 200 and os.path.isdir(os.path.join(shared, "shared-idea"))
+           and not os.path.exists(os.path.join(ds, "projects", "shared-idea")), body)
+        ok("with the same note as before", json.loads(body).get("note") == "data/projects/shared-idea", body)
+        code, _ = request(base, "POST", "/project/start", json.dumps({"title": "Gamma"}), BOARD)
+        ok("a name already under data/projects/ is refused, not shadowed", code == 409, "got %d" % code)
+        ok("the chat may write in both", server.project_homes() == [shared, os.path.join(ds, "projects")],
+           repr(server.project_homes()))
+
+        use_settings({"projects_root": shared, "projects_root_except": ["ds"]})
+        code, _ = get_project(base, "beta")
+        ok("a list in projects_root_except never looks there", code == 404, "got %d" % code)
+        code, _ = request(base, "GET", "/data/projects/beta/CLAUDE.md")
+        ok("nor serves from there", code == 404, "got %d" % code)
+        code, body = request(base, "POST", "/project/start", json.dumps({"title": "Frozen one"}), BOARD)
+        ok("and makes its new projects under data/projects/",
+           os.path.isdir(os.path.join(ds, "projects", "frozen-one"))
+           and not os.path.exists(os.path.join(shared, "frozen-one")), body)
+        os.remove(settings_file)
+        ok("todo.md was still never written", os.stat(todo).st_mtime_ns == before)
 
         # --- the note, as the agents read it -----------------------------------
         ok("note_ref reads the default shape",

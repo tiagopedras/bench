@@ -135,7 +135,8 @@ try {
   check('brief model starts on Haiku', await evalJS(`modalEl.querySelector('[data-model=brief]').value`) === 'haiku')
 
   // Required: no way out.
-  check('onboarding has no Skip button', !(await evalJS(`modalEl.textContent.includes('Skip')`)))
+  check('onboarding offers no Projects folder', !(await exists('[data-projects]')))
+check('onboarding has no Skip button', !(await evalJS(`modalEl.textContent.includes('Skip')`)))
   check('onboarding has no close button', !(await exists('.tenon-modal__head button')))
   await escape()
   check('Escape does not dismiss onboarding', await shown())
@@ -222,6 +223,17 @@ try {
   await wait(800)
   check('Settings reopens on the saved region', await evalJS(`modalEl.querySelector('[data-region]').value`) === 'GB-SCT'
     && await evalJS(`modalEl.querySelector('[data-region-field]').hidden`) === false)
+  // The projects folder: offered in Settings, saved only once it is a folder.
+  const projects = join(root, 'PROJECTS')
+  mkdirSync(projects)
+  check('Settings offers a Projects folder, empty by default', await evalJS(`modalEl.querySelector('[data-projects]').value`) === '')
+  await evalJS(`(() => { const i = modalEl.querySelector('[data-projects]'); i.value = ${JSON.stringify(projects)}; i.dispatchEvent(new Event('input', { bubbles: true })) })()`)
+  await press('Save')
+  await wait(2500)
+  check('Settings saves the Projects folder', JSON.parse(readFileSync(join(data, 'settings.json'), 'utf8')).projects_root === projects)
+  await evalJS(`$('#settingsBtn').click()`)
+  await wait(800)
+  check('and reopens showing it', await evalJS(`modalEl.querySelector('[data-projects]').value`) === projects)
   const regionList = await fetch(`${base}/holiday-regions.json?country=GB`).then(x => x.json())
   check('GB has its four regions', regionList.map(x => x.code).join() === 'GB-ENG,GB-NIR,GB-SCT,GB-WLS', JSON.stringify(regionList))
   r = await fetch(`${base}/holiday-countries.json`).then(x => x.json())

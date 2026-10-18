@@ -37,7 +37,7 @@ switch which list is current from the board's own dropdown and the skills must
 follow. Never hardcode a dataset name.
 
 `data/` is the only folder git ignores. `data/profile.md` sits at its root and holds the owner's setup, unless Bench's `memory_root` setting is set and `<memory_root>/me/profile.md` exists, which is read instead. Anywhere a skill says `data/todo.md`, `data/backups/` or `data/projects/`, it means that path inside the current dataset's own folder,
-not the bare `data/` root. If the pointer file is not reachable, look for a
+not the bare `data/` root. A project folder is the exception when Bench's `projects_root` setting (`data/settings.json`) is set: `data/projects/<name>` then means `<projects_root>/<name>/` when that folder is there, a new project folder is made there, and `data/<dataset>/projects/<name>/` is the fallback. A list named in `projects_root_except` keeps its project folders in `data/`. If the pointer file is not reachable, look for a
 `todo.md` under some folder inside `data/` before asking the owner where it is.
 
 The `## Context` section at the bottom of that file holds who is who, who is on

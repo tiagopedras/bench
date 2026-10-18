@@ -5,6 +5,8 @@ gitignored, including `data/profile.md`, the PA's profile of its owner (read fro
 
 **Memory root.** The `memory_root` key in `data/settings.json` can point at a folder outside Bench that holds the owner's facts, so agents elsewhere can share them. Bench reads the profile and each list's people from there first and falls back to `data/`. It also writes `boards.md` into that folder, so the board list is visible without reading `data/`. Don't assume the profile or people live in `data/`. Read them through `core/owner_profile.py` or the server, which resolve the setting. `boards.md` is written by Bench, so don't edit it by hand.
 
+**Projects root.** The `projects_root` key in `data/settings.json` can point at a folder outside Bench holding project folders, one per idea, flat across every list. A `data/projects/<name>` note then means `<projects_root>/<name>/` when that folder is there, and `data/<list>/projects/<name>/` when it is not. New project folders go under `projects_root` when it is set, otherwise `data/<list>/projects/`. Lists named in `projects_root_except` keep theirs in `data/` either way. Resolve a project through `core/project_folders.py`, never by joining `data/<list>/projects/` yourself.
+
 **Parallel sessions.** If `COORDINATION.md` exists at the repo root, read it at
 the start of any task and append an entry when you start, when you change
 something another session could depend on, and when you finish. Append only.
