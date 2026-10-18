@@ -150,7 +150,22 @@ def dataset_dir(name):
 
 
 def people_path(name=None):
-    return os.path.join(dataset_dir(name or current_dataset()), "people.md")
+    # The memory folder's copy first when settings.json names one (see
+    # core/settings.py), else beside the list's todo.md.
+    name = name or current_dataset()
+    if not name:
+        return os.path.join(dataset_dir(None), "people.md")
+    return settings.people_path(name, DATA_ROOT)
+
+
+def publish_boards():
+    """Rewrite <memory_root>/boards.md, when settings.json names a memory
+    folder. A failure is printed and the board carries on: the file is for
+    agents outside Bench, and nothing here reads it back."""
+    try:
+        settings.write_boards(list_datasets(), current_dataset(), DATA_ROOT)
+    except OSError as err:
+        print("Could not write boards.md in the memory folder: %s" % err)
 
 
 def read_people(text):
@@ -2391,6 +2406,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             buckets = payload.get("buckets")
             create_dataset(name, buckets if isinstance(buckets, list) else None)
             set_current_dataset(name)
+            publish_boards()
             return self._json(200, {"ok": True, "name": name,
                                     "datasets": list_datasets(), "current": name})
         if path == "/dataset/select":
@@ -2403,6 +2419,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if name not in list_datasets():
                 return self._json(404, {"error": "no list called “%s”" % name})
             set_current_dataset(name)
+            publish_boards()
             return self._json(200, {"ok": True, "current": name})
         ai_chat = ai_chat_for(current_dataset())
         # Both routes below are refused unless the request carries X-Board: 1.
@@ -2807,6 +2824,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         saved, err = settings.save(DATA_ROOT, body)
         if err:
             return self._json(400, {"error": err})
+        if "memory_root" in body:
+            publish_boards()
         return self._json(200, settings_reply(saved))
 
     def _put_profile_basics(self):
@@ -3031,6 +3050,7 @@ def main():
             return 0
         raise
 
+    publish_boards()
     first_weekly = weekly_backup()
     if first_weekly:
         print("weekly backup: %s/%s/backups/%s" % (DATA, ds, first_weekly))

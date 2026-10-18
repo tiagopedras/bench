@@ -22,10 +22,16 @@ outside the PA:
 
 A line is `- Key: value`; backticks around the value are dropped, and `none` or
 an unfilled `<placeholder>` counts as unset.
+
+With `memory_root` set in data/settings.json (core/settings.py), the profile is
+`<memory_root>/me/profile.md` when that file is there, and data/profile.md when
+it is not. Reads and writes both go to whichever profile_path() names.
 """
 
 import os
 import re
+
+import settings  # sits beside this file
 
 DEFAULT_OWNER = "Me"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -35,9 +41,21 @@ def data_root():
     return os.environ.get("TODOS_DATA_ROOT") or os.path.join(ROOT, "data")
 
 
+def profile_path(root=None):
+    """The profile in force: the memory folder's `me/profile.md` when the
+    setting names one and the file is there, else data/profile.md."""
+    root = root or data_root()
+    memory = settings.memory_root(root)
+    if memory:
+        path = os.path.join(memory, "me", "profile.md")
+        if os.path.isfile(path):
+            return path
+    return os.path.join(root, "profile.md")
+
+
 def read(root=None):
-    """Every `- Key: value` line in data/profile.md, keys lower-cased."""
-    path = os.path.join(root or data_root(), "profile.md")
+    """Every `- Key: value` line in the profile, keys lower-cased."""
+    path = profile_path(root)
     out = {}
     try:
         with open(path, encoding="utf-8") as fh:
@@ -153,7 +171,7 @@ def _drop_line(text, key):
 
 
 def write_basics(root=None, name=None, holidays=None, country=None, region=None):
-    """Write only the `Name:` line and the holiday lines of data/profile.md.
+    """Write only the `Name:` line and the holiday lines of the profile.
 
     `country` and `region` write `Country:` and `Region:` (an empty region
     removes its line) and retire an old `Holidays:` line. The caller checks them
@@ -175,7 +193,7 @@ def write_basics(root=None, name=None, holidays=None, country=None, region=None)
             return "country must be a two-letter code"
         if region and not re.fullmatch(r"%s-[A-Z0-9]{1,3}" % country, region):
             return "region must look like %s-XX" % country
-    path = os.path.join(root, "profile.md")
+    path = profile_path(root)
     try:
         with open(path, encoding="utf-8") as fh:
             text = fh.read()
@@ -196,7 +214,7 @@ def write_basics(root=None, name=None, holidays=None, country=None, region=None)
     elif holidays is not None:
         picked = [r for r in REGION_ORDER if r in holidays] or list(REGION_ORDER)
         text = _set_line(text, "Holidays", ", ".join(picked))
-    os.makedirs(root, exist_ok=True)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
         fh.write(text)

@@ -20,6 +20,14 @@ nothing raises.
   task is handed to it. `scheduled` waits for its hours in the board's Agents
   tab (today's behaviour); `now` has the board start a run as soon as the hand
   over is saved.
+- `memory_root`: optional, a folder outside the repo that holds the owner's
+  long-lived facts, shared with agents outside Bench. Set, the owner's profile
+  is read from `<memory_root>/me/profile.md` and each list's people from
+  `<memory_root>/bench/<list>/people.md`, each falling back to its old place
+  under `data/` when the file is not there, and Bench keeps
+  `<memory_root>/boards.md` listing its lists (see write_boards). Boards,
+  queues, locks, history and runs stay under `data/` either way. Unset, the key
+  is absent from what load() returns and nothing changes.
 
 Daily budgets are kept out of this file, in the agents engine's fences file
 (`data/agents/fences.json`, `$AGENTS_FENCES`), because the engine reads them
@@ -31,6 +39,7 @@ keys and keep every other key in that file.
 import copy
 import json
 import os
+import re
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -66,8 +75,13 @@ def _model(value):
     return value if isinstance(value, str) and value.strip() else None
 
 
+def _memory_value(value):
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
 def load(root=None):
-    """The settings, with defaults filling anything missing or malformed."""
+    """The settings, with defaults filling anything missing or malformed.
+    `memory_root` is there only when it is set."""
     out = copy.deepcopy(DEFAULTS)
     try:
         with open(path(root), encoding="utf-8") as fh:
@@ -88,7 +102,19 @@ def load(root=None):
                 out["agents"][key].update({k: v for k, v in entry.items() if k != "start"})
                 if entry.get("start") in STARTS:
                     out["agents"][key]["start"] = entry["start"]
+    memory = _memory_value(raw.get("memory_root"))
+    if memory:
+        out["memory_root"] = memory
     return out
+
+
+def memory_root(root=None):
+    """The memory folder as an absolute path, or None when unset or not there."""
+    value = load(root).get("memory_root")
+    if not value:
+        return None
+    path = os.path.abspath(os.path.expanduser(value))
+    return path if os.path.isdir(path) else None
 
 
 def start_for(agent, root=None):
@@ -114,6 +140,97 @@ def planner_model(root=None, default=None):
     return own or model_for("plan", root, default)
 
 
+def people_path(dataset, root=None):
+    """Where a list's people.md is read and written: the memory folder's copy,
+    `<memory_root>/bench/<list>/people.md`, when that file is there, else the
+    one beside the list's todo.md."""
+    root = root or data_root()
+    memory = memory_root(root)
+    if memory:
+        path = os.path.join(memory, "bench", dataset, "people.md")
+        if os.path.isfile(path):
+            return path
+    return os.path.join(root, dataset, "people.md")
+
+
+# ---- boards.md --------------------------------------------------------------
+#
+# With a memory folder set, Bench keeps `<memory_root>/boards.md` saying which
+# lists exist, so an agent outside Bench can know without reading data/. Bench
+# is its writer. It has no notion of what a list is for or of a list being
+# frozen, so a line's marks other than `current` and the text after its folder
+# are carried over from the file's last version: a description or a `frozen`
+# written there survives, and a list new to the file gets neither.
+
+BOARDS_HEADER = (
+    "# Boards\n\n"
+    "Written by Bench, which rewrites it when a list is made or the current one "
+    "changes, and each time the board starts. Only PA changes boards. Any agent "
+    "reads this file before it touches a board, and a board that is not listed "
+    "gets nothing written to it.\n")
+
+_BOARD_LINE = re.compile(r"^- ([^\s(:]+)(?: \(([^)]*)\))?: `[^`]*`(?:, (.*))?$")
+
+
+def boards_md(names, current, root=None, memory=None, previous=""):
+    """The text of boards.md for the lists `names`, `current` marked, keeping
+    each surviving list's place, marks and description from `previous`."""
+    root = os.path.abspath(root or data_root())
+    base = os.path.dirname(os.path.abspath(memory)) if memory else None
+    kept, order = {}, []
+    for line in (previous or "").splitlines():
+        m = _BOARD_LINE.match(line.strip())
+        if not m or m.group(1) in kept:
+            continue
+        marks = [x.strip() for x in (m.group(2) or "").split(",")]
+        kept[m.group(1)] = ([x for x in marks if x and x != "current"], (m.group(3) or "").strip())
+        order.append(m.group(1))
+    names = list(names)
+    ordered = [n for n in order if n in names] + sorted(n for n in names if n not in kept)
+    lines = []
+    for name in ordered:
+        marks, about = kept.get(name, ([], ""))
+        marks = (["current"] if name == current else []) + marks
+        folder = os.path.join(root, name)
+        if base and (folder + os.sep).startswith(base + os.sep):
+            folder = os.path.relpath(folder, base)
+        lines.append("- %s%s: `%s/`%s" % (
+            name, " (%s)" % ", ".join(marks) if marks else "",
+            folder, ", " + about if about else ""))
+    return BOARDS_HEADER + "\n" + "\n".join(lines) + ("\n" if lines else "")
+
+
+def write_boards(names, current, root=None):
+    """Rewrite `<memory_root>/boards.md` atomically, when the setting names a
+    memory folder and the text has changed. Returns its path, or None when
+    there is no memory folder."""
+    root = root or data_root()
+    memory = memory_root(root)
+    if not memory:
+        return None
+    target = os.path.join(memory, "boards.md")
+    try:
+        with open(target, encoding="utf-8") as fh:
+            previous = fh.read()
+    except OSError:
+        previous = ""
+    text = boards_md(names, current, root, memory, previous)
+    if text == previous:
+        return target
+    fd, tmp = tempfile.mkstemp(dir=memory, prefix=".boards-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        os.replace(tmp, target)
+    except OSError:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    return target
+
+
 def validate(data):
     """An error message, or None when `data` is fit to save."""
     if not isinstance(data, dict):
@@ -136,6 +253,15 @@ def validate(data):
             return "agents.%s must be an object" % key
         if "start" in entry and entry["start"] not in STARTS:
             return "start for %s must be one of %s" % (key, ", ".join(STARTS))
+    memory = data.get("memory_root")
+    if memory not in (None, ""):
+        if not isinstance(memory, str):
+            return "memory_root must be a folder path, or empty for none"
+        path = os.path.expanduser(memory.strip())
+        if not os.path.isabs(path):
+            return "memory_root must be a full path, starting with / or ~"
+        if not os.path.isdir(path):
+            return "memory_root: there is no folder at %s" % memory.strip()
     return None
 
 
@@ -167,6 +293,13 @@ def save(root, data):
                              if k in merged["models"]})
     for key, entry in (data.get("agents") or {}).items():
         merged["agents"].setdefault(key, {}).update(entry)
+    # Sent empty or null clears it; not sent leaves what is on disk.
+    if "memory_root" in data:
+        memory = _memory_value(data["memory_root"])
+        if memory:
+            merged["memory_root"] = memory
+        else:
+            merged.pop("memory_root", None)
     merged["version"] = 1
     target = path(root)
     os.makedirs(os.path.dirname(target), exist_ok=True)
