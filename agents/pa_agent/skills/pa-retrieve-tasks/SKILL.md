@@ -269,7 +269,7 @@ task with the three as sub-steps, and say that is what you did.
 
 **A task is the owner's but belongs to a project rather than the list.** If it needs a
 plan, a ticket history or source documents behind it, that is
-a project folder (under Bench's `projects_root` when it is set, otherwise
+a project folder (in the list's projects folder when set, otherwise
 `data/projects/<name>/`), and the list carries one line pointing at it. Ask rather
 than deciding.
 

@@ -168,7 +168,7 @@ So the whole update is the tag:
 | The message the owner sends | a `Suggested message:` note on the step |
 | The prompt the owner pastes | a `Prompt:` note on the step |
 | The ticket the owner raises | a `Jira (PLAT\|GROW):` note on the task or step |
-| Where its context lives | a `Project:` note on the task, naming a folder under Bench's `projects_root` when it is set, otherwise `data/projects/` |
+| Where its context lives | a `Project:` note on the task, naming a folder in the list's projects folder when set, otherwise under `data/projects/` |
 | How often it comes round | `repeat:wed`, `repeat:wed-9:15`, `repeat:15`, `repeat:wd5`, `repeat:tue2`, or any with a `~` |
 | The topics the owner takes into a recurring meeting | an `Agenda:` block on the task |
 
@@ -195,7 +195,7 @@ Three things still need judgement rather than a tag:
 
 Write or refresh the suggested message on every live contact step you touched. Anything with a message on it shows up in Quick wins automatically, whatever its parent's effort tag says, so there is nothing to promote by hand any more.
 
-**A task that belongs to a project points at its folder.** Work carrying more context than a line can hold keeps a folder in `<name>/` under Bench's `projects_root` when it is set, otherwise `data/projects/<name>/`, and the task names it in a `Project:` note. Read that folder's `CLAUDE.md` before you touch the task, since it holds the background and the decisions already taken, and write the pointer onto any new task that joins the project. The board reads the note and offers a panel showing every task on the same folder, which is the only place the whole of a project is visible — a task without the note is missing from it. The conventions cover when a folder is worth creating and what goes in it.
+**A task that belongs to a project points at its folder.** Work carrying more context than a line can hold keeps a folder in `<name>/` in the list's projects folder when set, otherwise `data/projects/<name>/`, and the task names it in a `Project:` note. Read that folder's `CLAUDE.md` before you touch the task, since it holds the background and the decisions already taken, and write the pointer onto any new task that joins the project. The board reads the note and offers a panel showing every task on the same folder, which is the only place the whole of a project is visible — a task without the note is missing from it. The conventions cover when a folder is worth creating and what goes in it.
 
 Write a `Jira` note on anything whose real work is raising a ticket — a component contribution, a gap an audit turned up, a request to another team. The board turns it into a button that opens Jira's create form with the summary in place. **Never raise the ticket yourself.** The owner presses Create, on the form, with the summary in front of the owner; a ticket landing on a shared board without that is worse than no ticket. The conventions cover which board key to use and how to write the summary.
 
@@ -344,7 +344,7 @@ template that tried to would be a second copy of them.
 
 **The owner asks for a message for something that is not in the file yet.** Add the task first, then the message. A message with no task behind it gets sent and then forgotten about, and nothing tracks whether the reply arrived.
 
-**The owner hands you a brief, a plan, a deck or a set of documents for one task.** That is a project, not a note. Put the files in the project folder, under Bench's `projects_root` when it is set, otherwise `data/projects/<name>/`, write the background into a `CLAUDE.md` in there addressed to a session that has never seen this one, and leave a one-line `Project:` note on the task. Pasting the same context into the task every session is the thing the folder removes. Below that bar — one or two sentences, no documents — it stays a note, since a folder holding a sentence is worse than the sentence.
+**The owner hands you a brief, a plan, a deck or a set of documents for one task.** That is a project, not a note. Put the files in `<name>/` in the list's projects folder when set, otherwise `data/projects/<name>/`, write the background into a `CLAUDE.md` in there addressed to a session that has never seen this one, and leave a one-line `Project:` note on the task. Pasting the same context into the task every session is the thing the folder removes. Below that bar — one or two sentences, no documents — it stays a note, since a folder holding a sentence is worse than the sentence.
 
 **The owner mentions something about a person rather than about work.** Somebody going on leave, a contract ending, a new starter, a name the owner keeps seeing spelt wrong. That is not a task and should not become one, because it will sit in a bucket unticked forever. It goes in `## Context` with an `on:` or `until:` tag if there is a date. The test is whether they would ever tick it.
 
@@ -353,7 +353,7 @@ template that tried to would be a second copy of them.
 - `data/.current`, which dataset is live right now, e.g. `personal`. Read this first; everything below is relative to `data/<that name>/`, not the bare `data/` root. The board's own dropdown is what changes it.
 - `data/<dataset>/todo.md` — the list. `data/` holds every dataset and everything derived from each, and is the whole of what git ignores. The four buckets, and the `## Context` section holding standing facts about people and dates. The only source of truth for both.
 - `kanban/index.html` plus `kanban/server.py`, launched by `board.command` at the root — the board. It reads and writes the current dataset's todo.md, and works out This week, Quick wins, Big rocks, Dependency chain and Delegate to Claude from the tags. Those five exist nowhere else.
-- `<projects_root>/<name>/` when Bench's `projects_root` is set, otherwise `data/<dataset>/projects/<name>/` — one folder per project, holding the background in a `CLAUDE.md` and the source documents beside it, for work carrying more context than a task line can hold. Private like everything in `data/`. The tasks stay in todo.md and point at the folder; the folder never holds a task list.
+- `<name>/` in the list's projects folder when set, otherwise `data/<dataset>/projects/<name>/` — one folder per project, holding the background in a `CLAUDE.md` and the source documents beside it, for work carrying more context than a task line can hold. Private like everything in `data/`. The tasks stay in todo.md and point at the folder; the folder never holds a task list.
 - `agents/pa_agent/PA.md` — standing behaviour: who the owner is, where the list lives, the two tiers of prioritisation, the standing rules and the tone. Read every session, before the conventions.
 - `CONVENTIONS.md` — the file format: buckets, states, tags, date rules, suggested messages, meeting agendas, capacity ceiling. Read this every session.
 - `references/audit-checklist.md` — what to check by hand that the script cannot, mostly dependency and state logic.

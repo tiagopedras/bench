@@ -10,10 +10,11 @@
    set but no list exists.
 
    Name, Country and Region live in data/profile.md, behind /profile-basics.json.
-   The model per job, when each agent starts and the memory and projects
-   folders live in data/settings.json, behind /settings.json. The two folders
-   are offered in Settings only, not the welcome, and each is sent only when it
-   changed, so a folder that has since gone missing does not stop the rest saving. The daily
+   The model per job, when each agent starts, the memory folder and each list's
+   projects folder live in data/settings.json, behind /settings.json. The
+   folders are offered in Settings only, not the welcome, the projects folder
+   for the open list alone, and each is sent only when it changed, so a folder
+   that has since gone missing does not stop the rest saving. The daily
    budgets, one per agent and one for all of them together, go through /settings.json too, but the server writes them to
    the agents engine's fences file (data/agents/fences.json), where the engine
    reads them. The server keeps no state for any of it, so a save is two PUTs
@@ -110,8 +111,8 @@ function settingsFormHTML(draft, choices, first){
     '<select data-region>' + settingsRegionOptions(draft) + '</select></label>' +
     (first ? '' : '<label class="field"><span>Memory folder</span><input type="text" data-memory value="' + escAttr(draft.memoryRoot) + '" placeholder="Not set">' +
       '<span class="help">A folder outside Bench that keeps facts about you for other agents to share. Set, your profile and each list’s people are read from there first, and Bench lists its boards in boards.md inside it. Empty means none.</span></label>') +
-    (first ? '' : '<label class="field"><span>Projects folder</span><input type="text" data-projects value="' + escAttr(draft.projectsRoot) + '" placeholder="Not set">' +
-      '<span class="help">A folder outside Bench with one folder per project, shared by every list. Set, a project is looked for there first and new ones are made there. Empty keeps them in each list’s own projects folder.</span></label>') +
+    (first || !draft.list ? '' : '<label class="field"><span>Projects folder for ' + esc(draft.list) + '</span><input type="text" data-projects value="' + escAttr(draft.projectsRoot) + '" placeholder="Not set">' +
+      '<span class="help">A folder of this list’s own, one folder per project inside it, which no other list may use. Set, a project is looked for there first and new ones are made there. Empty keeps them in data/' + esc(draft.list) + '/projects/.</span></label>') +
     '<details class="agentopts" data-agent-options><summary>Agent options</summary>' +
     '<div class="agentopts__body">' +
     settingsModelField('default', 'Default model', 'Used by any model below that is left on Use default.', draft, choices) +
@@ -149,9 +150,10 @@ async function loadSettingsDraft(first){
   const country = legacy.length ? '' : (prof.country || '');
   const region = legacy.length ? '' : (prof.region || '');
   const memoryRoot = set.memory_root || '';
-  const projectsRoot = set.projects_root || '';
+  const list = state.dataset || '';
+  const projectsRoot = (set.projects_roots || {})[list] || '';
   return { setup: prof.needs_setup, set, draft: {
-    name: prof.name || '', country, region, legacy, memoryRoot, projectsRoot,
+    name: prof.name || '', country, region, legacy, memoryRoot, list, projectsRoot,
     was: { country, region, memoryRoot, projectsRoot },
     touched: {},
     countries: places.countries || [], regions: legacy.length ? [] : ((places.regions || {})[prof.country] || []),
@@ -273,7 +275,8 @@ async function saveSettingsDraft(draft){
   const body = { models: draft.models, agents: draft.agents,
     daily_budget: dollars(draft.budget), agent_budgets: agentBudgets };
   if (draft.memoryRoot.trim() !== draft.was.memoryRoot) body.memory_root = draft.memoryRoot.trim() || null;
-  if (draft.projectsRoot.trim() !== draft.was.projectsRoot) body.projects_root = draft.projectsRoot.trim() || null;
+  if (draft.list && draft.projectsRoot.trim() !== draft.was.projectsRoot)
+    body.projects_roots = { [draft.list]: draft.projectsRoot.trim() || null };
   await put('/settings.json', body);
 }
 

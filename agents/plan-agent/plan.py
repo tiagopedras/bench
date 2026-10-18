@@ -531,8 +531,8 @@ def project_dirs(task):
     """The task's own project folder, when it is outside the repo and the workspace folder.
 
     A `Project:` note can carry an absolute path to a folder the owner approved on the
-    board (data/<dataset>/project-folders.json), and a bare name resolves under
-    the `projects_root` setting when that is set. The planner is sandboxed to the
+    board (data/<dataset>/project-folders.json), and a bare name resolves in
+    the list's projects folder when settings name one. The planner is sandboxed to the
     repo plus EXTRA_DIRS, so a folder elsewhere is added for this one run, and
     only once project_folders.resolve() has said it may be used. A bare name
     still under data/ is in the repo already and needs nothing.

@@ -95,9 +95,9 @@ Where the score is worth explaining, it goes on a note line of its own, named th
 
 ## Projects
 
-Some work carries more context than a task line can hold: a plan, a ticket history, source documents, a decision and the reason it went the way it did. That goes in a project folder, `<name>/` under Bench's `projects_root` when it is set, otherwise `data/<dataset>/projects/<name>/`, one folder per project, with a `CLAUDE.md` inside holding the background and the source files beside it. A list named in `projects_root_except` keeps its folders under `data/` either way. Under `data/` or that folder rather than at the repo root, because a project folder is full of real names and real dates, and a folder cannot be forgotten by the ignore rules the way a new file can.
+Some work carries more context than a task line can hold: a plan, a ticket history, source documents, a decision and the reason it went the way it did. That goes in `<name>/` in the list's projects folder when set, otherwise in `data/<dataset>/projects/<name>/`, one folder per project, with a `CLAUDE.md` inside holding the background and the source files beside it. A list's projects folder is set in Bench's Settings and kept in `data/settings.json` under `projects_roots`. Under `data/` or that folder rather than at the repo root, because a project folder is full of real names and real dates, and a folder cannot be forgotten by the ignore rules the way a new file can.
 
-The task in todo.md stays short and points at the folder, as an ordinary note on the task, first in its notes and above the stream line. The note itself stays written as `data/projects/<name>` — short for the project's folder, looked for under `projects_root` first when it is set and in the current dataset's own folder after, the same shorthand as everywhere else in this skill:
+The task in todo.md stays short and points at the folder, as an ordinary note on the task, first in its notes and above the stream line. The note itself stays written as `data/projects/<name>` — short for the project's folder, looked for in the list's projects folder first when set and in the current dataset's own folder after, the same shorthand as everywhere else in this skill:
 
 ```
 - [ ] **Q3 planning: redefine the initiative and deliver it** [impact:: high] [effort:: L] [due:: 2026-09-02] [ai:: partial]

@@ -6,12 +6,12 @@ own. The default place, `data/<dataset>/projects/`, is always allowed. Anything
 else has to sit inside a folder listed in `data/<dataset>/project-folders.json`,
 which only the board writes, and only after the person has confirmed it.
 
-With `projects_root` set in data/settings.json (core/settings.py), a bare name
-is looked for at `<projects_root>/<name>/` first and under `data/<dataset>/projects/`
-after, and a folder started from the board is made in the first (`home()`).
-That folder is flat and shared by every list, bar those in
-`projects_root_except`, which keep the one place they always had. `homes()`
-names them in order; a folder in any of them needs no approval.
+A list may name its own projects folder, under `projects_roots` in
+data/settings.json (core/settings.py). Then a bare name is looked for in that
+folder first and under `data/<dataset>/projects/` after, and a folder started
+from the board is made in the first (`home()`). No two lists share one, so a
+list never sees another's projects. `homes()` names them in order; a folder in
+any of them needs no approval.
 
 Everything that turns a note into a path on disk goes through `resolve()`: the
 server's /project.json, its open-folder route, and the planning agent when it
@@ -43,16 +43,17 @@ def default_dir(dataset_dir):
     return os.path.join(dataset_dir, DEFAULT)
 
 
-def shared_dir(dataset_dir):
-    """The projects_root folder when it is set, there, and this list uses it."""
+def chosen_dir(dataset_dir):
+    """The list's own projects folder from settings, when it names one that is there."""
     dataset_dir = os.path.abspath(dataset_dir)
     return settings.projects_root(os.path.basename(dataset_dir), os.path.dirname(dataset_dir))
 
 
 def homes(dataset_dir):
-    """Where a bare name is looked for, in order: projects_root, then the list's own."""
-    shared = shared_dir(dataset_dir)
-    return ([shared] if shared else []) + [default_dir(dataset_dir)]
+    """Where a bare name is looked for, in order: the list's projects folder,
+    then data/<dataset>/projects/."""
+    chosen = chosen_dir(dataset_dir)
+    return ([chosen] if chosen else []) + [default_dir(dataset_dir)]
 
 
 def home(dataset_dir):

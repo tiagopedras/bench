@@ -422,8 +422,9 @@ def reports_dir(name=None):
 
 def projects_dir(name=None):
     # Where a task's own "- Project: data/projects/<name>" note points, and
-    # where the board starts a new one: <projects_root> when settings.json
-    # names one (see core/project_folders.py), else data/<list>/projects/.
+    # where the board starts a new one: the list's projects folder when
+    # settings.json names one (see core/project_folders.py), else
+    # data/<list>/projects/.
     # Nothing here is a fact todo.md tracks — a folder appears the moment
     # someone creates it and vanishes the moment someone deletes it, with no
     # signal from the list either way. project_listing() below is what lets a
@@ -2083,8 +2084,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return super().translate_path(path)
 
     def _shared_project(self, ds, rest):
-        # /data/projects/<name>/... for a folder that resolves under
-        # projects_root, which is outside data/: the file inside it, or None
+        # /data/projects/<name>/... for a folder that resolves under the
+        # list's projects folder, outside data/: the file inside it, or None
         # to serve from data/ as before. The part after the name is cleaned by
         # the normal file server first, so a .. in it climbs no further than
         # the folder.
@@ -2092,12 +2093,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if not m:
             return None
         ddir = dataset_dir(ds)
-        shared = project_folders.shared_dir(ddir)
-        if not shared:
+        chosen = project_folders.chosen_dir(ddir)
+        if not chosen:
             return None
         from urllib.parse import unquote
         real, err = project_folders.resolve(unquote(m.group(1)), ddir)
-        if err or not project_folders.inside(os.path.realpath(shared), real):
+        if err or not project_folders.inside(os.path.realpath(chosen), real):
             return None
         base = super().translate_path("/")
         full = super().translate_path(m.group(2) or "/")
@@ -2854,7 +2855,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         except (UnicodeDecodeError, ValueError):
             return self._json(400, {"error": "body was not valid JSON"})
         # Both halves are checked before either is written, so a refusal writes nothing.
-        err = settings.validate(body) or settings.budgets_error(body)
+        err = settings.validate(body, DATA_ROOT) or settings.budgets_error(body)
         if err:
             return self._json(400, {"error": err})
         settings.save_budgets(os.environ["AGENTS_FENCES"], body)

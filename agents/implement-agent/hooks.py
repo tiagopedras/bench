@@ -123,7 +123,7 @@ def _use(target_id):
 
 def targets():
     return [{"id": n, "name": "%s list" % n, "subtitle": os.path.join(ROOT, "data", n),
-             "where": project_folders.shared_dir(os.path.join(paths.DATA_ROOT, n))
+             "where": project_folders.chosen_dir(os.path.join(paths.DATA_ROOT, n))
              or os.path.join("data", n, "projects")} for n in paths.datasets()]
 
 
@@ -225,8 +225,8 @@ def project_folder(task):
 
     A note that does not resolve (a folder the owner has not approved, one that is not
     there) is a refusal rather than a fallback: the plan was written for that
-    folder. With no note the folder is `<slug>` in project_folders.home(), under
-    projects_root when it is set and `data/<dataset>/projects/` when not, the
+    folder. With no note the folder is `<slug>` in project_folders.home(), the
+    list's projects folder when it has one and `data/<dataset>/projects/` when not, the
     one the interactive agent would create, and the report says the task needs
     a pointer to it.
     """

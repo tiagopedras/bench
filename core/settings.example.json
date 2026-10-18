@@ -13,6 +13,5 @@
     "implement": { "start": "scheduled" }
   },
   "memory_root": null,
-  "projects_root": null,
-  "projects_root_except": []
+  "projects_roots": {}
 }

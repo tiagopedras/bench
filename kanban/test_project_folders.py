@@ -18,9 +18,10 @@ What it holds to:
   * Start a project makes the folder and a CLAUDE.md project_about() reads back,
     refuses a duplicate, and never touches todo.md;
   * every write route refuses a request that is not from the board;
-  * with `projects_root` set, a bare name resolves there first and under
-    data/projects/ after, new folders are made there and served from there,
-    and a list in `projects_root_except` never looks there.
+  * with the list's own projects folder set (`projects_roots`), a bare name
+    resolves there first and under data/projects/ after, new folders are
+    made there and served from there, and another list's folder is never
+    looked in.
 """
 
 import http.server
@@ -208,7 +209,7 @@ def main():
         ok("a name with nothing usable is refused", code == 400, "got %d" % code)
         ok("todo.md was never written", os.stat(todo).st_mtime_ns == before)
 
-        # --- projects_root -----------------------------------------------------
+        # --- the list's projects folder -----------------------------------------
         shared = os.path.join(tmp, "PROJECTS")
         for d in (os.path.join(shared, "beta"), os.path.join(shared, "alpha"),
                   os.path.join(ds, "projects", "gamma")):
@@ -223,14 +224,18 @@ def main():
 
         code, _ = get_project(base, "beta")
         ok("unset, a folder in the projects folder is not found", code == 404, "got %d" % code)
-        use_settings({"projects_root": shared})
+        theirs = os.path.join(tmp, "THEIRS")
+        os.makedirs(os.path.join(theirs, "delta"))
+        use_settings({"projects_roots": {"ds": shared, "other": theirs}})
         code, body = get_project(base, "beta")
         ok("set, a bare name resolves in the projects folder", code == 200, "got %d %s" % (code, body))
         ok("still served at /data/projects/", json.loads(body).get("url") == "/data/projects/beta/", body[:200])
         code, body = request(base, "GET", "/data/projects/beta/CLAUDE.md")
         ok("and its files are served from there", code == 200 and "The shared one" in body, "got %d" % code)
         code, body = request(base, "GET", "/data/projects/beta/../../settings.json")
-        ok("a hop in the served path does not climb out", "projects_root" not in body, "got %d" % code)
+        ok("a hop in the served path does not climb out", "projects_roots" not in body, "got %d" % code)
+        code, _ = get_project(base, "delta")
+        ok("another list's projects folder is not looked in", code == 404, "got %d" % code)
         code, _ = get_project(base, "gamma")
         ok("a name only under data/projects/ falls back there", code == 200, "got %d" % code)
         code, _ = open_project(base, "alpha")
@@ -247,7 +252,7 @@ def main():
         names = [p["name"] for p in json.loads(body)["projects"]]
         ok("the listing walks both, each name once",
            names.count("alpha") == 1 and "beta" in names and "gamma" in names
-           and "leak" not in names, repr(names))
+           and "leak" not in names and "delta" not in names, repr(names))
         code, body = request(base, "POST", "/project/start", json.dumps({"title": "Shared idea"}), BOARD)
         ok("a new project is made in the projects folder",
            code == 200 and os.path.isdir(os.path.join(shared, "shared-idea"))
@@ -258,9 +263,9 @@ def main():
         ok("the chat may write in both", server.project_homes() == [shared, os.path.join(ds, "projects")],
            repr(server.project_homes()))
 
-        use_settings({"projects_root": shared, "projects_root_except": ["ds"]})
+        use_settings({"projects_roots": {"other": shared}})
         code, _ = get_project(base, "beta")
-        ok("a list in projects_root_except never looks there", code == 404, "got %d" % code)
+        ok("a list with no projects folder never looks in another's", code == 404, "got %d" % code)
         code, _ = request(base, "GET", "/data/projects/beta/CLAUDE.md")
         ok("nor serves from there", code == 404, "got %d" % code)
         code, body = request(base, "POST", "/project/start", json.dumps({"title": "Frozen one"}), BOARD)

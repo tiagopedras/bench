@@ -94,8 +94,8 @@ Two things to do before you call it done:
   next time it loads, moving the card to Reviewing and unblocking the owner's review of the
   work. The board refuses it if the sub-task is not the Implement agent's or is
   still waiting on the owner's review of the plan, so run it only once the report is in.
-- **Anything it wrote is in the task's project folder**, under Bench's `projects_root`
-  when it is set, otherwise under `data/<dataset>/projects/`. Both are private
+- **Anything it wrote is in the task's project folder**, in the list's projects folder
+  when set, otherwise under `data/<dataset>/projects/`. Both are private
   and outside git. Nothing from it goes into a commit, a report or a message.
 
 Approving what it did is the owner's move, on the Review the work sub-task, and it is not

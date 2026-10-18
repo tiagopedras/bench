@@ -226,11 +226,12 @@ check('onboarding has no Skip button', !(await evalJS(`modalEl.textContent.inclu
   // The projects folder: offered in Settings, saved only once it is a folder.
   const projects = join(root, 'PROJECTS')
   mkdirSync(projects)
-  check('Settings offers a Projects folder, empty by default', await evalJS(`modalEl.querySelector('[data-projects]').value`) === '')
+  check('Settings offers a Projects folder for the open list, empty by default', await evalJS(`modalEl.querySelector('[data-projects]').value`) === ''
+    && (await evalJS(`modalEl.querySelector('[data-projects]').closest('label').textContent`)).includes('Projects folder for '))
   await evalJS(`(() => { const i = modalEl.querySelector('[data-projects]'); i.value = ${JSON.stringify(projects)}; i.dispatchEvent(new Event('input', { bubbles: true })) })()`)
   await press('Save')
   await wait(2500)
-  check('Settings saves the Projects folder', JSON.parse(readFileSync(join(data, 'settings.json'), 'utf8')).projects_root === projects)
+  check('Settings saves the Projects folder', (JSON.parse(readFileSync(join(data, 'settings.json'), 'utf8')).projects_roots || {})[await evalJS('state.dataset')] === projects)
   await evalJS(`$('#settingsBtn').click()`)
   await wait(800)
   check('and reopens showing it', await evalJS(`modalEl.querySelector('[data-projects]').value`) === projects)

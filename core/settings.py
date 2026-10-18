@@ -28,14 +28,13 @@ nothing raises.
   `<memory_root>/boards.md` listing its lists (see write_boards). Boards,
   queues, locks, history and runs stay under `data/` either way. Unset, the key
   is absent from what load() returns and nothing changes.
-- `projects_root`: optional, a folder outside the repo holding project folders,
-  one per idea and flat across every list. Set, a task's project is looked for
-  at `<projects_root>/<name>/` first and at `data/<list>/projects/<name>/`
-  after, and a project started from the board is made there
-  (core/project_folders.py). `projects_root_except` names lists that keep
-  theirs under `data/<list>/projects/` regardless, a frozen list say. It is
-  written by hand, and save() keeps it. Unset, both keys are absent from what
-  load() returns and nothing changes.
+- `projects_roots`: optional, a map from a list's name to its projects folder,
+  an existing folder that may sit outside the repo, one per list and never
+  shared by two. For a list in it, a task's project is looked for at
+  `<folder>/<name>/` first and at `data/<list>/projects/<name>/` after, and a
+  project started from the board is made there (core/project_folders.py). A
+  list not in it keeps `data/<list>/projects/`. Unset, the key is absent from
+  what load() returns and nothing changes.
 
 Daily budgets are kept out of this file, in the agents engine's fences file
 (`data/agents/fences.json`, `$AGENTS_FENCES`), because the engine reads them
@@ -89,8 +88,7 @@ def _memory_value(value):
 
 def load(root=None):
     """The settings, with defaults filling anything missing or malformed.
-    `memory_root`, `projects_root` and `projects_root_except` are there only
-    when they are set."""
+    `memory_root` and `projects_roots` are there only when they are set."""
     out = copy.deepcopy(DEFAULTS)
     try:
         with open(path(root), encoding="utf-8") as fh:
@@ -114,14 +112,11 @@ def load(root=None):
     memory = _memory_value(raw.get("memory_root"))
     if memory:
         out["memory_root"] = memory
-    projects = _memory_value(raw.get("projects_root"))
-    if projects:
-        out["projects_root"] = projects
-    skip = raw.get("projects_root_except")
-    if isinstance(skip, list):
-        skip = [n for n in skip if isinstance(n, str) and n.strip()]
-        if skip:
-            out["projects_root_except"] = skip
+    roots = raw.get("projects_roots")
+    if isinstance(roots, dict):
+        roots = {k: _memory_value(v) for k, v in roots.items() if _memory_value(v)}
+        if roots:
+            out["projects_roots"] = roots
     return out
 
 
@@ -137,13 +132,10 @@ def memory_root(root=None):
     return _folder(load(root).get("memory_root"))
 
 
-def projects_root(dataset=None, root=None):
-    """The projects folder as an absolute path, or None when unset, not there,
-    or `dataset` is one of the lists in projects_root_except."""
-    got = load(root)
-    if dataset and dataset in got.get("projects_root_except", ()):
-        return None
-    return _folder(got.get("projects_root"))
+def projects_root(dataset, root=None):
+    """The list's own projects folder as an absolute path, or None when it
+    names none or the folder is not there."""
+    return _folder(load(root).get("projects_roots", {}).get(dataset))
 
 
 def start_for(agent, root=None):
@@ -260,7 +252,7 @@ def write_boards(names, current, root=None):
     return target
 
 
-def validate(data):
+def validate(data, root=None):
     """An error message, or None when `data` is fit to save."""
     if not isinstance(data, dict):
         return "settings must be an object"
@@ -282,26 +274,59 @@ def validate(data):
             return "agents.%s must be an object" % key
         if "start" in entry and entry["start"] not in STARTS:
             return "start for %s must be one of %s" % (key, ", ".join(STARTS))
-    for key in ("memory_root", "projects_root"):
-        value = data.get(key)
+    err = _folder_error("memory_root", data.get("memory_root"))
+    if err:
+        return err
+    roots = data.get("projects_roots")
+    if roots is None:
+        return None
+    if not isinstance(roots, dict):
+        return "projects_roots must be an object of list name to folder"
+    # Any folder with a todo.md is a list here, a `_test` fixture included,
+    # since the board can have one open.
+    base = root or data_root()
+    for name, value in roots.items():
         if value in (None, ""):
             continue
-        if not isinstance(value, str):
-            return "%s must be a folder path, or empty for none" % key
-        path = os.path.expanduser(value.strip())
-        if not os.path.isabs(path):
-            return "%s must be a full path, starting with / or ~" % key
-        if not os.path.isdir(path):
-            return "%s: there is no folder at %s" % (key, value.strip())
-    skip = data.get("projects_root_except")
-    if skip is not None and not (isinstance(skip, list) and all(isinstance(n, str) for n in skip)):
-        return "projects_root_except must be a list of list names"
+        if (not name or name.startswith(".") or os.sep in name
+                or not os.path.isfile(os.path.join(base, name, "todo.md"))):
+            return "projects_roots: there is no list called %s" % name
+        err = _folder_error("the projects folder for %s" % name, value)
+        if err:
+            return err
+    # Checked against what the save would leave, so a folder taken by a list
+    # that was not sent is caught as well.
+    merged = dict(load(root).get("projects_roots", {}))
+    for name, value in roots.items():
+        if _memory_value(value):
+            merged[name] = _memory_value(value)
+        else:
+            merged.pop(name, None)
+    seen = {}
+    for name in sorted(merged):
+        real = os.path.realpath(os.path.expanduser(merged[name]))
+        if real in seen:
+            return "%s and %s cannot share one projects folder" % (seen[real], name)
+        seen[real] = name
+    return None
+
+
+def _folder_error(key, value):
+    if value in (None, ""):
+        return None
+    if not isinstance(value, str):
+        return "%s must be a folder path, or empty for none" % key
+    path = os.path.expanduser(value.strip())
+    if not os.path.isabs(path):
+        return "%s must be a full path, starting with / or ~" % key
+    if not os.path.isdir(path):
+        return "%s: there is no folder at %s" % (key, value.strip())
     return None
 
 
 def save(root, data):
     """Validate and write atomically. Returns (settings, error)."""
-    err = validate(data)
+    err = validate(data, root)
     if err:
         return None, err
     # Start from what is on disk so hand-added keys survive a save.
@@ -328,18 +353,25 @@ def save(root, data):
     for key, entry in (data.get("agents") or {}).items():
         merged["agents"].setdefault(key, {}).update(entry)
     # Sent empty or null clears it; not sent leaves what is on disk.
-    for key in ("memory_root", "projects_root"):
-        if key in data:
-            value = _memory_value(data[key])
-            if value:
-                merged[key] = value
-            else:
-                merged.pop(key, None)
-    if "projects_root_except" in data:
-        if data["projects_root_except"]:
-            merged["projects_root_except"] = data["projects_root_except"]
+    if "memory_root" in data:
+        memory = _memory_value(data["memory_root"])
+        if memory:
+            merged["memory_root"] = memory
         else:
-            merged.pop("projects_root_except", None)
+            merged.pop("memory_root", None)
+    # Per list: a list sent empty or null loses its folder, one not sent keeps it.
+    if isinstance(data.get("projects_roots"), dict):
+        roots = merged.get("projects_roots")
+        roots = dict(roots) if isinstance(roots, dict) else {}
+        for name, value in data["projects_roots"].items():
+            if _memory_value(value):
+                roots[name] = _memory_value(value)
+            else:
+                roots.pop(name, None)
+        if roots:
+            merged["projects_roots"] = roots
+        else:
+            merged.pop("projects_roots", None)
     merged["version"] = 1
     target = path(root)
     os.makedirs(os.path.dirname(target), exist_ok=True)
