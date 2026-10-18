@@ -130,10 +130,18 @@ def run_brief_agent(task, dry=False):
         "--model", settings.model_for("brief", default=MODEL),
         "--output-format", "json",
         "--max-budget-usd", str(BUDGET_PER_TASK),
-        # No file access needed — this reads only what is handed to it in the
-        # prompt — and named on the command line rather than trusted to the
-        # default, the same belt-and-braces plan.py's own call uses.
-        "--allowedTools", "Read",
+        # Everything it needs is in the prompt, so it loads nothing else: no
+        # tools, no MCP servers, no skills, no settings or CLAUDE.md files.
+        # Without these a call carried ~44k tokens of preload for a 60-word
+        # answer; with them it carries ~550. No session is saved either, so
+        # a pass no longer fills the session history with one-turn runs.
+        "--system-prompt", "You write short, plain briefings of to-do items. "
+                           "Reply with exactly what is asked and nothing else.",
+        "--tools", "",
+        "--strict-mcp-config",
+        "--disable-slash-commands",
+        "--setting-sources", "",
+        "--no-session-persistence",
     ]
     if dry:
         return None, 0.0, None

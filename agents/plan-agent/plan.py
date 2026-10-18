@@ -668,7 +668,7 @@ def harvest_usage():
     Never raises and never gates. A harvester that failed to spawn, or a
     machine with no PACKAGES/usage_harvester checked out at all, costs one log
     line and nothing else — this is new and unproven, and a night should not
-    fail to start because a pty session failed to open.
+    fail to start because one background call failed.
     """
     sys.path.insert(0, os.path.normpath(
         os.path.join(HERE, "..", "..", "..", "PACKAGES", "usage_harvester")))
@@ -683,7 +683,7 @@ def harvest_usage():
         log("usage harvest failed: %s" % exc)
         return
     if not record:
-        log("usage harvest: the statusline never fired")
+        log("usage harvest: no reading came back")
         return
     got = usage_harvester.summarise(record)
 

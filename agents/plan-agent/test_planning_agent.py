@@ -800,7 +800,7 @@ def test_harvest_usage():
         plan.harvest_usage()
         logged = open(paths.log_path(), encoding="utf-8").read()
         check("a harvest that never fired says so rather than raising",
-              "usage harvest: the statusline never fired" in logged, True)
+              "usage harvest: no reading came back" in logged, True)
 
         fake.summarise = lambda record: {"five_hour": None, "seven_day": None}
         fake.harvest = lambda timeout, model, cwd: {"rate_limits": {}}
