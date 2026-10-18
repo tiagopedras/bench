@@ -302,12 +302,20 @@ def validate(data, root=None):
             merged[name] = _memory_value(value)
         else:
             merged.pop(name, None)
+    # By the folder's identity on disk rather than its spelling, so `Proj` and
+    # `proj` on a case-insensitive volume, or a symlink to either, are one. A
+    # saved folder that has since gone is compared by its path.
     seen = {}
     for name in sorted(merged):
         real = os.path.realpath(os.path.expanduser(merged[name]))
-        if real in seen:
-            return "%s and %s cannot share one projects folder" % (seen[real], name)
-        seen[real] = name
+        try:
+            st = os.stat(real)
+            key = (st.st_dev, st.st_ino)
+        except OSError:
+            key = real
+        if key in seen:
+            return "%s and %s cannot share one projects folder" % (seen[key], name)
+        seen[key] = name
     return None
 
 

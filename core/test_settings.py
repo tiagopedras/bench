@@ -321,6 +321,26 @@ class SettingsTest(unittest.TestCase):
         self.assertIn("cannot share", ok({"home": proj}))
         self.assertIsNone(ok({"home": proj, "work": None}))
 
+    def test_projects_roots_same_folder_by_another_spelling(self):
+        self.lists("work", "home")
+        proj = self.projects("Proj")
+        other = os.path.join(self.root, "proj")
+        if not os.path.isdir(other):
+            self.skipTest("the test volume is case-sensitive")
+        ok = lambda d: settings.validate({"projects_roots": d}, self.root)
+        self.assertIn("cannot share", ok({"work": proj, "home": other}))
+        self.write({"projects_roots": {"work": proj}})
+        self.assertIn("cannot share", ok({"home": other}))
+
+    def test_projects_roots_same_folder_through_a_symlink(self):
+        self.lists("work", "home")
+        proj = self.projects()
+        link = os.path.join(self.root, "link")
+        os.symlink(proj, link)
+        self.write({"projects_roots": {"work": proj}})
+        self.assertIn("cannot share",
+                      settings.validate({"projects_roots": {"home": link}}, self.root))
+
     def test_projects_roots_save_per_list(self):
         self.lists("work", "home")
         proj, other = self.projects(), self.projects("OTHER")
