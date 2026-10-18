@@ -342,7 +342,7 @@ Anything with `due:` or `urgent` jumps the queue regardless of impact and effort
 
 **Working days only.** Weekend deadlines get pulled back to the previous Friday. The exception is a step that waits on someone else replying, which pushes to the following Monday instead, because a Friday deadline on someone else's reply is really a Monday deadline.
 
-**Public holidays count as non-working days.** Which apply is the `Country:` line in `data/profile.md` (for example `Country: GB`) and an optional `Region:` (`GB-SCT`). The days come from Nager.Date and are cached in `data/holidays/`; offline, England and Wales and Portugal fall back to built-in tables. An older `Holidays: UK, PT` line still works, and with none of these both built-in calendars apply.
+**Public holidays count as non-working days.** Which apply is the `Country:` line in the profile (`<memory_root>/me/profile.md` (when `memory_root` is set and the file exists) or `data/profile.md`) (for example `Country: GB`) and an optional `Region:` (`GB-SCT`). The days come from Nager.Date and are cached in `data/holidays/`; offline, England and Wales and Portugal fall back to built-in tables. An older `Holidays: UK, PT` line still works, and with none of these both built-in calendars apply.
 
 **Back-plan from the formal deadline.** A review formally due Sunday 6 September closes Friday 4 September in this file, and every sub-step is dated backwards from there. Never leave the formal date as the working date.
 

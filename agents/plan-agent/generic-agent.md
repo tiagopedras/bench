@@ -18,7 +18,7 @@ same line.
 
 ## What to read, in order
 
-1. `data/profile.md`, who the owner is. It wins over anything else that describes
+1. The profile (`<memory_root>/me/profile.md` (when `memory_root` is set and the file exists) or `data/profile.md`), who the owner is. It wins over anything else that describes
    the owner. Where it does not exist, read `agents/pa_agent/PA.md`.
 2. `CONVENTIONS.md` at the repo root, the file format and what every tag means.
 3. The list's `todo.md`: the `## Context` section at the bottom, then the task's

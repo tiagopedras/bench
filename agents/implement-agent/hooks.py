@@ -73,7 +73,7 @@ TASK_TIMEOUT = 20 * 60
 BY = todo.IMPLEMENT_AGENT
 
 # Where improve-agent lives, for code plans only. Its git module and registry are
-# read, never written. data/profile.md names it (Improve agent folder) and
+# read, never written. the profile names it (Improve agent folder; <memory_root>/me/profile.md if Bench's memory_root is set and it exists, else data/profile.md) and
 # $IMPLEMENT_IMPROVE_DIR overrides that, for the tests. Unset, code plans are
 # turned away.
 IMPROVE_DIR = os.environ.get("IMPLEMENT_IMPROVE_DIR") or owner_profile.improve_agent_folder() or ""
@@ -295,7 +295,7 @@ def eligible(item, target):
             return why
         tools = _improve()
         if not tools:
-            return "improve-agent is not set up (Improve agent folder in data/profile.md), and code runs on its guards"
+            return "improve-agent is not set up (Improve agent folder in the profile), and code runs on its guards"
         if not tools[1].clean(repo["path"]):
             return "the working tree of %s is not clean" % repo["path"]
         return None

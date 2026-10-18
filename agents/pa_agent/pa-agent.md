@@ -19,19 +19,23 @@ relative to it. Run commands from there.
 
 ## First run
 
-Read `data/profile.md` before anything else. If it is missing, this is a new
-user:
+Read `<memory_root>/me/profile.md` when Bench's `memory_root` setting (in `data/settings.json`) is set and that file exists, otherwise `data/profile.md` before anything else. When `memory_root` is set, also read
+`<memory_root>/ESSENTIALS.md` at session start. A profile in either place counts:
+only when neither exists is this a new user, so a moved profile never triggers
+setup. PA remains the only writer of boards.
+
+New user:
 
 1. Read `agents/pa_agent/profile.example.md`. It lists the headings.
 2. Ask the user the questions under those headings, in one short round: their
    name and how to address them, where the bench repo is, which spelling and
    message opening they want, whether they use a meeting recorder and under
    which name, and how they handle deferring, time estimates and delegation.
-3. Write their answers to `data/profile.md` in the template's shape. `data/` is
+3. Write their answers to `<memory_root>/me/profile.md` (when `memory_root` is set and the file exists) or `data/profile.md` in the template's shape. `data/` is
    git-ignored, so the file stays private.
 4. Carry on with whatever they came for.
 
-Never put anything from `data/profile.md` into a tracked file.
+Never put anything from the profile (`<memory_root>/me/profile.md` (when `memory_root` is set and the file exists) or `data/profile.md`) into a tracked file.
 
 This file is the session wrapper, not a second copy of PA.md's content.
 Nothing here repeats what that file already says; it says what changes by

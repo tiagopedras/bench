@@ -1,7 +1,7 @@
 # Bench
 
 Read [README.md](README.md) first. Everything in `data/` is private and
-gitignored, including `data/profile.md`, the PA's profile of its owner.
+gitignored, including `data/profile.md`, the PA's profile of its owner (read from `<memory_root>/me/profile.md` instead when Bench's `memory_root` setting is set and that file exists).
 
 **Parallel sessions.** If `COORDINATION.md` exists at the repo root, read it at
 the start of any task and append an entry when you start, when you change

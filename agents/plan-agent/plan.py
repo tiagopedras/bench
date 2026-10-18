@@ -514,7 +514,7 @@ def build_prompt(task, prior=None):
 
 
 # What the agents are allowed to look at outside this repo: the owner's
-# workspace folder, named by `Workspace folder:` in data/profile.md. The agents
+# workspace folder, named by `Workspace folder:` in the profile (<memory_root>/me/profile.md if Bench's memory_root is set and it exists, else data/profile.md). The agents
 # may be told to read things up there, such as a map of the folder or an index
 # of skills, and without this they cannot, because `claude -p` can only reach
 # its own working directory. Without the setting the list is empty and the

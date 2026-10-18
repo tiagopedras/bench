@@ -25,7 +25,7 @@ source is mechanical, and it lives in a notes file per recorder: `references/sou
 
 ## Which source
 
-Read the **Meeting recorder** section of `data/profile.md`. It names the recorder
+Read the **Meeting recorder** section of the profile (`<memory_root>/me/profile.md` (when `memory_root` is set and the file exists) or `data/profile.md`). It names the recorder
 and holds the owner's account details for it (which account it joins under, how the owner
 appears in it).
 
@@ -301,4 +301,4 @@ The review message is the one place a numbered list is right, since the owner is
 
 1. Create `data/docs/<name>.md` (private) or `references/sources/<name>.md` (shared).
 2. Make it answer the seven questions above for the new recorder: how to connect, how to list meetings, how to read an item, and what each item's timestamp means.
-3. Put the recorder's name in the **Meeting recorder** section of `data/profile.md`, with the owner's account details for it.
+3. Put the recorder's name in the **Meeting recorder** section of the profile (`<memory_root>/me/profile.md` (when `memory_root` is set and the file exists) or `data/profile.md`), with the owner's account details for it.
