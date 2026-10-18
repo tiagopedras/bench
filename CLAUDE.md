@@ -3,6 +3,8 @@
 Read [README.md](README.md) first. Everything in `data/` is private and
 gitignored, including `data/profile.md`, the PA's profile of its owner (read from `<memory_root>/me/profile.md` instead when Bench's `memory_root` setting is set and that file exists).
 
+**Memory root.** The `memory_root` key in `data/settings.json` can point at a folder outside Bench that holds the owner's facts, so agents elsewhere can share them. Bench reads the profile and each list's people from there first and falls back to `data/`. It also writes `boards.md` into that folder, so the board list is visible without reading `data/`. Don't assume the profile or people live in `data/`. Read them through `core/owner_profile.py` or the server, which resolve the setting. `boards.md` is written by Bench, so don't edit it by hand.
+
 **Parallel sessions.** If `COORDINATION.md` exists at the repo root, read it at
 the start of any task and append an entry when you start, when you change
 something another session could depend on, and when you finish. Append only.
