@@ -812,8 +812,76 @@ function reapChatWins(){
   }
 }
 
+/* ---- The reply chime ----
+   Every chat that replies plays a short sound when the reply is over: a soft
+   two-note rise for done, one low note for an error or a stop. Drawn with Web
+   Audio, so no file ships. Settings > Chime switches it off (`chime` in
+   data/settings.json). The setting is read once; saving Settings reloads the page. */
+let chimeCtx = null, chimeAllowed = null;
+
+function chimeOn(){
+  if (chimeAllowed === null) {
+    chimeAllowed = true;
+    fetch('/settings.json').then(r => r.json()).then(s => { chimeAllowed = !s || s.chime !== false; }).catch(() => {});
+  }
+  return chimeAllowed;
+}
+
+function playChime(kind){
+  if (!chimeOn()) return;
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return;
+  try {
+    if (!chimeCtx) chimeCtx = new Ctx();
+    if (chimeCtx.state === 'suspended') chimeCtx.resume();
+    const notes = kind === 'done' ? [[659.25, 0], [880, 0.12]] : [[196, 0]];
+    const t0 = chimeCtx.currentTime + 0.02;
+    for (const [freq, at] of notes) {
+      const osc = chimeCtx.createOscillator(), gain = chimeCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, t0 + at);
+      gain.gain.exponentialRampToValueAtTime(0.12, t0 + at + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + at + (kind === 'done' ? 0.4 : 0.5));
+      osc.connect(gain);
+      gain.connect(chimeCtx.destination);
+      osc.start(t0 + at);
+      osc.stop(t0 + at + 0.55);
+    }
+  } catch (e) { /* no sound is not worth a broken reply */ }
+}
+
+/* Wraps a window's run so the chime knows how it ended: an error line, a
+   result flagged as an error, a stop or a thrown error is "error", anything
+   else "done". */
+function chimeWatch(run, ended){
+  return async function*(payload, signal){
+    let kind = 'done';
+    try {
+      for await (const line of run(payload, signal)) {
+        if (line.indexOf('"board_error"') !== -1 || line.indexOf('"is_error":true') !== -1) {
+          try {
+            const d = JSON.parse(line);
+            if (d.type === 'board_error' || (d.type === 'result' && d.is_error)) kind = 'error';
+          } catch (e) { /* not a line to judge */ }
+        }
+        yield line;
+      }
+    } catch (e) {
+      kind = 'error';
+      throw e;
+    } finally {
+      if (signal && signal.aborted) kind = 'error';
+      ended(kind);
+    }
+  };
+}
+
 function makeChatWin(newFor){
   let inst;
+  // How the last run ended, and whether the window was running at its last
+  // change: a change from running to not is the reply finishing.
+  let lastEnd = 'done', wasRunning = false;
   // Set when a message goes out on the PA's key and cleared once the run it
   // started has ended — see "The PA panel" below. A PA conversation the focus
   // prompt started can be opened again as a window, through a `#!chat=` link,
@@ -827,7 +895,7 @@ function makeChatWin(newFor){
     ownerLabel: chatOwnerLabel,
     // The PA's doing:/done: lines are the focus prompt's status, not part of
     // the conversation: taken out of what a window shows. See paStripStatus().
-    transport: { run: chatRunStripped, transcript: chatTranscriptStripped },
+    transport: { run: chimeWatch(chatRunStripped, k => { lastEnd = k; }), transcript: chatTranscriptStripped },
     readOnlyHelp: '',
     // "Can write" in the head, drawn only while the list's claude.json has
     // "work": true. The server holds a writing run to its cwd and refuses
@@ -840,6 +908,9 @@ function makeChatWin(newFor){
       onPromptRunSend(p);
     },
     onChange: () => {
+      const running = inst.running();
+      if (wasRunning && !running) playChime(lastEnd);
+      wasRunning = running;
       if (paWaiting && !inst.running()) { const sent = paWaiting; paWaiting = null; paAfterReply(inst, sent); }
       reapChatWins(); onChatChange();
     },

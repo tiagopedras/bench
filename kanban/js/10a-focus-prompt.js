@@ -180,7 +180,7 @@ async function fpRun(c, prompt, ask){
   } catch (e) {
     err = (e && e.message) || String(e);
   }
-  if (err) { fpSettleLater(c, 'error', err, []); return; }
+  if (err) { playChime('error'); fpSettleLater(c, 'error', err, []); return; }
 
   const before = fpSnapshot();
   try { await paAfterReply(null, { ask }, reply); } catch (e) { /* the status line has it */ }
@@ -188,6 +188,7 @@ async function fpRun(c, prompt, ask){
      ends the focus: there is nothing left on the page for it to be on. */
   const held = typeof BoardUI !== 'undefined' && BoardUI.focusedElement();
   if (held && !held.isConnected) BoardUI.endFocus();
+  playChime('done');
   fpSettleLater(c, 'done', paStatusLines(reply).done || 'Done', fpChanges(before));
 }
 

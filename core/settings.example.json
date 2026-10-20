@@ -12,6 +12,7 @@
     "plan": { "start": "scheduled" },
     "implement": { "start": "scheduled" }
   },
+  "chime": true,
   "memory_root": null,
   "projects_roots": {}
 }

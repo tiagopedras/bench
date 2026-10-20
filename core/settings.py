@@ -10,7 +10,8 @@ nothing raises.
      "models": {"default": null, "plan": null, "implement": null,
                 "chat": null, "brief": null, "planner": null},
      "agents": {"plan": {"start": "scheduled"},
-                "implement": {"start": "scheduled"}}}
+                "implement": {"start": "scheduled"}},
+     "chime": true}
 
 - `models`: a model per job (`plan`, `implement`, `chat`, `brief`, `planner`), then
   `default` for any job without its own. `$BENCH_MODEL_<JOB>` wins over both.
@@ -20,6 +21,9 @@ nothing raises.
   task is handed to it. `scheduled` waits for its hours in the board's Agents
   tab (today's behaviour); `now` has the board start a run as soon as the hand
   over is saved.
+- `chime`: true plays a short sound when a reply finishes in any chat on the
+  board, a soft two-note rise for done and one low note for an error or a
+  stop. False keeps the board silent. On by default.
 - `memory_root`: optional, a folder outside the repo that holds the owner's
   long-lived facts, shared with agents outside Bench. Set, the owner's profile
   is read from `<memory_root>/me/profile.md` and each list's people from
@@ -67,6 +71,7 @@ DEFAULTS = {
                "chat": None, "brief": None, "planner": None},
     "agents": {"plan": {"start": "scheduled"},
                "implement": {"start": "scheduled"}},
+    "chime": True,
 }
 
 
@@ -109,6 +114,8 @@ def load(root=None):
                 out["agents"][key].update({k: v for k, v in entry.items() if k != "start"})
                 if entry.get("start") in STARTS:
                     out["agents"][key]["start"] = entry["start"]
+    if isinstance(raw.get("chime"), bool):
+        out["chime"] = raw["chime"]
     memory = _memory_value(raw.get("memory_root"))
     if memory:
         out["memory_root"] = memory
@@ -274,6 +281,8 @@ def validate(data, root=None):
             return "agents.%s must be an object" % key
         if "start" in entry and entry["start"] not in STARTS:
             return "start for %s must be one of %s" % (key, ", ".join(STARTS))
+    if "chime" in data and not isinstance(data["chime"], bool):
+        return "chime must be true or false"
     err = _folder_error("memory_root", data.get("memory_root"))
     if err:
         return err
@@ -360,6 +369,8 @@ def save(root, data):
                              if k in merged["models"]})
     for key, entry in (data.get("agents") or {}).items():
         merged["agents"].setdefault(key, {}).update(entry)
+    if isinstance(data.get("chime"), bool):
+        merged["chime"] = data["chime"]
     # Sent empty or null clears it; not sent leaves what is on disk.
     if "memory_root" in data:
         memory = _memory_value(data["memory_root"])
