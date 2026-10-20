@@ -17,7 +17,7 @@ The morning session over the list: what came in overnight, what today and this w
 
 The value is in the two things the owner cannot easily do themself: the brief and the headline check. The middle of the session, applying what the owner tells you, is the cheap part.
 
-On a quiet morning where nothing has changed, moves 2, 3 and 5 are the whole session: here is the day, the headline still holds. Do not manufacture work to fill the rest.
+On a quiet morning where nothing has changed, moves 2, 3 and 5 are the whole session: here is the day, the headline still holds, plus the one process-match question in move 4 when there is a match. Do not manufacture work to fill the rest.
 
 ## Move 1: pull what came in, only when asked
 
@@ -45,16 +45,19 @@ The headline, overdue, due today/tomorrow/this week, doing, waiting, blocked, we
 
 ```bash
 python3 -c "
-import sys
+import sys, json
 sys.path.insert(0, 'core')
-import todo, aggregate, render
+sys.path.insert(0, 'agents/plan-agent')
+import todo, aggregate, render, plan
 tasks = todo.parse_doc(open('data/<dataset>/todo.md', encoding='utf-8').read())
-ctx = aggregate.today_view(tasks)
+ctx = aggregate.today_view(tasks, processes_of=plan.brief_processes)
 print(render.render('agents/pa_agent/skills/pa-checkin/templates/<name>.md', ctx))
+print('--- process matches ---')
+print(json.dumps(ctx['process_matches'], indent=1))
 "
 ```
 
-run from the bench repo root, with `<dataset>` and `<name>` filled in. What comes back is the brief, verbatim — send it as it stands rather than editing it, the same way `pa`'s own writing rules never apply to something rendered.
+run from the bench repo root, with `<dataset>` and `<name>` filled in. Everything above the `--- process matches ---` line is the brief, verbatim — send it as it stands rather than editing it, the same way `pa`'s own writing rules never apply to something rendered. What is below the line is for move 4 and is not sent.
 
 Three fields still come back empty on every template — `checker_flags`, `slipped` and `context_dates` — because nothing computes them yet. Treat that the way a template treats any other empty field: the line or section drops, and nothing here should try to fill the gap by re-reading the file for them. What the checker flagged and what has slipped since `Last updated` are still worth knowing, so read them yourself from the checker's own output above and from Context's dates, and say them separately if they matter — just not as though the template rendered them.
 
@@ -72,6 +75,8 @@ Ask what has moved since the last session. Two useful shapes, pick by context:
 Do not ask about every task. Ask about the states that matter: what is in Doing, and anything with a date inside the next fortnight.
 
 Straight after the brief, offering the obvious moves as choices is often faster than an open question: tick the headline's next step, move a date, write the agenda for the meeting that is coming, nothing for now. **"Nothing for now" is always one of the options.** Most mornings the owner wanted the brief and that is all.
+
+**Help that already exists.** The process matches below the brief are up to three To do or Doing tasks that read as a process their bucket's brief already names, with the skill or planner that covers it in `covered_by`. They come from shared words, so open each row's `brief` and drop any that is not really that process before offering. Ask about what is left in one question, one lettered line per task: the task, the process, what covers it, and whether to hand it over or run it now. "None of these" is always an answer, and a wrong match costs the owner nothing more. A hand-over is the board's Delegate to, or `pa` in move 6 when the owner asks for it here, since `pa` writes those sub-tasks only when asked. Running a skill now happens in this session, after the brief's other answers. No matches, or none left after reading the briefs, means no question.
 
 ## Move 5: the headline
 

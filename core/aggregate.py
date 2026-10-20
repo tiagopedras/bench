@@ -30,8 +30,115 @@ import todo
 # names rather than a slug — a renamed column would need renaming here too,
 # the same cost every other string-matched column name in this repo carries.
 DOING = "Doing"
+TO_DO = "To do"
 WAITING = "Reviewing"
 BACKLOG = "Backlog"
+
+# The check-in offers at most this many process matches, so the brief stays
+# a brief. A match needs two words in common with the process, a word of its
+# name counting twice when the task says at least half the name, so a task
+# that says Chase matches Chase and one word buried in a description does not.
+PROCESS_OFFERS = 3
+MIN_MATCH = 2
+
+# Words that say nothing about which process a task is: grammar, and the verbs
+# every task title starts with.
+STOP = frozenset("""
+    a an and are as at be by for from has have i in into is it its me my of on
+    or our out so than that the their them then this to up was we what when
+    where which who will with you your about after again all also any before
+    each how just more most new not off only other over some such too very
+    do does done get got make made set put take sort start finish look think
+    add one two next first last thing things stuff bit week day today tomorrow
+    run work help need use try plan whether way ways between against actual
+    via within without
+""".split())
+
+
+def _stem(word):
+    """Crude, and only ever compared with itself: audits and audit, reviewing
+    and review, meetings and meeting land on one key."""
+    if word.endswith("ies") and len(word) > 5:
+        return word[:-3] + "y"
+    if word.endswith("sses"):
+        return word[:-2]
+    if word.endswith("ss"):
+        return word
+    for end in ("ing", "ed", "s"):
+        if word.endswith(end) and len(word) - len(end) >= 3:
+            return word[:-len(end)]
+    return word
+
+
+def _words(text):
+    return {_stem(w) for w in re.findall(r"[a-z0-9]+", (text or "").lower())
+            if len(w) >= 3 and w not in STOP}
+
+
+def _with_agent(task):
+    """Already handed to an agent, on the task or an open sub-task of it, so
+    the help is on its way and offering it again is noise."""
+    if todo.agent_of(task.to):
+        return True
+    _, steps = todo.split_body(task)
+    return any(not s["done"] and todo.agent_of(s["task"].to) for s in steps)
+
+
+def process_matches(tasks, processes_of, today=None, limit=PROCESS_OFFERS):
+    """Open To do and Doing tasks that read as a process their bucket's brief
+    already names, best first, at most `limit` of them.
+
+    `processes_of(bucket)` is agents/plan-agent/plan.py's brief_processes(),
+    handed in rather than imported, because the brief is the planning agent's
+    file and this module reads only todo.md. It returns None for a bucket
+    with no written brief, which leaves that bucket's tasks out.
+
+    Word overlap on prose, so every row is a candidate: the check-in reads
+    the brief before offering it, and a wrong one costs the owner one line to
+    wave off. Words of the bucket's own name and the brief's title are
+    ignored, since every task in a design system bucket says design.
+    """
+    today = today or dt.date.today()
+    briefs, found = {}, []
+    for t in tasks:
+        if t.done or t.column not in (DOING, TO_DO) or _with_agent(t):
+            continue
+        if t.bucket not in briefs:
+            briefs[t.bucket] = processes_of(t.bucket)
+        brief = briefs[t.bucket]
+        if not brief:
+            continue
+        ignore = _words(t.bucket) | _words(brief.get("title"))
+        mine = _words(t.title) - ignore
+        best = None
+        for p in brief.get("processes", []):
+            if not (p.get("skills") or brief.get("planner")):
+                continue
+            named = _words(p["process"]) - ignore
+            shared = mine & (named | _words(p.get("text")))
+            in_name = mine & named
+            # The name counts twice only where the task says at least half
+            # of it: Chase is a chase, one word of AI adoption in the design
+            # team is not adoption.
+            score = len(shared) + (len(in_name) if 2 * len(in_name) >= len(named) else 0)
+            if score >= MIN_MATCH and (best is None or score > best[0]):
+                best = (score, p, shared)
+        if best:
+            found.append((t, brief) + best)
+
+    found.sort(key=lambda m: (m[2], m[0].column == DOING, todo.priority_score(m[0])),
+               reverse=True)
+    rows = []
+    for t, brief, score, p, shared in found[:limit]:
+        row = _row(t, today)
+        row.update({
+            "process": p["process"],
+            "covered_by": ", ".join(p.get("skills") or []) or brief.get("planner", ""),
+            "via": "skill" if p.get("skills") else "planner",
+            "words": sorted(shared), "brief": brief.get("brief", ""),
+        })
+        rows.append(row)
+    return rows
 
 
 def _fmt_long(date):
@@ -85,9 +192,12 @@ def _actionable(task, slugs, today):
     return not (start and start > today)
 
 
-def today_view(tasks, today=None):
+def today_view(tasks, today=None, processes_of=None):
     """Every "about today" field templates.md documents, minus the desk-only
-    three named in this module's own docstring."""
+    three named in this module's own docstring.
+
+    `process_matches` is empty unless `processes_of` is given, see
+    process_matches(); pa-checkin is the one caller that gives it."""
     today = today or dt.date.today()
     open_tasks = [t for t in tasks if not t.done]
     slugs = todo.slug_states(tasks)
@@ -173,6 +283,8 @@ def today_view(tasks, today=None):
         if nxt:
             headline_next_step = nxt["task"].title
 
+    matches = process_matches(tasks, processes_of, today) if processes_of else []
+
     return {
         "date": _fmt_long(today), "date_short": _fmt_short(today),
         "week_start": _fmt_short(week_start),
@@ -187,6 +299,7 @@ def today_view(tasks, today=None):
         "quick_wins": quick_wins, "delegate": delegate,
         "meetings_next_two_days": meetings_next_two_days,
         "meetings_this_week": meetings_this_week,
+        "process_matches": matches, "process_match_count": len(matches),
         # Not built yet — see this module's own docstring.
         "checker_flags": [], "slipped": [], "context_dates": [],
         "overdue_count": len(overdue), "doing_count": len(doing),
