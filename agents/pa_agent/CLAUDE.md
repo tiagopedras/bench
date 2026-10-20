@@ -54,6 +54,9 @@ has the one writer.
 - `skills/pa/scripts/log_sitting.py` — logs how long a sitting took and which
   buckets it touched, into `data/<dataset>/pa-time.json`. Every `pa-*` skill
   calls it; see PA.md.
+- `skills/pa/scripts/pa_working.py` — names the tasks `pa` is about to
+  change in `data/<dataset>/pa-working.json`, and removes it after, so an open
+  board can glow those cards and animate the change.
 - `skills/pa/references/audit-checklist.md` — what to check by hand that the
   script cannot.
 - `skills/pa/references/templates.md` — the report template syntax and the full

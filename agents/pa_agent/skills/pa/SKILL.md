@@ -147,6 +147,14 @@ Keep them out of the reply. They are pending topics: count them on the last line
 
 Use `Edit` on the specific lines. Rewriting the whole file for a two-line change risks losing notes and burns tokens for no gain. Reserve a full rewrite for a genuine restructure, like adding a bucket or moving most of a section between states.
 
+**Tell the board before the first edit, and again when the last one is done.** An open board glows the cards you name while you work, holds its reload until you finish, then slides each card into its new place. Before the first `Edit`, name every task you are about to change, by title or `id:`, leaving out tasks you are about to add:
+
+```bash
+python3 "${BENCH_ROOT:-$HOME/Code/bench}"/agents/pa_agent/skills/pa/scripts/pa_working.py start "${BENCH_ROOT:-$HOME/Code/bench}"/data/<dataset>/pa-working.json "Task title" ab12cd
+```
+
+After the last edit and the checker, run the same script with `done` and the same path. Run `done` even when the edit failed or you stopped to ask, since the board holds its reload until the file goes or is ten minutes old. If you stop to ask mid-batch, run `done` first and `start` again when you resume.
+
 **There are no sections to rebuild.** The file is four buckets and nothing else. This week, Quick wins, Big rocks, Dependency chain and Delegate to Claude are worked out by the board every time it renders. Never add them back as text: a section in the file is a copy, and a copy has to be maintained by hand every session or it starts describing a file that has moved on.
 
 So the whole update is the tag:
