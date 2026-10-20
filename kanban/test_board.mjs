@@ -601,6 +601,22 @@ await evalJS(`new Promise(r => setTimeout(r, 750))`)
 check('moving past 5px before 600ms cancels the hold', await evalJS(`!${holdCard}.classList.contains('is-held')`))
 await evalJS(`__ptr('pointerup', null, ...__pt); closeDrawer()`)
 
+/* The one thing stops being it when it is ticked off, unless it repeats. */
+check('ticking the one thing into Done clears it', await evalJS(`(() => {
+  const t = state.doc.buckets.flatMap(b => b.tiers.flatMap(ti => ti.tasks)).find(t => !t.repeat && !t.done);
+  t.headline = '2026-08-17';
+  setDone(t, true);
+  return t.headline === '';
+})()`))
+check('ticking a recurring one into Done keeps it the one thing', await evalJS(`(() => {
+  const t = state.doc.buckets.flatMap(b => b.tiers.flatMap(ti => ti.tasks)).find(t => !t.repeat && !t.done);
+  t.repeat = 'wed';
+  t.headline = '2026-08-17';
+  setDone(t, false, { stay: true });
+  setDone(t, true);
+  return t.headline === '2026-08-17';
+})()`))
+
 /* ---- the point of the guard ---- */
 
 /* The tab is unlocked here, so the board tries to save after every move. The
