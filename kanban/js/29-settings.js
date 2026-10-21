@@ -113,11 +113,14 @@ function settingsFormHTML(draft, choices, first){
       '<span class="help">A folder outside Bench that keeps facts about you for other agents to share. Set, your profile and each list’s people are read from there first, and Bench lists its boards in boards.md inside it. Empty means none.</span></label>') +
     (first || !draft.list ? '' : '<label class="field"><span>Projects folder for ' + esc(draft.list) + '</span><input type="text" data-projects value="' + escAttr(draft.projectsRoot) + '" placeholder="Not set">' +
       '<span class="help">A folder of this list’s own, one folder per project inside it, which no other list may use. Set, a project is looked for there first and new ones are made there. Empty keeps them in data/' + esc(draft.list) + '/projects/.</span></label>') +
+    '<label class="field"><span>Reply chime</span>' +
+    '<button type="button" role="switch" class="tenon-switch' + (draft.chime ? ' tenon-switch--on' : '') + '" data-chime aria-checked="' + draft.chime + '"></button>' +
+    '<span class="help">A short sound when a reply finishes in any chat: two rising notes for done, one low note for an error or a stop.</span></label>' +
     '<details class="agentopts" data-agent-options><summary>Agent options</summary>' +
     '<div class="agentopts__body">' +
     settingsModelField('default', 'Default model', 'Used by any model below that is left on Use default.', draft, choices) +
     agents +
-    '<div class="agentopts__group"><h4><span class="avatar" aria-hidden="true">' + avatarSvg('Bucket planners', 18) + '</span>Bucket planners</h4>' +
+    '<div class="agentopts__group"><h4>' + plannerAvatarHTML('var(--tenon-text-secondary, #8a8a8a)', 18) + 'Bucket planners</h4>' +
     settingsModelField('planner', 'Model', 'The planner each bucket runs its tasks against. They start with the Plan agent and spend from its daily budget, so they have no budget of their own.', draft, choices) +
     '</div>' +
     '<div class="agentopts__group"><h4>Other</h4>' + other + '</div>' +
@@ -157,6 +160,7 @@ async function loadSettingsDraft(first){
     was: { country, region, memoryRoot, projectsRoot },
     touched: {},
     countries: places.countries || [], regions: legacy.length ? [] : ((places.regions || {})[prof.country] || []),
+    chime: set.chime !== false,
     models, agents, budget: dollars(set.daily_budget), agentBudgets } };
 }
 
@@ -216,6 +220,8 @@ function trackSettingsForm(draft, first){
     if (r) draft.region = r.value;
     const m = modalEl.querySelector('[data-memory]');
     if (m) draft.memoryRoot = m.value;
+    const ch = modalEl.querySelector('[data-chime]');
+    if (ch) draft.chime = ch.getAttribute('aria-checked') === 'true';
     const pr = modalEl.querySelector('[data-projects]');
     if (pr) draft.projectsRoot = pr.value;
     modalEl.querySelectorAll('[data-model]').forEach(s => { draft.models[s.dataset.model] = s.value || null; });
@@ -234,6 +240,15 @@ function trackSettingsForm(draft, first){
   };
   modalEl.addEventListener('input', sync);
   modalEl.addEventListener('change', sync);
+  /* A switch is a button, so it reports a click rather than a change. */
+  modalEl.addEventListener('click', e => {
+    const sw = e.target.closest('[data-chime]');
+    if (!sw) return;
+    const on = sw.getAttribute('aria-checked') !== 'true';
+    sw.setAttribute('aria-checked', String(on));
+    sw.classList.toggle('tenon-switch--on', on);
+    sync();
+  });
   modalEl.addEventListener('focusout', e => {
     if (e.target.matches('[data-name]')) draft.touched.name = true;
     if (e.target.matches('[data-country]')) draft.touched.country = true;
@@ -272,7 +287,7 @@ async function saveSettingsDraft(draft){
   const dollars = v => v.trim() === '' ? null : Number(v);
   const agentBudgets = {};
   for (const k in draft.agentBudgets) agentBudgets[SETTINGS_BUDGET_IDS[k]] = dollars(draft.agentBudgets[k]);
-  const body = { models: draft.models, agents: draft.agents,
+  const body = { models: draft.models, agents: draft.agents, chime: draft.chime,
     daily_budget: dollars(draft.budget), agent_budgets: agentBudgets };
   if (draft.memoryRoot.trim() !== draft.was.memoryRoot) body.memory_root = draft.memoryRoot.trim() || null;
   if (draft.list && draft.projectsRoot.trim() !== draft.was.projectsRoot)

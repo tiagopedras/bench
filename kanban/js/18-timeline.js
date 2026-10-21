@@ -14,9 +14,11 @@
    own start and due.) A task with both draws
    as a bar; a task with only `due:` — most of the list — draws as a diamond
    on that date rather than a bar backed by a start date nobody set; a task
-   with only `start:` draws as a bar out to today, since "started, no
-   deadline yet" is still two real dates once today is one of them. A task
-   with neither gets a lane row with an empty track, which dates it when clicked or dragged.
+   with only `start:` draws the same diamond on its start, outlined rather
+   than filled, whether that start is past or still to come. It used to draw
+   as a bar out to today, which for a start next week painted the days
+   before it could begin. A task with neither gets a lane row with an empty
+   track, which dates it when clicked or dragged.
 
    A lane's vertical order is its own thing, not the tier order the board
    uses — a lane mixes tasks pulled from every tier, so there is no shared
@@ -182,8 +184,10 @@ function tlWeekends(scale){
    own has nothing to write to, so it alone stays still.
 
    Every task's mark has an edge at each end. On a bar they set start and due.
-   A trail's right edge sets the due date it is missing, which makes it a bar,
-   and a diamond's left edge sets the start it is missing the same way. */
+   A diamond's left edge sets the start and its right edge the due, so on a
+   due-only diamond the left one adds the start it is missing, and on a
+   start-only one the right one adds the due, either way making it a bar.
+   Dragging the diamond itself moves the one date it has. */
 function timelineRowModel(row, scale, sub){
   const s = tlOffset(scale, row.start), d = tlOffset(scale, row.due);
   const drag = !sub || row.sub;
@@ -195,11 +199,9 @@ function timelineRowModel(row, scale, sub){
              dueCls: di ? di.cls : undefined, title: row.title,
              drag: drag ? 'move' : null, handles: drag };
   } else if (s != null) {
-    const t0 = tlOffset(scale, ymd(today()));
-    mark = { kind: 'trail', left: Math.min(s, t0) * scale.dayPx,
-             width: Math.max(1, Math.abs(t0 - s) + 1) * scale.dayPx,
-             title: row.title + ' — started, no due date yet',
-             drag: drag ? 'move' : null, handles: drag };
+    mark = { kind: 'milestone', start: true, left: s * scale.dayPx, width: scale.dayPx,
+             title: row.title + ' — starts ' + dueLabel(row.start) + ', no due date yet',
+             drag: drag ? 'start' : null, handles: drag };
   } else if (d != null) {
     const di = dueInfo(row.due);
     mark = { kind: 'milestone', left: d * scale.dayPx, width: scale.dayPx, dueCls: di ? di.cls : undefined,
@@ -408,7 +410,8 @@ function hideTlPopover(){ if (tlPopoverEl) tlPopoverEl.classList.remove('on'); }
    than a trip to the drawer. Three targets, all wired the same way:
      .tlbar itself       — data-tldrag="move", shifts start and due together
      .tlhandle-l/-r       — data-tldrag="start"/"due", resizes one end
-     .tlmilestone         — data-tldrag="due", the only date it has
+     .tlmilestone         — data-tldrag="due", or "start" on a start-only
+                            diamond, the only date it has
    A sub-task's marks carry the same, written through tlTarget(); only a step
    with no id of its own gets none (see Mark in kanban/ui/TimelineBody.tsx).
    This is the handler each mark's
@@ -475,15 +478,13 @@ function tlMarkPointerDown(e, id, kind){
   if (!t || !track) return;
   const scale = timelineScale(timelineTasks().dated);
   const bar = el.classList.contains('tlbar') ? el : el.closest('.tlbar');
-  const milestone = el.classList.contains('tlmilestone') ? el : null;
-  // A trail runs to today until it has a due date, so while only its start
-  // is moving it still ends there.
-  const trailEnd = bar && bar.classList.contains('tltrail') ? tlOffset(scale, ymd(today())) : null;
-  // A diamond's edge handle sits beside the diamond rather than in a bar, so
-  // the range it is drawing out is shown as a ghost bar, the one an empty
-  // track drag draws.
-  const diamond = !bar && !milestone && el.classList.contains('tlmhandle')
-    ? track.querySelector('.tlmilestone[data-tlrow="' + id + '"]') : null;
+  // A diamond's edge handles sit beside it rather than in it, so a press on
+  // one still moves the diamond while the drag keeps to one date. Once it
+  // spans two, the range is shown as a ghost bar, the one an empty track drag
+  // draws, and the diamond stays where it was.
+  const milestone = el.classList.contains('tlmilestone') ? el
+    : (!bar && el.classList.contains('tlmhandle')
+       ? track.querySelector('.tlmilestone[data-tlrow="' + id + '"]') : null);
   let ghost = null;
   // What React drew, put back before the redraw. React compares the new
   // position with the one it last drew, not with what this drag wrote to the
@@ -510,7 +511,10 @@ function tlMarkPointerDown(e, id, kind){
     ev.preventDefault();
     moved = true;
     const day = Math.round((ev.clientX - trackRect.left) / scale.dayPx);
-    if (kind === 'move') {
+    if (kind === 'move' || el === milestone) {
+      // A diamond is picked up by its middle, half a day past the edge a
+      // handle sits on, so it moves by how far the pointer has, as a bar
+      // does, rather than jumping to the day under it.
       const delta = day - beginDay;
       newStart = origStart != null ? origStart + delta : null;
       newDue = origDue != null ? origDue + delta : null;
@@ -519,23 +523,25 @@ function tlMarkPointerDown(e, id, kind){
     } else if (kind === 'due') {
       newDue = origStart != null ? Math.max(day, origStart) : day;
     }
-    const endOf = newDue != null ? newDue : (trailEnd != null ? trailEnd : newStart);
+    const endOf = newDue != null ? newDue : newStart;
     const lo = newStart != null ? Math.min(newStart, endOf) : newDue;
     const hi = newStart != null ? Math.max(newStart, endOf) : newDue;
-    if (diamond) {
+    if (bar) {
+      bar.style.left = (lo * scale.dayPx) + 'px';
+      bar.style.width = (Math.max(1, hi - lo + 1) * scale.dayPx) + 'px';
+    } else if (milestone && newStart != null && newDue != null) {
       if (!ghost) {
         ghost = document.createElement('div');
         ghost.className = 'tlbar tlghostbar';
-        ghost.style.setProperty('--bc', diamond.style.getPropertyValue('--bc'));
+        ghost.style.setProperty('--bc', milestone.style.getPropertyValue('--bc'));
         track.appendChild(ghost);
       }
+      milestone.style.left = drawn.left;
       ghost.style.left = (lo * scale.dayPx) + 'px';
       ghost.style.width = (Math.max(1, hi - lo + 1) * scale.dayPx) + 'px';
-    } else if (bar) {
-      bar.style.left = (lo * scale.dayPx) + 'px';
-      bar.style.width = (Math.max(1, hi - lo + 1) * scale.dayPx) + 'px';
     } else if (milestone) {
-      milestone.style.left = (newDue * scale.dayPx) + 'px';
+      if (ghost) { ghost.remove(); ghost = null; }
+      milestone.style.left = (lo * scale.dayPx) + 'px';
     }
     const label = newStart != null && newDue != null
       ? dueLabel(ymd(addDays(scale.min, newStart))) + ' → ' + dueLabel(ymd(addDays(scale.min, newDue)))

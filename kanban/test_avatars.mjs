@@ -103,6 +103,19 @@ try {
     avatarSvg('Plan agent', 20) === avatarSvg('Plan agent', 20)`))
   check('two different agents draw two different SVGs', await evalJS(`
     avatarSvg('Plan agent', 20) !== avatarSvg('Implement agent', 20)`))
+  check('Plan agent wears its designed avatar, not generated shapes', await evalJS(`
+    avatarSvg('Plan agent', 20).includes('viewBox="0 0 128 128"') && avatarSvg('Plan agent', 20).includes('#F0B355')`))
+  check('a name with no design falls back to the generated shapes', await evalJS(`
+    avatarSvg('Someone else', 20).includes('viewBox="0 0 40 40"')`))
+  check('bucket planners share one shape, each in its own colour', await evalJS(`(() => {
+    const a = avatarSvg('Bucket planners', 16, 'var(--tenon-chart-2)'), b = avatarSvg('Bucket planners', 16, 'var(--tenon-chart-5)');
+    return a !== b && a.includes('var(--tenon-chart-2)') && b.includes('var(--tenon-chart-5)') &&
+      a.replace('var(--tenon-chart-2)', 'X') === b.replace('var(--tenon-chart-5)', 'X');
+  })()`))
+  check("a planner's avatar takes its bucket's colour from bucketColor()", await evalJS(`(() => {
+    const names = state.doc.buckets.map(b => b.name);
+    return names.length > 0 && names.every((n, i) => plannerAvatarHTML(bucketColor(n, i), 16).includes(bucketColor(n, i)));
+  })()`))
   check('a person gets no avatar at all', await evalJS(`agentAvatarHTML('Morgan', 20)`) === '')
   check('an agent does', await evalJS(`agentAvatarHTML('Plan agent', 20).includes('<svg')`))
 

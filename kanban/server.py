@@ -389,6 +389,17 @@ def tick_queue_path(name=None):
     return os.path.join(dataset_dir(name or current_dataset()), "tick-queue.json")
 
 
+def pa_working_path(name=None):
+    """Where the `pa` skill says which tasks it is about to change.
+
+    Written just before its edit to todo.md and deleted just after, by
+    agents/pa_agent/skills/pa/scripts/pa_working.py, so the board can make
+    those cards glow while the edit is under way and hold its reload until it
+    is finished. The board only ever reads it.
+    """
+    return os.path.join(dataset_dir(name or current_dataset()), "pa-working.json")
+
+
 def task_history(task_id, name=None):
     """One task's history, oldest first: which specialist an owning agent brought
     in on it (core/history.py). Read-only; the agents append and nothing here
@@ -2174,6 +2185,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if path == "/tick-queue.json":
             import tick_queue
             return self._json(200, tick_queue.read(tick_queue_path()))
+        if path == "/pa-working.json":
+            # Absent is the ordinary case: pa is not editing. The age is the
+            # file's, so the board can ignore one a crashed session left behind.
+            try:
+                p = pa_working_path()
+                age = max(0, int(time.time() - os.path.getmtime(p)))
+                with open(p, encoding="utf-8") as fh:
+                    got = json.load(fh)
+                tasks = got.get("tasks") if isinstance(got, dict) else None
+                tasks = [str(t) for t in tasks if str(t).strip()] if isinstance(tasks, list) else []
+                return self._json(200, {"working": True, "tasks": tasks, "age": age})
+            except (OSError, ValueError):
+                return self._json(200, {"working": False, "tasks": [], "age": 0})
         # One task's history, `?task=ab12cd`. See task_history() above.
         if path == "/history.json":
             from urllib.parse import parse_qs, urlparse

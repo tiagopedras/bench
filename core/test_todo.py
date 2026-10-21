@@ -594,6 +594,119 @@ def check_profile():
     return failures
 
 
+def check_process_matches():
+    """aggregate.process_matches: To do and Doing only, nothing already with
+    an agent, a name word counting only when the task says half the name, and
+    never more than three, against briefs handed in the way plan.py hands them."""
+    import aggregate
+    failures = 0
+    doc = """## 1. People
+
+### To do
+
+- [ ] **Chase the supplier about the late invoice** [impact:: med] [effort:: S]
+- [ ] **Chase the printer about the posters** [impact:: high] [effort:: S]
+- [ ] **Chase the venue about the deposit** [impact:: low] [effort:: L]
+- [ ] **Chase the caterer about the menu** [impact:: med] [effort:: M]
+- [ ] **Chase the bank** [to:: Plan agent]
+- [ ] **Chase the accountant about the return**
+  - [ ] Plan [to:: Plan agent]
+- [ ] **Book the dentist**
+- [ ] **Write the people newsletter for the team**
+
+### Doing
+
+- [ ] **Chase Morgan about the contract** [impact:: low] [effort:: L]
+
+### Reviewing
+
+- [ ] **Chase the agency about the logo**
+
+### Backlog
+
+- [ ] **Chase the landlord about the boiler**
+
+## 2. Errands
+
+### To do
+
+- [ ] **Chase the plumber about the quote**
+
+## 3. Unplanned
+
+### To do
+
+- [ ] **Chase the council about the bin**
+"""
+    tasks = todo.parse_doc(doc)
+    briefs = {
+        "People": {"title": "People", "brief": "people.md", "planner": "",
+                   "processes": [
+                       {"process": "Chase", "text": "Something is late. Produces one message.",
+                        "skills": ["tiago-writing-voice"]},
+                       {"process": "Newsletter", "text": "Monthly, for the team.", "skills": []},
+                       {"process": "Book appointments for the family", "text": "",
+                        "skills": ["booker"]},
+                   ]},
+        "Errands": {"title": "Errands", "brief": "errands.md", "planner": "errands-agent",
+                    "processes": [{"process": "Chase", "text": "", "skills": []}]},
+    }
+    asked = []
+
+    def of(bucket):
+        asked.append(bucket)
+        return briefs.get(bucket)
+
+    got = aggregate.process_matches(tasks, of, today=dt.date(2026, 10, 20), limit=99)
+    titles = [r["title"] for r in got]
+    cases = [
+        ("the closer match first, late is in its description",
+         titles[:1], ["Chase the supplier about the late invoice"]),
+        ("then Doing among equal scores", titles[1:2], ["Chase Morgan about the contract"]),
+        ("then by priority", titles[2:6],
+         ["Chase the printer about the posters", "Chase the caterer about the menu",
+          "Chase the venue about the deposit", "Chase the plumber about the quote"]),
+        ("Reviewing is not offered", "Chase the agency about the logo" in titles, False),
+        ("Backlog is not offered", "Chase the landlord about the boiler" in titles, False),
+        ("a task with an agent is not", "Chase the bank" in titles, False),
+        ("nor one whose sub-task has one", "Chase the accountant about the return" in titles, False),
+        ("a bucket with no brief is not", "Chase the council about the bin" in titles, False),
+        ("a process nothing covers is not", "Write the people newsletter for the team" in titles, False),
+        ("one word of a long name is not enough", "Book the dentist" in titles, False),
+        ("each brief is read once", sorted(set(asked)) == sorted(asked), True),
+    ]
+    row = {r["title"]: r for r in got}
+    sup = row.get("Chase the supplier about the late invoice", {})
+    cases += [
+        ("the row names the process", sup.get("process"), "Chase"),
+        ("and what covers it", (sup.get("covered_by"), sup.get("via")), ("tiago-writing-voice", "skill")),
+        ("and the brief to check it against", sup.get("brief"), "people.md"),
+        ("the planner covers what no skill does",
+         (row.get("Chase the plumber about the quote", {}).get("covered_by"),
+          row.get("Chase the plumber about the quote", {}).get("via")),
+         ("errands-agent", "planner")),
+    ]
+    capped = aggregate.process_matches(tasks, of, today=dt.date(2026, 10, 20))
+    cases += [
+        ("six candidates, three offered", (len(got), len(capped)), (6, 3)),
+        ("the three are the top of the ranking", [r["title"] for r in capped], titles[:3]),
+    ]
+    view = aggregate.today_view(tasks, dt.date(2026, 10, 20))
+    cases.append(("no briefs handed in, no matches",
+                  (view["process_matches"], view["process_match_count"]), ([], 0)))
+    view = aggregate.today_view(tasks, dt.date(2026, 10, 20), processes_of=of)
+    cases.append(("today_view carries the capped list",
+                  ([r["title"] for r in view["process_matches"]], view["process_match_count"]),
+                  (titles[:3], 3)))
+    for label, got_, want in cases:
+        if got_ != want:
+            print("FAIL process match %s: got %r, wanted %r" % (label, got_, want))
+            failures += 1
+    print("%d process match checks — %s"
+          % (len(cases), "all agree" if not failures else "%d failed" % failures))
+    return failures
+
+
 def main():
     failures = 0
     for tag, label, dates, series in CASES:
@@ -637,6 +750,7 @@ def main():
     failures += check_parse()
     failures += check_priority()
     failures += check_profile()
+    failures += check_process_matches()
     if "--online" in sys.argv[1:]:
         print("\nAgainst the published sources:")
         failures += check_calendar_online()

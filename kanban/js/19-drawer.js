@@ -270,9 +270,13 @@ function mountDateFields(hostId, prefix, ro, fields, onPick){
     idPrefix: prefix, fields, disabled: ro, today: ymd(today()), onPick
   }));
 }
-function dateFieldModels(start, due, inheritedDue){
+function dateFieldModels(start, due, inheritedDue, inheritedStart){
+  /* A sub-task with no start of its own can start when its task can, the way
+     the timeline draws it. The value stays empty so picking one gives it its own. */
+  const from = !start && parseDue(inheritedStart) ? inheritedStart : '';
   return [
-    { key: 'start', label: 'Can start', value: start, text: start ? dueLabel(start) : 'Any time', empty: !parseDue(start) },
+    { key: 'start', label: 'Can start', value: start, text: start ? dueLabel(start) : (from ? 'From the task\'s start, ' + dueLabel(from) : 'Any time'),
+      empty: !parseDue(start) && !from, inherited: !!from, hint: from ? 'Pick one here to give this its own.' : undefined },
     { key: 'due', label: 'Due', value: due, text: dueLabel(due), empty: !parseDue(due), inherited: !!inheritedDue }
   ];
 }
@@ -744,13 +748,6 @@ function filesSection(){
     '<div id="f-files">' + emptyState('No files yet.') + '</div>', undefined, true);
 }
 
-function historySection(t){
-  return sideSection('History', 'history',
-    '<div id="f-history">' + emptyState(t.stableId
-      ? 'No specialist has been called in on this task yet.'
-      : 'Nothing yet. An agent that brings a specialist in on this task writes it here.') + '</div>');
-}
-
 async function loadTaskHistory(t){
   if (!t || !t.stableId) return;
   const taskId = t.id;
@@ -874,17 +871,16 @@ function tagsSection(t){
   const chips = taskTagChips(t);
   const ro = state.locked;
   const head = '<span>Tags' + (chips.length > 1 ? ' <em class="sublabel">' + chips.length + '</em>' : '') + '</span>';
-  if (!chips.length && ro) return '<div class="field">' + head +
+  if (!chips.length && ro) return head +
     emptyState('No tags beyond the fields above. Anything written as '
-             + '`[key:: value]` in the task line shows up here.') + '</div>';
+             + '`[key:: value]` in the task line shows up here.');
   const hasExtra = chips.some(c => c.unrecognised && c.editable);
   // The one control that writes a new tag rather than editing or clearing an
   // existing one — a plain-text key and value on click, the same way editing
   // an existing chip swaps it for an input, so a tag never has to be typed
   // into the raw task line by hand.
-  return '<div class="field">' + head + '<div class="tagchips"></div>' +
-    (hasExtra ? '<span class="help">Amber ones are tags nothing else on the board reads — click to edit or clear.</span>' : '') +
-    '</div>';
+  return head + '<div class="tagchips"></div>' +
+    (hasExtra ? '<span class="help">Amber ones are tags nothing else on the board reads — click to edit or clear.</span>' : '');
 }
 /* Mounts the chips: Tenon's TagChip swaps itself for an input on click, commits
    on Enter or blur and cancels on Escape. Rebuilding the whole panel on every
@@ -1020,6 +1016,18 @@ function addStepAndEdit(t, id){
    sub-task changes nothing. A step with no id yet is given one on the click,
    so every row opens the same way; only a read-only tab, which cannot write
    one, leaves such a row shut. */
+/* The tag after a sub-task's title: the agent's run state when it is assigned
+   to one and a run is on record, else Doing. To do and Done are the tick's. */
+const RUN_TAGS = { running: 'Working', failed: 'Failed', stale: 'Failed', queued: 'Queued', done: 'Finished' };
+function subRowStatus(s){
+  if (s.done) return undefined;
+  const rec = s.to && agentOf(s.to) ? agentRunFor(s) : null;
+  const run = runState(rec);
+  // Only a run that has failed before and been queued again is a retry.
+  if (run === 'queued' && rec.fails > 0) return { label: 'Retrying', tone: run };
+  if (RUN_TAGS[run]) return { label: RUN_TAGS[run], tone: run === 'stale' ? 'failed' : run };
+  return s.doing ? { label: 'Doing', tone: 'doing' } : undefined;
+}
 function mountSubRows(t, id, subs, ro){
   const host = $('#f-subs-host');
   if (!host) return;
@@ -1032,7 +1040,8 @@ function mountSubRows(t, id, subs, ro){
         line: s.line, done: !!s.done, stableId: s.stableId || '', opens: !!s.stableId || !ro,
         avatarHtml: agentAvatarHTML(s.to, 16), title: s.clean,
         due: sd ? { label: sd.label, cls: sd.cls } : undefined,
-        hasNote: !!stepNoteText(t, s.line)
+        hasNote: !!stepNoteText(t, s.line),
+        status: subRowStatus(s)
       };
     }),
     locked: ro,
@@ -1081,6 +1090,20 @@ function mountSubRows(t, id, subs, ro){
        rather than read it as a card. */
     onDragState: live => { subDrag = live ? 0 : null; }
   }));
+}
+
+/* The left half of the panel's head and the body below it are React roots
+   (DrawerHeadLead, DrawerBody in kanban/ui/DrawerPanel.tsx), shared by the
+   task panel and the project panel. The head re-renders in place; the body is
+   replaced by a new key on each task open, and unmounted before the project
+   panel writes its own markup into #dbody. */
+let drawerSeq = 0;
+function mountDrawerHead(model){
+  BoardUI.mountFlushed($('#dheadLead'), BoardUI.h(BoardUI.DrawerHeadLead, model));
+}
+function clearDrawerBody(){
+  BoardUI.unmount($('#dbody'));
+  $('#dbody').textContent = '';
 }
 
 function openDrawer(id, focusTitle){
@@ -1142,33 +1165,29 @@ function openDrawer(id, focusTitle){
   state.openProject = null;
   $('#drawer').classList.remove('projectview');
   $('#drawer').classList.toggle('readonly', ro);
-  $('#drawerTitle').textContent = ro ? 'View task (read-only)' : 'Edit task';
-
   /* The headline is the one thing on the whole list, so the control for it sits
      in the panel's frame rather than in the run of fields — a decision about
      the task, next to the other one, instead of the eighth thing to scroll
      past. The explanation it used to carry underneath moves to the tooltip:
-     it is worth reading once, not on every task. */
-  const hlBtn = $('#dheadHl');
-  hlBtn.classList.remove('hidden');
-  hlBtn.classList.toggle('on', !!t.headline);
-  hlBtn.textContent = t.headline ? 'The one thing' : 'Make headline';
-  hlBtn.title = t.headline
-    ? 'Set ' + dueLabel(t.headline) + '. It stays the headline until you solve it. Click to remove it.'
-    : 'The task that makes the others easier or unnecessary. Only one at a time.';
-  hlBtn.disabled = ro;
-  // Open folder sits beside it. Only for a task with a folder, and only where a
-  // server can open one; a backup preview can still open a folder.
-  const projBtn = $('#dheadProj');
-  projBtn.classList.toggle('hidden', !(proj && !state.demo && !listFolder));
-  projBtn.onclick = () => openProjectFolder(proj);
-  // title as well as text: the line truncates rather than wrapping when the
-  // drawer is narrow, and the read-only one is the sentence worth reading.
-  const help = $('#dheadHelp');
-  help.textContent = ro
-    ? 'Read-only — from a backup, nothing here can be changed.'
-    : 'Changes save automatically';
-  help.title = help.textContent;
+     it is worth reading once, not on every task.
+     Open folder sits beside it. Only for a task with a folder, and only where a
+     server can open one; a backup preview can still open a folder.
+     The help line truncates rather than wrapping when the drawer is narrow, and
+     the read-only one is the sentence worth reading. */
+  mountDrawerHead({
+    title: ro ? 'View task (read-only)' : 'Edit task',
+    help: ro ? 'Read-only — from a backup, nothing here can be changed.' : 'Changes save automatically',
+    headline: {
+      on: !!t.headline,
+      label: t.headline ? 'The one thing' : 'Make headline',
+      hint: t.headline
+        ? 'Set ' + dueLabel(t.headline) + '. It stays the headline until you solve it. Click to remove it.'
+        : 'The task that makes the others easier or unnecessary. Only one at a time.',
+      disabled: ro,
+      onClick: ro ? undefined : () => { if (t.headline) clearHeadline(false); else setHeadline(id); },
+    },
+    folder: proj && !state.demo && !listFolder ? { onClick: () => openProjectFolder(proj) } : null,
+  });
 
   /* The Bucket field: moving to another keeps the column the task is in. The
      task is looked up fresh from state.openTask rather than closed over, since
@@ -1190,121 +1209,20 @@ function openDrawer(id, focusTitle){
       markDirty(); refreshView(); openDrawer(id);
     }
   };
-  const mainFields =
-    '<label class="field"><span>Title</span><input type="text" id="f-title" value="' + esc(t.title) + '"' + dis + '></label>' +
-    /* Only when the bucket has declared themes, or the task already carries
-       one the bucket no longer does (see themeSelectHTML above) — most
-       buckets have none, and a field offering an empty dropdown on every
-       task would be a question with no answer worth asking. */
-    (bucketThemes.length || t.theme
-      ? '<div class="field"><span>Theme</span>' + themeSelectHTML(t.theme, bucketThemes, dis) + '</div>'
-      : '') +
-    '<details class="field dgroup" data-collapse="details"' + (sectionCollapsed('details') ? '' : ' open') + '><summary>Details</summary>' +
-    /* Tenon's Dropdown rather than a native <select> — an <option> cannot carry
-       the coloured dot the bucket filter pills at the top of the board already
-       draw (see bucketColor()/BUCKET_COLOR in 02-state.js), and this is the
-       one field on the whole card where "which bucket" is exactly the thing
-       that colour already stands for everywhere else. */
-    '<div class="field"><span>Bucket</span><div data-pick-host="f-bucket"></div></div>' +
-    '<details class="field" data-collapse="notes"' + (sectionCollapsed('notes') ? '' : ' open') + '>' +
-      /* The label carries the note about subtasks and the Expand button, the
-         way Subtasks' own label already carries Complete all. Under the field
-         they were a line of small print between the note and the next thing,
-         read once and in the way ever after. */
-      '<summary>Description' +
-        '<em class="sublabel">Subtasks are in the list below.</em>' +
-        '<button type="button" class="btn outline small completeall notegrow" id="f-body-grow"></button>' +
-      '</summary>' +
-      /* Rendered by default, raw while you are in it. There used to be an
-         Edit/Preview pair of tabs here and reading a note meant pressing one
-         of them, which is a click to do the thing the panel is open for. Now
-         the note reads as a note, and clicking it swaps the whole field for
-         the textarea with the caret where you clicked (see noteCaret) —
-         blur or Escape puts the rendering back. Not a live side-by-side:
-         the drawer is not wide enough for two columns.
-
-         Raw is still the truth. notePrompt and the other scaffolding readers
-         parse the same text this renders, and a "Message (draft):" line reads
-         as a bullet either way, which is honest rather than wrong. */
-      '<div id="f-body-view" class="repdoc noteview"' + (ro ? '' : ' title="Click to edit"') + '></div>' +
-      '<div id="f-body-mount"></div>' +
-    '</details>' +
-    /* Full width rather than sharing a grid2 with Bucket: a column name like
-       "Reviewing" needs the room a slider half that wide wouldn't give
-       its label, where the old <select> never had to fit the whole word next
-       to anything. */
-    '<div class="field"><span>Column</span>' + stepPickerHTML('f-tier', tierStops, nowIn, ro, 'Column') + '</div>' +
-    '<div class="grid2">' +
-      '<div class="field"><span>Impact</span>' + stepSliderHTML('f-impact', IMPACT_STOPS, t.impact, ro, 'Impact') + '</div>' +
-      '<div class="field"><span>Effort</span>' + stepSliderHTML('f-effort', EFFORT_STOPS, t.effort, ro, 'Effort') + '</div>' +
-    '</div>' +
-      /* One question, one field: who does the work. Left on Nobody for
-         anything the owner is doing themself, which is most of the list. A <select>
-         cannot hold an image, so the avatar sits beside it instead — one span
-         the onchange handler below updates in place, since choosing a person
-         after an agent (with nothing to strip) doesn't re-open the drawer. */
-      '<div class="field"><span>Delegate to</span>' +
-        delegateSelectHTML(t.to, dis) +
-        (agentsSetUp() || agentOf(t.to)
-          ? '<span class="help">The Plan agent plans it and stops. The Implement agent carries it out.</span>'
-          : '') +
-      '</div>' +
-    /* Two dates, because one was doing two jobs. "Can start" is when the work
-       becomes possible; "Due" is when it has to be finished. Quick wins reads
-       the first and ignores the second. */
-    '<div id="f-dates"></div>' +
-    /* Read-only — the `repeat:` tag is set by the pa skill, never typed into
-       the drawer — so this is the same reading the card's own "Recurring" tag
-       tooltip already does, just given room to say it in full. Sits right
-       under the two dates rather than in the sugg column: it is a fact about
-       when the task falls, same as they are, not a note about the task. */
-    (rep ? '<div class="field"><span>Repeats</span>' +
-      '<span class="dpbtn" style="cursor:default">' +
-        esc(rep.label.charAt(0).toUpperCase() + rep.label.slice(1)) + '</span>' +
-      '</div>' +
-      '<span class="help">Next: ' + esc(dueLabel(ymd(nextDue))) + '</span>' +
-      (rep.loose
-        ? '<span class="help">Usual shape, not a fixed rule — the date moves around it.</span>'
-        : '')
-      : '') +
-    (parseDue(t.start) && parseDue(t.due) && parseDue(t.start) > parseDue(t.due)
-      ? '<p class="datewarn">This cannot start until after it is due. One of the two dates is wrong.</p>'
-      : '') +
-    (notYet(t.start)
-      ? '<p class="datenote">Hidden from Quick wins until ' + esc(dueLabel(t.start)) + '.</p>'
-      : '') +
-    '<div class="field"><span>Flags</span>' +
-      '<label class="toggle"><input type="checkbox" id="f-urgent"' + (t.urgent ? ' checked' : '') + dis + '> urgent</label>' +
-    '</div>' +
-    tagsSection(t) +
-    '</details>' +
-    '<div class="field"><span class="fieldhead">Subtasks' +
-      (subs.length && !ro ? ' <em class="sublabel">drag to reorder, click to open</em>' : '') +
-      (!ro && subs.some(s => !s.done)
-        ? '<button type="button" class="btn outline small completeall" id="f-completeall">Complete all</button>'
-        : '') +
-      '</span>' +
-      '<div id="f-subs-host"></div>' +
-      (ro ? '' : '<button type="button" class="btn dashed small addsub" id="f-addsub" title="Enter keeps adding, blank Enter stops">+ Add subtask</button>') +
-    '</div>';
-
-  // The outputs the task produces (agenda, message and prompt suggestions, Jira
-  // tickets) sit under one Outputs heading, each a subsection with its own count.
-  // History stays a section of its own after them. Both are "about the task"
-  // rather than "of the task", kept in a second column when the drawer is wide
-  // enough to hold one, same content and order as when it isn't (see .dcols).
-  //
-  // Every one of them draws whether or not it has anything in it, so nothing
-  // below the column moves as you read from one task to the next.
-  // Start a project and Use an existing folder: only for a task with no folder
-  // yet, and only where a change can be made (same test the card used).
   const canStart = !proj && !ro && !state.demo && !listFolder;
   const startLinks = canStart
     ? '<div class="dlinks"><button type="button" class="dlinkbtn" id="f-projstart">Start a project</button>' +
       '<button type="button" class="dlinkbtn" id="f-projpick">Use an existing folder</button></div>' +
       '<div class="ppick hidden" id="f-projpicker"></div>'
     : '';
-  const outputs = startLinks +
+  /* The outputs the task produces (agenda, message and prompt suggestions, Jira
+     tickets) sit under one Outputs heading, each a subsection with its own
+     count. History stays a section of its own after them. Both are "about the
+     task" rather than "of the task", kept in a second column when the drawer is
+     wide enough to hold one, same content and order as when it isn't (see
+     .dcols). Every one of them draws whether or not it has anything in it, so
+     nothing below the column moves as you read from one task to the next. */
+  const outputs =
     agendaSection(sugg.agenda, t.due, readPrevAgenda(bodyParts(t).notes), true) +
     suggestionSection('Message suggestions', sugg.message,
       { sub: true, emptyText: 'None yet. Written as `- Suggested message: ...` in Notes.' }) +
@@ -1312,16 +1230,54 @@ function openDrawer(id, focusTitle){
       { sub: true, claude:true, task:t.id, emptyText: 'None yet. Written as `- Prompt: ...` in Notes.' })) +
     (DRAWER_HIDDEN.jira ? '' : jiraSection(sugg.jira, true)) +
     filesSection();
-  const sideFields =
-    (DRAWER_HIDDEN.chats ? '' : chatSection(t)) +
-    (DRAWER_HIDDEN.deps ? '' : dependenciesSection(t)) +
-    sideSection('Outputs', 'outputs', outputs) +
-    historySection(t);
+  const historyEmpty = emptyState(t.stableId
+    ? 'No specialist has been called in on this task yet.'
+    : 'Nothing yet. An agent that brings a specialist in on this task writes it here.');
 
-  $('#dbody').innerHTML = '<div class="dcols">' +
-    '<div class="dcol dcol-main">' + mainFields + '</div>' +
-    (sideFields ? '<div class="dcol dcol-side">' + sideFields + '</div>' : '') +
-  '</div>';
+  /* Mounted afresh on every open (a new key), so the panel is replaced rather
+     than patched, which is what assigning #dbody's innerHTML always meant. The
+     Delegate select is drawn before the Theme one so each fills PICK_SPECS the
+     way it did when they were joined in a string. The Bucket, the Column
+     slider and the date pickers mount into the hosts this leaves. */
+  drawerSeq++;
+  BoardUI.mountFlushed($('#dbody'), BoardUI.h(BoardUI.DrawerBody, {
+    key: drawerSeq,
+    ro,
+    title: t.title,
+    /* Only when the bucket has declared themes, or the task already carries
+       one the bucket no longer does (see themeSelectHTML above) — most
+       buckets have none, and a field offering an empty dropdown on every
+       task would be a question with no answer worth asking. */
+    themeHTML: bucketThemes.length || t.theme ? themeSelectHTML(t.theme, bucketThemes, dis) : null,
+    open: key => !sectionCollapsed(key),
+    /* Full width rather than sharing a grid2 with Bucket: a column name like
+       "Reviewing" needs the room a slider half that wide wouldn't give its
+       label. */
+    columnHTML: stepPickerHTML('f-tier', tierStops, nowIn, ro, 'Column'),
+    impactHTML: stepSliderHTML('f-impact', IMPACT_STOPS, t.impact, ro, 'Impact'),
+    effortHTML: stepSliderHTML('f-effort', EFFORT_STOPS, t.effort, ro, 'Effort'),
+    /* One question, one field: who does the work. Left on Nobody for anything
+       the owner is doing themself, which is most of the list. A <select> cannot
+       hold an image, so the avatar sits beside it instead. */
+    delegateHTML: delegateSelectHTML(t.to, dis) +
+      (agentsSetUp() || agentOf(t.to)
+        ? '<span class="help">The Plan agent plans it and stops. The Implement agent carries it out.</span>'
+        : ''),
+    /* Read-only — the `repeat:` tag is set by the pa skill, never typed into
+       the drawer — so this is the same reading the card's own "Recurring" tag
+       tooltip already does, just given room to say it in full. */
+    repeat: rep ? { label: rep.label.charAt(0).toUpperCase() + rep.label.slice(1), next: dueLabel(ymd(nextDue)), loose: !!rep.loose } : null,
+    dateWarn: !!(parseDue(t.start) && parseDue(t.due) && parseDue(t.start) > parseDue(t.due)),
+    dateNote: notYet(t.start) ? 'Hidden from Quick wins until ' + dueLabel(t.start) + '.' : '',
+    urgent: !!t.urgent,
+    tagsHTML: tagsSection(t),
+    subCount: subs.length,
+    canCompleteAll: !ro && subs.some(s => !s.done),
+    startLinksHTML: startLinks,
+    outputsHTML: outputs,
+    extraSideHTML: (DRAWER_HIDDEN.chats ? '' : chatSection(t)) + (DRAWER_HIDDEN.deps ? '' : dependenciesSection(t)),
+    historyHTML: '<div id="f-history">' + historyEmpty + '</div>',
+  }));
 
   // The Description field, on Tenon's Textarea. Mounted
   // rather than drawn as a string, into the placeholder #f-body-mount left in
@@ -1399,7 +1355,6 @@ function openDrawer(id, focusTitle){
   wireStepSlider('f-impact', IMPACT_STOPS, v => { t.impact = v; touch(); });
   wireStepSlider('f-effort', EFFORT_STOPS, v => { t.effort = v; touch(); });
   $('#f-urgent').onchange = e => { t.urgent = e.target.checked; touch(); };
-  hlBtn.onclick = () => { if (t.headline) clearHeadline(false); else setHeadline(id); };
   pickDate = (k, v) => {
     t[k] = v;
     touch();
@@ -1773,7 +1728,7 @@ function openSubtaskDrawer(found){
   mountStepFields($('#sbody'));
   mountPickers($('#sbody'));
   let pickSubDate = () => {};
-  mountDateFields('s-dates', 's', ro, dateFieldModels(f.start, inh.due, took('due')), (k, v) => pickSubDate(k, v));
+  mountDateFields('s-dates', 's', ro, dateFieldModels(f.start, inh.due, took('due'), t.start), (k, v) => pickSubDate(k, v));
   if (!ro) {
     /* One edit: read the line as it is now, change what changed, write it back.
        Read again every time, since another edit may have rewritten it. */
@@ -1919,9 +1874,12 @@ function openProjectDrawer(name){
   hideSubPanel();
   $('#drawer').classList.add('projectview');
   $('#drawer').classList.toggle('readonly', state.locked);
-  $('#drawerTitle').textContent = name;
-  $('#dheadHl').classList.add('hidden');
-  $('#dheadProj').classList.add('hidden');
+  mountDrawerHead({
+    title: name,
+    help: 'A project is a folder, not a task — nothing here can be edited.',
+    headline: null,
+    folder: null,
+  });
 
   const open = rows.filter(r => !r.task.done);
   const done = rows.filter(r => r.task.done);
@@ -1943,6 +1901,7 @@ function openProjectDrawer(name){
     '</button>';
   };
 
+  clearDrawerBody();
   $('#dbody').innerHTML =
     // Filled in by loadProjectFiles() below, out of the folder's own
     // CLAUDE.md — what this project is, when it was opened, when it was last
@@ -1975,8 +1934,6 @@ function openProjectDrawer(name){
   const openBtn = $('#projOpenFolder');
   if (openBtn) openBtn.onclick = () => openProjectFolder(name);
 
-  $('#dheadHelp').textContent = 'A project is a folder, not a task — nothing here can be edited.';
-  $('#dheadHelp').title = $('#dheadHelp').textContent;
   $('#drawer').classList.add('open');
   $('#scrim').classList.add('open');
   loadProjectFiles(name);

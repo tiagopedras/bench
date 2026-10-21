@@ -352,7 +352,8 @@ async function refreshBucketPlanners(){
   if (!again) return;
   again.innerHTML = '<section class="planners" aria-label="This list’s bucket planners">' +
     '<h2>Bucket planners</h2><ul>' +
-    planners.map(p => '<li><span class="planner-bucket">' + esc(p.bucket) + '</span>' +
+    planners.map((p, i) => '<li><span class="planner-bucket">' +
+      plannerAvatarHTML(bucketColor(p.bucket, state.doc.buckets.findIndex(b => b.name === p.bucket)), 16).replace('class="avatar"', 'class="avatar" style="margin-right:6px"') + esc(p.bucket) + '</span>' +
       '<span class="planner-name">' + (p.onDisk ? esc(p.agent) : 'fallback planner') + '</span></li>').join('') +
     '</ul></section>';
 }

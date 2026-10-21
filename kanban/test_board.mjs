@@ -332,7 +332,7 @@ await wait(200)
 const CARD_PARITY = {
   bd0001: '<article class="tenon-card tenon-card--flat tenon-card--accent tenon-card--draggable todo" draggable="true" tabindex="0" role="button" data-id="bd0001" style="--tenon-card-accent:var(--tenon-chart-1)"><div class="tenon-card__head"><div class="tenon-card__title">Alpha</div></div><div class="tenon-card__tags"><span class="tenon-tag tenon-tag--neutral" title="high impact">\u{1f525}</span><span class="tenon-tag tenon-tag--neutral">S</span></div><div class="tenon-card__body"><div class="prog"><span>1/2 steps</span><span class="bar"><i style="width:50%"></i></span></div></div></article>',
   bd0003: '<article class="tenon-card tenon-card--flat tenon-card--accent tenon-card--draggable todo" draggable="true" tabindex="0" role="button" data-id="bd0003" style="--tenon-card-accent:var(--tenon-chart-1)"><div class="tenon-card__head"><div class="tenon-card__title">Gamma</div></div><div class="tenon-card__tags"><span class="tenon-tag tenon-tag--neutral" title="med impact">\u{1f324}️</span><span class="tenon-tag tenon-tag--neutral">M</span></div></article>',
-  bd0004: '<article class="tenon-card tenon-card--flat tenon-card--accent tenon-card--draggable todo" draggable="true" tabindex="0" role="button" data-id="bd0004" style="--tenon-card-accent:var(--tenon-chart-1)"><div class="tenon-card__head"><div class="tenon-card__title">Delta</div></div><div class="tenon-card__tags"><span class="tenon-tag tenon-tag--neutral" title="high impact">\u{1f525}</span><span class="tenon-tag tenon-tag--neutral">S</span><span class="tenon-tag tenon-tag--accent" title="Delegated to Plan agent"><span class="avatar"><svg viewBox="0 0 40 40" width="16" height="16" aria-hidden="true" focusable="false"><rect width="40" height="40" rx="9" fill="var(--tenon-chart-4)"/><rect x="17" y="10" width="12" height="12" fill="var(--tenon-chart-2)" transform="rotate(45 23 16)"/><circle cx="29" cy="17" r="6" fill="var(--tenon-chart-1)"/><rect x="1" y="12" width="20" height="20" fill="var(--tenon-chart-9)" transform="rotate(45 11 22)"/></svg></span>→ Plan agent</span></div></article>',
+  bd0004: '<article class="tenon-card tenon-card--flat tenon-card--accent tenon-card--draggable todo" draggable="true" tabindex="0" role="button" data-id="bd0004" style="--tenon-card-accent:var(--tenon-chart-1)"><div class="tenon-card__head"><div class="tenon-card__title">Delta</div></div><div class="tenon-card__tags"><span class="tenon-tag tenon-tag--neutral" title="high impact">\u{1f525}</span><span class="tenon-tag tenon-tag--neutral">S</span><span class="tenon-tag tenon-tag--accent" title="Delegated to Plan agent"><span class="avatar"><svg viewBox="0 0 128 128" width="16" height="16" aria-hidden="true" focusable="false"><path d="M0 8C0 3.58172 3.58172 0 8 0H120C124.418 0 128 3.58172 128 8V120C128 124.418 124.418 128 120 128H8C3.58172 128 0 124.418 0 120V8Z" fill="white"></path><path d="M64 18.1194L107.749 49.822L91.0381 101.118H36.9619L20.2514 49.822L64 18.1194Z" fill="#F0B355"></path></svg></span>→ Plan agent</span></div></article>',
 }
 const pinCheck = await evalJS(`(() => {
   const canon = el => {
@@ -600,6 +600,22 @@ await evalJS(`closeDrawer(); (() => { const el = ${holdCard}; __ptr('pointerdown
 await evalJS(`new Promise(r => setTimeout(r, 750))`)
 check('moving past 5px before 600ms cancels the hold', await evalJS(`!${holdCard}.classList.contains('is-held')`))
 await evalJS(`__ptr('pointerup', null, ...__pt); closeDrawer()`)
+
+/* The one thing stops being it when it is ticked off, unless it repeats. */
+check('ticking the one thing into Done clears it', await evalJS(`(() => {
+  const t = state.doc.buckets.flatMap(b => b.tiers.flatMap(ti => ti.tasks)).find(t => !t.repeat && !t.done);
+  t.headline = '2026-08-17';
+  setDone(t, true);
+  return t.headline === '';
+})()`))
+check('ticking a recurring one into Done keeps it the one thing', await evalJS(`(() => {
+  const t = state.doc.buckets.flatMap(b => b.tiers.flatMap(ti => ti.tasks)).find(t => !t.repeat && !t.done);
+  t.repeat = 'wed';
+  t.headline = '2026-08-17';
+  setDone(t, false, { stay: true });
+  setDone(t, true);
+  return t.headline === '2026-08-17';
+})()`))
 
 /* ---- the point of the guard ---- */
 

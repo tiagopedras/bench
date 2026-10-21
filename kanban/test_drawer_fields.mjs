@@ -228,6 +228,33 @@ try {
   await evalJS(`document.querySelectorAll('#f-subs .sub')[1].click()`)
   await wait(300)
   check('clicking a row opens that sub-task in its own panel', await evalJS(`document.querySelector('#subpanel').classList.contains('open')`))
+  /* a sub-task with no start of its own says it takes the task's */
+  await evalJS(`closeDrawer(); __t().start = '2026-11-03'; openDrawer(__t().id)`)
+  await wait(300)
+  await evalJS(`document.querySelectorAll('#f-subs .sub')[0].click()`)
+  await wait(300)
+  check('a sub-task without a start reads "From the task\'s start" with the date, not "Any time"', await evalJS(`(() => {
+    const b = document.querySelector('#s-start'), f = b && b.closest('.field');
+    return !!b && b.textContent === "From the task's start, " + dueLabel('2026-11-03') && f.classList.contains('inherited');
+  })()`), await evalJS(`document.querySelector('#s-start')?.textContent`))
+  check('and a task with no start still gives "Any time"', await evalJS(`dateFieldModels('', '', false, '')[0].text === 'Any time' && dateFieldModels('2026-12-01', '', false, '2026-11-03')[0].text === dueLabel('2026-12-01') && !dateFieldModels('2026-12-01', '', false, '2026-11-03')[0].inherited`))
+
+  /* the list tags a sub-task in Doing and an agent's run state */
+  await evalJS(`closeDrawer(); (() => { const t = __t(), s = subSteps(t); const a = readSub(t, s[0].line); a.doing = true; writeSub(t, s[0].line, a); })(); openDrawer(__t().id)`)
+  await wait(300)
+  check('a sub-task in Doing carries a Doing tag; one in To do carries none', await evalJS(`(() => {
+    const r = [...document.querySelectorAll('#f-subs .sub')];
+    return r[0].querySelector('.substatus')?.textContent === 'Doing' && !r[1].querySelector('.substatus');
+  })()`))
+  check('an agent run state replaces Doing, and a ticked sub-task has no tag', await evalJS(`(() => {
+    const s = { to: 'Plan agent', stableId: 'x1', doing: true };
+    agentRuns['x1'] = { state: 'running', started: new Date().toISOString() };
+    const run = subRowStatus(s);
+    agentRuns['x1'] = { state: 'failed', at: new Date().toISOString() };
+    const failed = subRowStatus(s);
+    delete agentRuns['x1'];
+    return run.label === 'Working' && failed.label === 'Failed' && subRowStatus(s).label === 'Doing' && !subRowStatus({ done: true, doing: true });
+  })()`))
   await evalJS(`closeDrawer(); openDrawer(__t().id)`)
   await wait(300)
 

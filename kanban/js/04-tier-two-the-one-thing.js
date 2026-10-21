@@ -630,6 +630,9 @@ function setDone(t, on, opts){
   t.done = on;
   t.doneOn = on ? ymd(today()) : '';
   t.dirty = true;
+  // A one-off ticked into Done is solved, so it stops being the one thing. A
+  // recurring one comes round again and stays the headline until it is solved.
+  if (on && !t.repeat && t.headline) t.headline = '';
   if (!(opts && opts.stay)) moveForTick(t, on);
   // Ticking the card off ticks its sub-steps too — a card in Done with open
   // steps under it reads as unfinished work, which it no longer is. Going the
