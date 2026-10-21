@@ -113,6 +113,9 @@ function settingsFormHTML(draft, choices, first){
       '<span class="help">A folder outside Bench that keeps facts about you for other agents to share. Set, your profile and each list’s people are read from there first, and Bench lists its boards in boards.md inside it. Empty means none.</span></label>') +
     (first || !draft.list ? '' : '<label class="field"><span>Projects folder for ' + esc(draft.list) + '</span><input type="text" data-projects value="' + escAttr(draft.projectsRoot) + '" placeholder="Not set">' +
       '<span class="help">A folder of this list’s own, one folder per project inside it, which no other list may use. Set, a project is looked for there first and new ones are made there. Empty keeps them in data/' + esc(draft.list) + '/projects/.</span></label>') +
+    '<label class="field"><span>Reply chime</span><select data-chime>' +
+    [[true, 'On'], [false, 'Off']].map(([v, l]) => '<option value="' + v + '"' + (draft.chime === v ? ' selected' : '') + '>' + l + '</option>').join('') +
+    '</select><span class="help">A short sound when a reply finishes in any chat: two rising notes for done, one low note for an error or a stop.</span></label>' +
     '<details class="agentopts" data-agent-options><summary>Agent options</summary>' +
     '<div class="agentopts__body">' +
     settingsModelField('default', 'Default model', 'Used by any model below that is left on Use default.', draft, choices) +
@@ -157,6 +160,7 @@ async function loadSettingsDraft(first){
     was: { country, region, memoryRoot, projectsRoot },
     touched: {},
     countries: places.countries || [], regions: legacy.length ? [] : ((places.regions || {})[prof.country] || []),
+    chime: set.chime !== false,
     models, agents, budget: dollars(set.daily_budget), agentBudgets } };
 }
 
@@ -216,6 +220,8 @@ function trackSettingsForm(draft, first){
     if (r) draft.region = r.value;
     const m = modalEl.querySelector('[data-memory]');
     if (m) draft.memoryRoot = m.value;
+    const ch = modalEl.querySelector('[data-chime]');
+    if (ch) draft.chime = ch.value === 'true';
     const pr = modalEl.querySelector('[data-projects]');
     if (pr) draft.projectsRoot = pr.value;
     modalEl.querySelectorAll('[data-model]').forEach(s => { draft.models[s.dataset.model] = s.value || null; });
@@ -272,7 +278,7 @@ async function saveSettingsDraft(draft){
   const dollars = v => v.trim() === '' ? null : Number(v);
   const agentBudgets = {};
   for (const k in draft.agentBudgets) agentBudgets[SETTINGS_BUDGET_IDS[k]] = dollars(draft.agentBudgets[k]);
-  const body = { models: draft.models, agents: draft.agents,
+  const body = { models: draft.models, agents: draft.agents, chime: draft.chime,
     daily_budget: dollars(draft.budget), agent_budgets: agentBudgets };
   if (draft.memoryRoot.trim() !== draft.was.memoryRoot) body.memory_root = draft.memoryRoot.trim() || null;
   if (draft.list && draft.projectsRoot.trim() !== draft.was.projectsRoot)

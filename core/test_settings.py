@@ -167,8 +167,8 @@ class SettingsTest(unittest.TestCase):
             self.assertTrue(settings.save_budgets(f, bad), bad)
         self.assertEqual(self.read_fences(), {"daily_budget": 3})
 
-    def test_settings_hold_models_and_agents_only(self):
-        self.assertEqual(sorted(settings.DEFAULTS), ["agents", "models", "version"])
+    def test_settings_hold_models_agents_and_chime_only(self):
+        self.assertEqual(sorted(settings.DEFAULTS), ["agents", "chime", "models", "version"])
         self.write({"machine": {"code_root": "~/Elsewhere"}})
         self.assertNotIn("machine", settings.load(self.root))
 
@@ -178,6 +178,22 @@ class SettingsTest(unittest.TestCase):
         path = os.path.join(self.root, "MEMORY")
         os.makedirs(path, exist_ok=True)
         return path
+
+    def test_chime_on_by_default_and_saved(self):
+        self.assertIs(settings.load(self.root)["chime"], True)
+        saved, err = settings.save(self.root, {"chime": False})
+        self.assertIsNone(err)
+        self.assertIs(saved["chime"], False)
+        self.assertIs(settings.load(self.root)["chime"], False)
+        saved, _ = settings.save(self.root, {"models": {"plan": "opus"}})
+        self.assertIs(saved["chime"], False)
+        saved, _ = settings.save(self.root, {"chime": True})
+        self.assertIs(saved["chime"], True)
+
+    def test_chime_must_be_true_or_false(self):
+        for bad in ("yes", 1, None):
+            self.assertIn("chime", settings.validate({"chime": bad}, self.root))
+        self.assertIsNone(settings.validate({"chime": False}, self.root))
 
     def test_memory_root_unset_is_absent(self):
         self.write({"models": {"plan": "opus"}})
