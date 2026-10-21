@@ -28,7 +28,10 @@ import { InlineMd } from './InlineMd'
 export type TimelineDragKind = 'move' | 'start' | 'due'
 
 export interface TimelineMark {
-  kind: 'bar' | 'trail' | 'milestone' | 'span'
+  kind: 'bar' | 'milestone' | 'span'
+  /** On a milestone, set when the date it sits on is a start with no due:
+   *  drawn outlined, and dragging it moves the start. */
+  start?: boolean
   left: number
   /** On a milestone, the width of its day column, where its edge handles sit. */
   width?: number
@@ -132,13 +135,14 @@ function Mark({ row, h }: { row: TimelineRow, h: TimelineHandlers | null }) {
   const dragAttrs = drag ? { 'data-tlrow': row.id, 'data-tldrag': drag, ...down(drag) } : {}
   if (m.kind === 'milestone') {
     const diamond = (
-      <div className={'tlmilestone' + (m.dueCls ? ' ' + m.dueCls : '')}
+      <div className={'tlmilestone' + (m.start ? ' tlstartonly' : '') + (m.dueCls ? ' ' + m.dueCls : '')}
         style={bc(row.color, { left: m.left + 'px' })}
         data-open={row.id} {...dragAttrs} title={m.title} />
     )
     if (!m.handles) return diamond
     /* Beside the diamond rather than in it, since it is turned 45°. The left
-       one draws out a start date, the right one moves the due date. */
+       one sets the start and the right one the due, so on either diamond one
+       of them moves the date it has and the other draws out the one it lacks. */
     return (
       <>
         {diamond}
@@ -150,7 +154,7 @@ function Mark({ row, h }: { row: TimelineRow, h: TimelineHandlers | null }) {
     )
   }
   return (
-    <div className={'tlbar' + (m.kind === 'trail' ? ' tltrail' : '') + (m.kind === 'span' ? ' tlspan' : '') + (m.dueCls ? ' ' + m.dueCls : '')}
+    <div className={'tlbar' + (m.kind === 'span' ? ' tlspan' : '') + (m.dueCls ? ' ' + m.dueCls : '')}
       style={bc(row.color, { left: m.left + 'px', width: m.width + 'px' })}
       data-open={row.id} {...dragAttrs} title={m.title}>
       {m.handles ? (

@@ -3060,3 +3060,12 @@
 }
 
 .loading-state{display:flex; justify-content:center; padding:var(--tenon-dimension-300) 0}
+
+/* A `start:` with no `due:` — the same diamond a due-only task draws, on its
+   start date rather than as a bar to today, outlined so a start does not read
+   as a deadline. The faint fill keeps it findable over a weekend's stripes. */
+.tlmilestone.tlstartonly{
+  background:color-mix(in srgb, var(--bc) 15%, transparent);
+  box-shadow:inset 0 0 0 2px var(--bc);
+}
+.tlsub .tlmilestone.tlstartonly{box-shadow:inset 0 0 0 1.5px var(--bc)}

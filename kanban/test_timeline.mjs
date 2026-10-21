@@ -74,6 +74,9 @@ check('the board loaded', await evalJS(`typeof timelineSection === 'function'`))
 await evalJS(`(() => {
   const real = window.fetch;
   window.__blocked = [];
+  // Held off, since the fetch stub below would only log the save and the
+  // drags run past autosave's four seconds.
+  lastSaveAt = Date.now() + 10 * 60 * 1000;
   window.fetch = (u, o) => {
     const m = (o && o.method) || 'GET';
     if (m !== 'GET') { window.__blocked.push(m + ' ' + u); return Promise.resolve(new Response('{}', { status: 200 })) }
@@ -310,35 +313,75 @@ check('dragging a row label below the next row reorders the lane',
   await evalJS(`closeDrawer()`)
 }
 
-/* A trail (a start, no due) has edges too. Its right edge sets the due date
-   it is missing, which turns it into an ordinary bar. */
+/* A start with no due draws a diamond on its start, past or still to come,
+   rather than a bar out to today. Dragging it moves the start and it settles
+   there; its right edge sets the due date it is missing, which turns it into
+   an ordinary bar. */
 {
-  await evalJS(`(() => { const t = locate('${ID.two}').task; t.due = null; refreshView(); })()`)
-  check('a start with no due draws a trail with a handle at each end', await evalJS(`
-    !!document.querySelector('.tlbar.tltrail[data-tlrow="${ID.two}"] .tlhandle-l') &&
-    !!document.querySelector('.tlbar.tltrail[data-tlrow="${ID.two}"] .tlhandle-r')
-  `))
-  const t0 = await evalJS(`tlOffset(timelineScale(timelineTasks().dated), ymd(today()))`)
-  const h = await evalJS(`(() => {
-    const el = document.querySelector('.tlbar.tltrail[data-tlrow="${ID.two}"] .tlhandle-r');
+  const startOnly = `.tlmilestone.tlstartonly[data-tlrow="${ID.two}"]`
+  const leftOf = () => evalJS(`parseInt(document.querySelector('${startOnly}')?.style.left)`)
+  const centre = () => evalJS(`(() => {
+    const el = document.querySelector('${startOnly}');
     el.scrollIntoView({ block: 'center', inline: 'nearest' });
     document.querySelector('.tlscroll').scrollLeft = 0;
     const r = el.getBoundingClientRect();
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   })()`)
-  const to = await dayX(ID.two, t0 + 2)
-  check('the press lands on the trail’s right handle', await evalJS(`document.elementFromPoint(${h.x}, ${h.y})?.classList.contains('tlhandle-r')`) === true)
+  await evalJS(`(() => { const t = locate('${ID.two}').task; t.due = null; refreshView(); })()`)
+  const s = await offsetOf('2026-09-15')
+  check('a start in the past with no due draws a diamond on its start', await leftOf() === s * 28, String(await leftOf()))
+  check('and no bar', await evalJS(`!document.querySelector('.tlbar[data-tlrow="${ID.two}"]')`))
+  check('with a handle at each edge', await evalJS(`
+    !!document.querySelector('.tlmhandle.tlhandle-l[data-tlrow="${ID.two}"]') &&
+    !!document.querySelector('.tlmhandle.tlhandle-r[data-tlrow="${ID.two}"]')
+  `))
+
+  const ahead = await evalJS(`ymd(addDays(today(), 5))`)
+  await evalJS(`(() => { const t = locate('${ID.two}').task; t.start = '${ahead}'; refreshView(); })()`)
+  check('a start still to come draws the same diamond on its start', await leftOf() === (await offsetOf(ahead)) * 28,
+    JSON.stringify({ left: await leftOf(), want: (await offsetOf(ahead)) * 28 }))
+  check('and no bar back to today', await evalJS(`!document.querySelector('.tlbar[data-tlrow="${ID.two}"]')`))
+  await evalJS(`(() => { const t = locate('${ID.two}').task; t.start = '2026-09-15'; refreshView(); })()`)
+
+  {
+    const p = await centre()
+    check('the press lands on the start-only diamond', await evalJS(`document.elementFromPoint(${p.x}, ${p.y})?.dataset.tldrag`) === 'start')
+    await mouse('mousePressed', p.x, p.y)
+    await mouse('mouseMoved', p.x + 10, p.y)
+    await mouse('mouseMoved', p.x + 2 * 28, p.y)
+    check('the diamond follows the drag', await leftOf() === (s + 2) * 28, String(await leftOf()))
+    check('with no ghost bar, since it still has one date', await evalJS(`!document.querySelector('.tlghostbar')`))
+    await mouse('mouseReleased', p.x + 2 * 28, p.y)
+    await new Promise(r => setTimeout(r, 50))
+    const d = await taskDates(ID.two)
+    check('dragging a start-only diamond two days moves its start and adds no due',
+      d.start === '2026-09-17' && d.due === null, JSON.stringify(d))
+    check('and it settles as a diamond on the new start', await leftOf() === (await offsetOf('2026-09-17')) * 28, String(await leftOf()))
+    check('and the release does not open the drawer', await evalJS(`state.openTask`) == null, String(await evalJS(`state.openTask`)))
+  }
+
+  const h = await evalJS(`(() => {
+    const el = document.querySelector('.tlmhandle.tlhandle-r[data-tlrow="${ID.two}"]');
+    el.scrollIntoView({ block: 'center', inline: 'nearest' });
+    document.querySelector('.tlscroll').scrollLeft = 0;
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  })()`)
+  const sOff = await offsetOf('2026-09-17')
+  const to = await dayX(ID.two, sOff + 3)
+  check('the press lands on the start-only diamond’s right handle', await evalJS(`document.elementFromPoint(${h.x}, ${h.y})?.classList.contains('tlhandle-r')`) === true)
   await mouse('mousePressed', h.x, h.y)
   await mouse('mouseMoved', h.x + 10, h.y)
   await mouse('mouseMoved', to.x, h.y)
+  check('a ghost bar shows the range being drawn out', await evalJS(`!!document.querySelector('.tlghostbar')`))
   await mouse('mouseReleased', to.x, h.y)
   await new Promise(r => setTimeout(r, 50))
   const d = await taskDates(ID.two)
-  const want = await dateAt(t0 + 2)
-  check('dragging a trail’s right edge sets its due date and keeps its start',
-    d.start === '2026-09-15' && d.due === want, JSON.stringify({ d, want }))
+  const want = await dateAt(sOff + 3)
+  check('dragging its right edge sets the due date and keeps its start',
+    d.start === '2026-09-17' && d.due === want, JSON.stringify({ d, want }))
   check('and it is drawn as an ordinary bar', await evalJS(`
-    !!document.querySelector('.tlbar[data-tlrow="${ID.two}"]') && !document.querySelector('.tlbar.tltrail[data-tlrow="${ID.two}"]')
+    !!document.querySelector('.tlbar[data-tlrow="${ID.two}"]') && !document.querySelector('${startOnly}') && !document.querySelector('.tlghostbar')
   `))
 }
 
