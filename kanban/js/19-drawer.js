@@ -1018,10 +1018,13 @@ function addStepAndEdit(t, id){
    one, leaves such a row shut. */
 /* The tag after a sub-task's title: the agent's run state when it is assigned
    to one and a run is on record, else Doing. To do and Done are the tick's. */
-const RUN_TAGS = { running: 'Working', failed: 'Failed', stale: 'Failed', queued: 'Retrying', done: 'Finished' };
+const RUN_TAGS = { running: 'Working', failed: 'Failed', stale: 'Failed', queued: 'Queued', done: 'Finished' };
 function subRowStatus(s){
   if (s.done) return undefined;
-  const run = s.to && agentOf(s.to) ? runState(agentRunFor(s)) : '';
+  const rec = s.to && agentOf(s.to) ? agentRunFor(s) : null;
+  const run = runState(rec);
+  // Only a run that has failed before and been queued again is a retry.
+  if (run === 'queued' && rec.fails > 0) return { label: 'Retrying', tone: run };
   if (RUN_TAGS[run]) return { label: RUN_TAGS[run], tone: run === 'stale' ? 'failed' : run };
   return s.doing ? { label: 'Doing', tone: 'doing' } : undefined;
 }
