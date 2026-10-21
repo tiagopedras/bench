@@ -120,7 +120,7 @@ function settingsFormHTML(draft, choices, first){
     '<div class="agentopts__body">' +
     settingsModelField('default', 'Default model', 'Used by any model below that is left on Use default.', draft, choices) +
     agents +
-    '<div class="agentopts__group"><h4><span class="avatar" aria-hidden="true">' + avatarSvg('Bucket planners', 18) + '</span>Bucket planners</h4>' +
+    '<div class="agentopts__group"><h4>' + plannerAvatarHTML('var(--tenon-text-secondary, #8a8a8a)', 18) + 'Bucket planners</h4>' +
     settingsModelField('planner', 'Model', 'The planner each bucket runs its tasks against. They start with the Plan agent and spend from its daily budget, so they have no budget of their own.', draft, choices) +
     '</div>' +
     '<div class="agentopts__group"><h4>Other</h4>' + other + '</div>' +
