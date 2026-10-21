@@ -270,9 +270,13 @@ function mountDateFields(hostId, prefix, ro, fields, onPick){
     idPrefix: prefix, fields, disabled: ro, today: ymd(today()), onPick
   }));
 }
-function dateFieldModels(start, due, inheritedDue){
+function dateFieldModels(start, due, inheritedDue, inheritedStart){
+  /* A sub-task with no start of its own can start when its task can, the way
+     the timeline draws it. The value stays empty so picking one gives it its own. */
+  const from = !start && parseDue(inheritedStart) ? inheritedStart : '';
   return [
-    { key: 'start', label: 'Can start', value: start, text: start ? dueLabel(start) : 'Any time', empty: !parseDue(start) },
+    { key: 'start', label: 'Can start', value: start, text: start ? dueLabel(start) : (from ? 'From the task\'s start, ' + dueLabel(from) : 'Any time'),
+      empty: !parseDue(start) && !from, inherited: !!from, hint: from ? 'Pick one here to give this its own.' : undefined },
     { key: 'due', label: 'Due', value: due, text: dueLabel(due), empty: !parseDue(due), inherited: !!inheritedDue }
   ];
 }
@@ -1012,6 +1016,15 @@ function addStepAndEdit(t, id){
    sub-task changes nothing. A step with no id yet is given one on the click,
    so every row opens the same way; only a read-only tab, which cannot write
    one, leaves such a row shut. */
+/* The tag after a sub-task's title: the agent's run state when it is assigned
+   to one and a run is on record, else Doing. To do and Done are the tick's. */
+const RUN_TAGS = { running: 'Working', failed: 'Failed', stale: 'Failed', queued: 'Retrying', done: 'Finished' };
+function subRowStatus(s){
+  if (s.done) return undefined;
+  const run = s.to && agentOf(s.to) ? runState(agentRunFor(s)) : '';
+  if (RUN_TAGS[run]) return { label: RUN_TAGS[run], tone: run === 'stale' ? 'failed' : run };
+  return s.doing ? { label: 'Doing', tone: 'doing' } : undefined;
+}
 function mountSubRows(t, id, subs, ro){
   const host = $('#f-subs-host');
   if (!host) return;
@@ -1024,7 +1037,8 @@ function mountSubRows(t, id, subs, ro){
         line: s.line, done: !!s.done, stableId: s.stableId || '', opens: !!s.stableId || !ro,
         avatarHtml: agentAvatarHTML(s.to, 16), title: s.clean,
         due: sd ? { label: sd.label, cls: sd.cls } : undefined,
-        hasNote: !!stepNoteText(t, s.line)
+        hasNote: !!stepNoteText(t, s.line),
+        status: subRowStatus(s)
       };
     }),
     locked: ro,
@@ -1711,7 +1725,7 @@ function openSubtaskDrawer(found){
   mountStepFields($('#sbody'));
   mountPickers($('#sbody'));
   let pickSubDate = () => {};
-  mountDateFields('s-dates', 's', ro, dateFieldModels(f.start, inh.due, took('due')), (k, v) => pickSubDate(k, v));
+  mountDateFields('s-dates', 's', ro, dateFieldModels(f.start, inh.due, took('due'), t.start), (k, v) => pickSubDate(k, v));
   if (!ro) {
     /* One edit: read the line as it is now, change what changed, write it back.
        Read again every time, since another edit may have rewritten it. */

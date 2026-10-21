@@ -3082,3 +3082,9 @@
     --pa-settled-anim:pa-settled 2.4s steps(1, end) forwards;
   }
 }
+
+/* Sub-task status tag in the task panel's list: Doing, or an agent's run state. */
+.sub .substatus{font-style:normal; margin-left:6px; font-size: var(--tenon-typography-size-xs); color:var(--tenon-text-accent)}
+.sub .substatus.doing, .sub .substatus.running{color:var(--tenon-text-running)}
+.sub .substatus.failed{color:var(--tenon-text-error)}
+.sub .substatus.done{color:var(--tenon-text-success)}

@@ -94,6 +94,8 @@ export interface DateFieldModel {
   empty: boolean
   /** The value comes from the task, not this item. Draws the quieter field. */
   inherited?: boolean
+  /** What the quieter field says after "From the task." */
+  hint?: string
 }
 
 export interface DateFieldsProps {
@@ -123,7 +125,7 @@ export function DateFields({ idPrefix, fields, disabled, today, onPick }: DateFi
               disabled={disabled}
               onClick={() => setOpen(open === f.key ? null : f.key)}
             >{f.text}</DateButton>
-            {f.inherited && <span className="help">From the task. Pick one here to give this its own.</span>}
+            {f.inherited && <span className="help">{f.hint ? f.hint : 'From the task. Pick one here to give this its own.'}</span>}
           </div>
         ))}
       </div>
@@ -201,6 +203,8 @@ export interface SubRowModel {
   title: string
   due?: { label: string, cls: string }
   hasNote: boolean
+  /** Doing, or an agent's run state. Absent for To do and Done, which the tick shows. */
+  status?: { label: string, tone: string }
 }
 
 export interface SubRowsProps {
@@ -275,6 +279,7 @@ export function SubRows(p: SubRowsProps) {
                 <span className="subtext" data-line={s.line}>
                   <InlineMd text={s.title} />
                   {s.due && <em className={'mini ' + s.due.cls}>{s.due.label}</em>}
+                  {s.status && <em className={'substatus ' + s.status.tone}>{s.status.label}</em>}
                   {s.hasNote && <em className="subnotemark" title="Has a note">note</em>}
                 </span>
               )}
