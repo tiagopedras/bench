@@ -104,3 +104,17 @@ function changesHTML(title, changes, blank, limit){
     (Array.isArray(changes) && changes.length ? ' (' + changes.length + ')' : '') + '</h3>' + body + '</div>';
 }
 
+
+/* A title as something to match on: case, runs of spaces and the bold marks
+   a pasted title can carry all ignored. Shared by the change list below and
+   by pa-working.json, which names tasks the way pa saw them. */
+function titleKey(s){
+  return String(s || '').replace(/\*\*/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+/* The tasks a change list leaves standing on the board, by titleKey, for the
+   glow that follows a reload from disk (settleChanges() in
+   24-autosave-watching.js). A deleted task has no card left to light. */
+function changedTitles(changes){
+  return new Set((changes || []).filter(c => c.what !== 'removed').map(c => titleKey(c.title)));
+}

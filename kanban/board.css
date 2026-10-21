@@ -3060,3 +3060,25 @@
 }
 
 .loading-state{display:flex; justify-content:center; padding:var(--tenon-dimension-300) 0}
+
+/* pa at work (24-autosave-watching.js). The rules naming which cards are
+   written there, by data-id, into style sheets of their own; this is only the
+   look. A card pa is changing breathes in the accent colour, and a card that
+   changed in the reload after glows once and fades. Reduced motion holds
+   both still: the working glow stays lit and the settled one stays lit for
+   its time and then goes, with no fade. */
+:root{
+  --pa-glow:0 0 0 2px var(--tenon-stroke-accent), 0 0 14px 3px color-mix(in srgb, var(--tenon-stroke-accent) 45%, transparent);
+  --pa-glow-soft:0 0 0 1px var(--tenon-stroke-accent), 0 0 8px 1px color-mix(in srgb, var(--tenon-stroke-accent) 25%, transparent);
+  --pa-glow-off:0 0 0 2px transparent, 0 0 14px 3px transparent;
+  --pa-working-anim:pa-working 1.6s ease-in-out infinite;
+  --pa-settled-anim:pa-settled 2.4s ease-out forwards;
+}
+@keyframes pa-working{ 0%, 100%{box-shadow:var(--pa-glow)} 50%{box-shadow:var(--pa-glow-soft)} }
+@keyframes pa-settled{ from{box-shadow:var(--pa-glow)} to{box-shadow:var(--pa-glow-off)} }
+@media (prefers-reduced-motion: reduce){
+  :root{
+    --pa-working-anim:none;
+    --pa-settled-anim:pa-settled 2.4s steps(1, end) forwards;
+  }
+}
