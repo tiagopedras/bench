@@ -965,6 +965,82 @@ Something.
 """
 
 
+def test_brief_processes():
+    """A brief read as its processes, for the check-in's process match.
+
+    Briefs are prose, so what is pinned is each shape a real one uses: a bold
+    lead-in, a `###` heading over a table, a plain paragraph, the template's
+    own guidance left in place, and skills named either inside a process or
+    in What already does it beside a word of its name.
+    """
+    template = io.open(os.path.join(HERE, "bucket-brief.template.md"), encoding="utf-8").read()
+    guidance = template.split("## The processes I run in this bucket\n\n")[1].split("\n\n")[0]
+    text = "\n".join([
+        "# DS / Design System", "", "What lands here.", "",
+        "## The processes I run in this bucket", "",
+        guidance, "",
+        "**Audits.** Figma against code, with `ds-snapshot-all` first.",
+        "Produces a dated report in `twinkl-web`.", "",
+        "**Documentation.** Usage rules. Produces a page in `ds-docs/`.", "",
+        "Validate by calling people, one call at a time, and keep notes.", "",
+        "### The meetings", "",
+        "| Meeting | When |", "| --- | --- |", "| **DSWG** | Fortnightly |", "",
+        "Each has a card on the board.", "",
+        "## What already does it", "",
+        "| Skill | What it does |", "| --- | --- |",
+        "| `ds-process-snapshots` | Rebuilds the audits' records |", "",
+        "Three agents sit beside them: `ds-analyst` answers a question, "
+        "`ds-component-docs` writes usage documentation from GOV.UK.", "",
+        "`tiago-writing-voice` and `tldr` apply to the meetings.", "",
+        "## Who is involved", "", "**Ana.** Not a process.", "",
+    ])
+    got = plan.parse_processes(text, known=lambda n: n != "twinkl-web")
+    procs = {p["process"]: p for p in got["processes"]}
+    check("the brief's title", got["title"], "DS / Design System")
+    check("one process per lead-in, heading and paragraph, guidance left out",
+          [p["process"] for p in got["processes"]],
+          ["Audits", "Documentation", "Validate by calling people", "The meetings"])
+    check("a lead-in's process carries its lines that follow",
+          "dated report" in procs["Audits"]["text"], True)
+    check("skills from inside the process and its table row, never a repo",
+          procs["Audits"]["skills"], ["ds-process-snapshots", "ds-snapshot-all"])
+    check("a path is not a skill, a clause that names its word is",
+          procs["Documentation"]["skills"], ["ds-component-docs"])
+    check("a bare run of names stays with its verb",
+          procs["The meetings"]["skills"], ["tiago-writing-voice", "tldr"])
+    check("everything under a heading is that heading's, table rules stripped",
+          procs["The meetings"]["text"],
+          "Meeting When **DSWG** Fortnightly Each has a card on the board.")
+    check("other sections are not processes", "Ana" in procs, False)
+    check("no processes section, no processes",
+          plan.parse_processes("# X\n\n## Who is involved\n\nMe.\n")["processes"], [])
+
+    tmp = tempfile.mkdtemp()
+    real_root = paths.ROOT
+    try:
+        paths.ROOT = tmp
+        paths.DATA_ROOT = os.path.join(tmp, "data")
+        os.makedirs(os.path.join(tmp, "data"))
+        io.open(os.path.join(tmp, "data", ".current"), "w", encoding="utf-8").write("alpha\n")
+        for stream, body in (("ds", text), ("people", "# People\n\n%s\n" % plan.BRIEF_EMPTY)):
+            d = os.path.join(tmp, "data", "alpha", "buckets", stream)
+            os.makedirs(d)
+            io.open(os.path.join(d, "%s.md" % stream), "w", encoding="utf-8").write(body)
+        check("an unwritten brief has no processes", plan.brief_processes("People"), None)
+        got = plan.brief_processes("3. DS")
+        check("a written one names its file", got["brief"],
+              os.path.join(tmp, "data", "alpha", "buckets", "ds", "ds.md"))
+        check("and no planner where none is on disk", got["planner"], "")
+        io.open(os.path.join(tmp, "data", "alpha", "buckets", "ds", "alpha-ds-agent.md"),
+                "w", encoding="utf-8").write("---\nname: alpha-ds-agent\n---\n")
+        check("and the bucket's planner where one is",
+              plan.brief_processes("3. DS")["planner"], "alpha-ds-agent")
+    finally:
+        paths.ROOT = real_root
+        paths.DATA_ROOT = REAL_DATA_ROOT
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def test_server():
     """plan_listing and mark_plan, against a temp folder rather than the real one.
 
@@ -1765,6 +1841,7 @@ def main():
     test_report()
     test_harvest_usage()
     test_agents()
+    test_brief_processes()
     test_server()
     test_queue_routes()
     test_usage_chart()

@@ -212,6 +212,184 @@ def bucket_brief(bucket):
     return None if BRIEF_EMPTY in body else path
 
 
+# The two sections of a brief the check-in's process match reads, by the
+# headings bucket-brief.template.md ships with. A brief that renames them is
+# a brief the match cannot see into, the same cost as any other string-matched
+# heading in this repo.
+PROCESSES_HEADING = "the processes i run in this bucket"
+COVERED_HEADING = "what already does it"
+
+# A skill or agent name as briefs write one: a backticked, hyphenated,
+# lowercase word. A backticked path has a slash or a dot in it and is not one.
+SKILL_RE = re.compile(r"`([a-z0-9][a-z0-9-]*)`")
+LEAD_RE = re.compile(r"^\*{1,2}([^*]+?)\.?\*{1,2}\.?\s*")
+
+
+def _template_paragraphs():
+    """The template's own guidance paragraphs, whitespace folded, so a brief
+    that kept one under a filled-in heading does not read it as a process."""
+    path = os.path.join(HERE, "bucket-brief.template.md")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+    except OSError:
+        return set()
+    return {" ".join(p.split()) for p in re.split(r"\n\s*\n", text) if p.strip()}
+
+
+def _sections(text):
+    """`## ` heading, lowercased -> the lines under it."""
+    out, cur = {}, None
+    for line in text.split("\n"):
+        m = re.match(r"^##\s+(.+?)\s*$", line)
+        if m:
+            cur = m.group(1).strip().lower()
+            out[cur] = []
+        elif cur is not None:
+            out[cur].append(line)
+    return out
+
+
+def _units(lines, skip):
+    """A section cut into its processes: one per `### ` heading, one per
+    `**Bold.**` lead-in or bullet, otherwise one per paragraph."""
+    units, cur = [], None
+
+    def start(name, text=""):
+        nonlocal cur
+        cur = {"process": name, "text": text}
+        units.append(cur)
+
+    for raw in lines:
+        line = raw.strip()
+        if line.startswith(("<!--", ">")):
+            continue
+        if not line:
+            if cur is not None and not cur.get("heading"):
+                cur = None
+            continue
+        m = re.match(r"^###\s+(.+)$", line)
+        if m:
+            start(m.group(1).strip())
+            cur["heading"] = True
+            continue
+        bullet = re.match(r"^[-*]\s+(.*)$", line)
+        body = bullet.group(1) if bullet else line
+        lead = LEAD_RE.match(body)
+        if lead or (bullet and not (cur and cur.get("heading"))) or cur is None:
+            if lead:
+                start(lead.group(1).strip(), body[lead.end():])
+            else:
+                start("", body)
+            continue
+        cur["text"] += " " + body
+
+    out = []
+    for u in units:
+        text = " ".join(re.sub(r"\|\s*-{3,}\s*|\|", " ", u["text"]).split())
+        if not text and not u["process"]:
+            continue
+        if text in skip:
+            continue
+        name = u["process"]
+        if not name:
+            # An unheaded paragraph is named by its first clause, short enough
+            # to say in one line of the question.
+            first = re.split(r"[.,;:]\s|\s—\s", text, maxsplit=1)[0]
+            words = first.replace("`", "").split()[:8]
+            while len(words) > 1 and words[-1].lower() in ("and", "or", "of", "the", "a", "to"):
+                words.pop()
+            name = " ".join(words)
+        out.append({"process": name, "text": text,
+                    "skills": sorted(set(SKILL_RE.findall(text)))})
+    return out
+
+
+def _clauses(lines):
+    """What already does it, cut fine enough that a skill sits with what it
+    does: a table row each, otherwise a sentence, and a sentence listing
+    several skills with a verb each (`a` answers this, `b` runs that) cut at
+    each one. A bare run of names (`a`, `b` and `c` apply when) stays with the
+    verb that follows it."""
+    rows, prose = [], []
+    for raw in lines:
+        line = raw.strip()
+        if line.startswith("|"):
+            if not re.match(r"^\|[\s:|-]+\|$", line):
+                rows.append(line)
+        else:
+            prose.append(line)
+    out = list(rows)
+    for sentence in re.split(r"(?<=[.!?])\s+", " ".join(prose)):
+        pieces, carry = [], ""
+        for piece in re.split(r",\s+(?=`)", sentence):
+            piece = carry + piece
+            if not re.sub(r"`[^`]*`|\band\b|[,\s]", "", piece):
+                carry = piece + ", "
+                continue
+            carry = ""
+            pieces.append(piece)
+        if carry:
+            pieces.append(carry)
+        out.extend(p for p in pieces if p.strip())
+    return out
+
+
+def parse_processes(text, known=None):
+    """A written brief as the processes its owner runs, each with the skills
+    that already do it.
+
+    A process's skills are the ones named inside it, and any clause of What
+    already does it that names a skill and shares a word with the process's
+    name: `ds-component-docs` writes usage documentation, so it covers
+    Documentation. `known` says whether a backticked name is a skill or agent
+    at all, since a brief backticks repos and boards the same way. Prose read
+    as prose, so the match it feeds is a candidate for the check-in to judge,
+    never a decision.
+    """
+    known = known or (lambda name: True)
+    sections = _sections(text)
+    skip = _template_paragraphs()
+    title = next((l[2:].strip() for l in text.split("\n") if l.startswith("# ")), "")
+    processes = _units(sections.get(PROCESSES_HEADING, []), skip)
+    clauses = [(c.lower(), SKILL_RE.findall(c))
+               for c in _clauses(sections.get(COVERED_HEADING, []))]
+    for p in processes:
+        skills = set(p["skills"])
+        words = set(re.findall(r"[a-z]{4,}", p["process"].lower()))
+        for line, named in clauses:
+            if named and any(w in line for w in words):
+                skills |= set(named)
+        p["skills"] = sorted(s for s in skills if known(s))
+    return {"title": title, "processes": processes}
+
+
+def skill_installed(name):
+    """Whether Claude Code would find a skill or agent of that name: linked
+    into ~/.claude/skills/, or defined in either agents folder."""
+    home = os.path.expanduser("~/.claude")
+    return (os.path.isdir(os.path.join(home, "skills", name))
+            or os.path.isfile(os.path.join(home, "agents", "%s.md" % name))
+            or os.path.isfile(os.path.join(ROOT, ".claude", "agents", "%s.md" % name)))
+
+
+def brief_processes(bucket):
+    """What the check-in matches a bucket's open tasks against, or None where
+    the bucket has no written brief. `planner` is the bucket's own planning
+    agent where one is on disk, since it reads the brief and knows every
+    process in it, so a process no skill covers still has somewhere to go.
+    """
+    path = bucket_brief(bucket)
+    if not path:
+        return None
+    with open(path, encoding="utf-8") as fh:
+        parsed = parse_processes(fh.read(), known=skill_installed)
+    agent = bucket_agent(bucket)
+    parsed["brief"] = path
+    parsed["planner"] = agent if agent_on_disk(agent) else ""
+    return parsed
+
+
 def file_hash(path):
     try:
         with open(path, "rb") as fh:
