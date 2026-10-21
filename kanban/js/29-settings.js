@@ -113,9 +113,9 @@ function settingsFormHTML(draft, choices, first){
       '<span class="help">A folder outside Bench that keeps facts about you for other agents to share. Set, your profile and each list’s people are read from there first, and Bench lists its boards in boards.md inside it. Empty means none.</span></label>') +
     (first || !draft.list ? '' : '<label class="field"><span>Projects folder for ' + esc(draft.list) + '</span><input type="text" data-projects value="' + escAttr(draft.projectsRoot) + '" placeholder="Not set">' +
       '<span class="help">A folder of this list’s own, one folder per project inside it, which no other list may use. Set, a project is looked for there first and new ones are made there. Empty keeps them in data/' + esc(draft.list) + '/projects/.</span></label>') +
-    '<label class="field"><span>Reply chime</span><select data-chime>' +
-    [[true, 'On'], [false, 'Off']].map(([v, l]) => '<option value="' + v + '"' + (draft.chime === v ? ' selected' : '') + '>' + l + '</option>').join('') +
-    '</select><span class="help">A short sound when a reply finishes in any chat: two rising notes for done, one low note for an error or a stop.</span></label>' +
+    '<label class="field"><span>Reply chime</span>' +
+    '<button type="button" role="switch" class="tenon-switch' + (draft.chime ? ' tenon-switch--on' : '') + '" data-chime aria-checked="' + draft.chime + '"></button>' +
+    '<span class="help">A short sound when a reply finishes in any chat: two rising notes for done, one low note for an error or a stop.</span></label>' +
     '<details class="agentopts" data-agent-options><summary>Agent options</summary>' +
     '<div class="agentopts__body">' +
     settingsModelField('default', 'Default model', 'Used by any model below that is left on Use default.', draft, choices) +
@@ -221,7 +221,7 @@ function trackSettingsForm(draft, first){
     const m = modalEl.querySelector('[data-memory]');
     if (m) draft.memoryRoot = m.value;
     const ch = modalEl.querySelector('[data-chime]');
-    if (ch) draft.chime = ch.value === 'true';
+    if (ch) draft.chime = ch.getAttribute('aria-checked') === 'true';
     const pr = modalEl.querySelector('[data-projects]');
     if (pr) draft.projectsRoot = pr.value;
     modalEl.querySelectorAll('[data-model]').forEach(s => { draft.models[s.dataset.model] = s.value || null; });
@@ -240,6 +240,15 @@ function trackSettingsForm(draft, first){
   };
   modalEl.addEventListener('input', sync);
   modalEl.addEventListener('change', sync);
+  /* A switch is a button, so it reports a click rather than a change. */
+  modalEl.addEventListener('click', e => {
+    const sw = e.target.closest('[data-chime]');
+    if (!sw) return;
+    const on = sw.getAttribute('aria-checked') !== 'true';
+    sw.setAttribute('aria-checked', String(on));
+    sw.classList.toggle('tenon-switch--on', on);
+    sync();
+  });
   modalEl.addEventListener('focusout', e => {
     if (e.target.matches('[data-name]')) draft.touched.name = true;
     if (e.target.matches('[data-country]')) draft.touched.country = true;
