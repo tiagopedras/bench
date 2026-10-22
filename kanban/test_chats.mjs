@@ -645,12 +645,16 @@ await new Promise(r => setTimeout(r, 700))
 check('the save is a POST to /chat-viewed', await evalJS(`
   window.__blocked.some(b => b === 'POST /chat-viewed')
 `), await evalJS(`JSON.stringify(window.__blocked)`))
-// The recording also holds a PUT /data/todo.md that never left the page:
-// attaching a session above minted a task a `chat:` key, which marks the
-// document dirty and starts the ordinary autosave. Stopping that is the whole
-// point of the fetch guard, and seeing it here is the proof it worked.
+// The recording also holds a PUT /data/todo.md that never left the page. By
+// here the document is clean again (undo steps above), so the check marks it
+// dirty and runs the autosave itself. Stopping that PUT is the whole point of
+// the fetch guard, and seeing it here is the proof it worked.
 check('the todo.md save was attempted and stopped', await evalJS(`
-  window.__blocked.some(b => b === 'PUT /data/todo.md')
+  (async () => {
+    state.locked = false; state.dirty = true; lastSaveAt = 0;
+    await autosaveTick();
+    return window.__blocked.some(b => b === 'PUT /data/todo.md');
+  })()
 `), await evalJS(`JSON.stringify(window.__blocked)`))
 
 const errs = await evalJS(`window.__errs || 0`)
