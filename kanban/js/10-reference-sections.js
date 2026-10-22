@@ -877,6 +877,36 @@ function chimeWatch(run, ended){
   };
 }
 
+/* What `@` in a chat offers: every task on the current list, Done included.
+   The window shows the title; Claude gets the whole card as it is written in
+   todo.md, with its bucket and state in front, and the link that opens it. */
+const MENTION_CAP = 20;
+function taskMention(t, bucket, stateName){
+  return {
+    id: taskKey(t),
+    title: t.title,
+    context: 'Bucket: ' + bucket + '\nState: ' + stateName + '\n\n' + serializeTask(t).join('\n'),
+    link: '#!task=' + encodeTaskKey(taskKey(t)),
+  };
+}
+function taskMentions(query){
+  if (!state.doc) return [];
+  const q = String(query || '').trim().toLowerCase();
+  const hits = [];
+  let order = 0;
+  state.doc.buckets.forEach(b => b.tiers.forEach(ti => ti.tasks.forEach(t => {
+    const text = t.title.toLowerCase();
+    const at = q ? text.indexOf(q) : 0;
+    if (at < 0) return;
+    // Starts with it, then a word starts with it, then it sits inside a word;
+    // open tasks ahead of Done ones, then board order.
+    const rank = !q || at === 0 ? 0 : /\s/.test(text[at - 1]) ? 1 : 2;
+    hits.push({ rank, done: t.done ? 1 : 0, order: order++, t, bucket: b.name, st: t.done ? DONE_COL : ti.name });
+  })));
+  hits.sort((a, b) => a.rank - b.rank || a.done - b.done || a.order - b.order);
+  return hits.slice(0, MENTION_CAP).map(h => taskMention(h.t, h.bucket, h.st));
+}
+
 function makeChatWin(newFor){
   let inst;
   // How the last run ended, and whether the window was running at its last
@@ -903,6 +933,7 @@ function makeChatWin(newFor){
     writeSwitch: true,
     writeNote: chatWriteNote,
     onSessionsChanged,
+    mentions: taskMentions,
     onSend: p => {
       if (p.key === PA_KEY) { paWaiting = { ask: p.ask || '' }; paBeforeSend(); }
       onPromptRunSend(p);
@@ -2062,6 +2093,17 @@ function newChat(taskId){
   state.pendingPromptRun = null;
   refreshView();
   chat.openNew(taskId, key, taskDescription(loc.task));
+}
+
+/* The drawer's "New chat with this task": an ordinary chat on the task, with
+   the task itself already attached rather than described in the box. */
+function newChatWithTask(taskId){
+  const loc = locate(taskId);
+  if (!loc) return;
+  const key = chatKeyFor(loc.task, true);
+  state.pendingPromptRun = null;
+  refreshView();
+  chat.openNew(taskId, key, '', { attach: [taskMention(loc.task, loc.bucket.name, loc.task.done ? DONE_COL : loc.tier.name)] });
 }
 
 /* The list on a task and the prompt's "Ask Claude" button both land here,

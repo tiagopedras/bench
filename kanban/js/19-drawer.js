@@ -1262,6 +1262,9 @@ function openDrawer(id, focusTitle){
     delegateHTML: delegateSelectHTML(t.to, dis) +
       (agentsSetUp() || agentOf(t.to)
         ? '<span class="help">The Plan agent plans it and stops. The Implement agent carries it out.</span>'
+        : '') +
+      (chat.available() && !ro
+        ? '<button type="button" class="btn outline small" id="f-chatwith">New chat with this task</button>'
         : ''),
     /* Read-only — the `repeat:` tag is set by the pa skill, never typed into
        the drawer — so this is the same reading the card's own "Recurring" tag
@@ -1295,6 +1298,8 @@ function openDrawer(id, focusTitle){
     defaultValue: dedent(splitDrawnNotes(bodyParts(t).notes).prose),
   }));
 
+  const chatWith = $('#f-chatwith');
+  if (chatWith) chatWith.onclick = () => newChatWithTask(id);
   const startBtn = $('#f-projstart');
   if (startBtn) startBtn.onclick = () => startProject(t);
   const pickBtn = $('#f-projpick');

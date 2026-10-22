@@ -657,6 +657,63 @@ check('the todo.md save was attempted and stopped', await evalJS(`
   })()
 `), await evalJS(`JSON.stringify(window.__blocked)`))
 
+// ---- @ mentions, and the drawer's "New chat with this task" ----
+const mention = await evalJS(`
+  (() => {
+    state.locked = false;
+    const all = [];
+    state.doc.buckets.forEach(b => b.tiers.forEach(ti => ti.tasks.forEach(t => all.push(t))));
+    const t = all[0];
+    const none = taskMentions('');
+    const word = t.title.split(/\\s+/).find(w => w.length > 3) || t.title;
+    const hit = taskMentions(word.toUpperCase());
+    const first = taskMentions(t.title.toLowerCase())[0];
+    const done = all.find(x => x.done);
+    return {
+      capped: none.length <= 20 && none.length > 0,
+      matches: hit.length > 0 && hit.every(m => m.title.toLowerCase().includes(word.toLowerCase())),
+      nomatch: taskMentions('zzzqqqxxx').length === 0,
+      exact: first && first.title === t.title,
+      link: first && first.link === '#!task=' + encodeTaskKey(taskKey(t)),
+      context: first && /^Bucket: .+\\nState: .+/.test(first.context) && first.context.includes(t.title),
+      done: !done || taskMentions(done.title).some(m => m.title === done.title && /State: /.test(m.context)),
+      wired: typeof taskMentions === 'function'
+    };
+  })()
+`)
+check('@ lists tasks, capped at 20', mention.capped, JSON.stringify(mention))
+check('  matching is case-insensitive on the task text', mention.matches)
+check('  no match gives an empty list', mention.nomatch)
+check('  the exact title comes first', mention.exact)
+check('  each carries the link that opens its card', mention.link)
+check('  and the whole card, with bucket and state, as context', mention.context)
+check('  Done tasks are offered too', mention.done)
+
+const drawerChat = await evalJS(`
+  (() => {
+    const t = state.doc.buckets[0].tiers.find(ti => ti.tasks.length).tasks[0];
+    const calls = [];
+    const real = chat.openNew;
+    chat.openNew = (...a) => { calls.push(a); };
+    const avail = chat.available;
+    chat.available = () => true;
+    openDrawer(t.id);
+    const btn = document.getElementById('f-chatwith');
+    const shown = !!btn;
+    if (btn) btn.click();
+    chat.openNew = real; chat.available = avail;
+    const o = calls[0] && calls[0][3];
+    return {
+      shown, text: btn ? btn.textContent : '',
+      called: calls.length === 1,
+      attached: !!(o && o.attach && o.attach.length === 1 && o.attach[0].title === t.title && o.attach[0].link.startsWith('#!task=')),
+      owner: !!calls[0] && calls[0][0] === t.id
+    };
+  })()
+`)
+check('the drawer offers New chat with this task', drawerChat.shown && drawerChat.text === 'New chat with this task', JSON.stringify(drawerChat))
+check('  it opens a chat on the task with the task attached', drawerChat.called && drawerChat.attached && drawerChat.owner)
+
 const errs = await evalJS(`window.__errs || 0`)
 console.log(`\n${checks.filter(Boolean).length}/${checks.length} passed`)
 ws.close(); chrome.kill()
