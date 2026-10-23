@@ -100,7 +100,7 @@ class Task:
     __slots__ = ("done", "title", "bold", "impact", "effort", "due", "start", "done_on",
                  "to", "theme", "urgent", "week", "doing", "slug", "blocked_by", "rank",
                  "tlrank", "headline", "chat", "repeat", "stable_id",
-                 "cancelled", "archived", "extra",
+                 "cancelled", "archived", "created_by", "edited_by", "extra",
                  "body", "raw", "bucket", "column", "plan_sub")
 
     def __init__(self):
@@ -123,6 +123,9 @@ class Task:
         # done_on. See CONVENTIONS.md, Cancelling a task — and every count of
         # finished work has to leave both out.
         self.cancelled = self.archived = ""
+        # Who wrote the task and who last changed it, by sign-in email. Set by
+        # stamp_authors() below on the shared board, and nowhere else.
+        self.created_by = self.edited_by = ""
         self.blocked_by = []
         self.rank = None
         self.tlrank = None
@@ -198,6 +201,10 @@ def parse_task(raw_lines):
             task.cancelled = val
         elif key == "archived":
             task.archived = val
+        elif key == "created-by":
+            task.created_by = val.lower()
+        elif key == "edited-by":
+            task.edited_by = val.lower()
         else:
             task.extra.append(whole)
             return " "
@@ -1071,8 +1078,10 @@ _HEADING2 = re.compile(r"^##\s")
 
 MERGE_FIELDS = ("title", "bold", "done", "impact", "effort", "due", "start", "doneOn", "to",
                 "theme", "urgent", "week", "doing", "slug", "blockedBy", "rank", "tlrank",
-                "headline", "chat", "repeat", "stableId", "cancelled", "archived", "extra")
-_PY_NAME = {"doneOn": "done_on", "blockedBy": "blocked_by", "stableId": "stable_id"}
+                "headline", "chat", "repeat", "stableId", "cancelled", "archived", "createdBy",
+                "editedBy", "extra")
+_PY_NAME = {"doneOn": "done_on", "blockedBy": "blocked_by", "stableId": "stable_id",
+            "createdBy": "created_by", "editedBy": "edited_by"}
 _ABSENT = object()
 
 
@@ -1260,6 +1269,10 @@ def _mg_line(f, indent):
         tags.append("`chat:" + f["chat"] + "`")
     if f["repeat"]:
         tags.append("`repeat:" + f["repeat"] + "`")
+    if f["createdBy"]:
+        tags.append("`created-by:" + f["createdBy"] + "`")
+    if f["editedBy"]:
+        tags.append("`edited-by:" + f["editedBy"] + "`")
     if f["stableId"]:
         tags.append("`id:" + f["stableId"] + "`")
     tags.extend(f["extra"])
@@ -1273,12 +1286,12 @@ def _mg_body(body):
     head, tail, steps = [], [], []
     base = None
     into = False
-    for line in body:
+    for at, line in enumerate(body):
         m = _STEP_RE.match(line)
         if m and (base is None or len(m.group(1)) <= base):
             base = len(m.group(1))
             f = _mg_fields(line)
-            steps.append({"fields": f, "head": line, "indent": m.group(1), "more": [],
+            steps.append({"fields": f, "head": line, "at": at, "indent": m.group(1), "more": [],
                           "id": f["stableId"], "key": _mg_key(f["title"])})
             into = True
             continue
@@ -1310,10 +1323,11 @@ def _mg_side(text):
                 f = _mg_fields(t["raw"])
                 trec["tasks"].append({"fields": f, "head": t["raw"], "body": t["body"], "sep": t["sep"],
                                       "parts": _mg_body(t["body"]), "id": f["stableId"],
-                                      "key": _mg_key(f["title"]), "tier": tier["name"], "bucket": rec})
+                                      "key": _mg_key(f["title"]), "tier": tier["name"], "bucket": rec,
+                                      "node": t})
             rec["tiers"].append(trec)
         buckets.append(rec)
-    return {"pre": doc["pre"], "post": doc["post"], "buckets": buckets}
+    return {"pre": doc["pre"], "post": doc["post"], "buckets": buckets, "doc": doc}
 
 
 def _mg_match_tasks(base, side):
@@ -1425,12 +1439,24 @@ def _mg_order(primary, secondary, keep):
     return out
 
 
+# Who wrote and last changed a task are the server's to say (stamp_authors()),
+# so a merge takes them from the file and never counts them as an edit.
+MERGE_AUTHORS = ("createdBy", "editedBy")
+
+
+def _mg_plain(f):
+    return {k: v for k, v in f.items() if k not in MERGE_AUTHORS}
+
+
 def _mg_merge_fields(g, clash):
     out = {}
     for f in MERGE_FIELDS:
         b = g["b"]["fields"][f] if g["b"] else _ABSENT
         m, t = g["m"]["fields"][f], g["t"]["fields"][f]
         if f == "stableId" and (b is _ABSENT or not b) and m and t:
+            out[f] = t
+            continue
+        if f in MERGE_AUTHORS:
             out[f] = t
             continue
         out[f] = _mg_pick(b, m, t, lambda mv, tv, f=f: clash(f, mv, tv))
@@ -1446,11 +1472,11 @@ def _mg_head(f, g, indent):
 
 
 def _mg_step_sig(s):
-    return {"fields": s["fields"], "notes": s["notes"]}
+    return {"fields": _mg_plain(s["fields"]), "notes": s["notes"]}
 
 
 def _mg_task_sig(r):
-    return {"fields": r["fields"], "where": r["where"], "notes": r["parts"]["notes"],
+    return {"fields": _mg_plain(r["fields"]), "where": r["where"], "notes": r["parts"]["notes"],
             "steps": [_mg_step_sig(s) for s in r["parts"]["steps"]]}
 
 
@@ -1602,3 +1628,115 @@ def merge_saves(base_text, mine_text, theirs_text, prefer=""):
 
     text = _serialize_tree({"pre": pre, "buckets": buckets, "post": post})
     return {"text": None if conflicts and not prefer else text, "conflicts": conflicts}
+
+
+# ---- Who wrote a task, and who last changed it ---------------------------------
+#
+# On a shared board every task and sub-task carries `created-by:` and
+# `edited-by:`, the email of whoever signed in. The server sets both on every
+# save by comparing what it is about to write with what the file holds, and a
+# tab has no say: what it sends for either is put back to what the file says.
+# Here rather than in the server because it is the merge's own matching (by id,
+# then by title) asked a simpler question. The board only reads the two tags.
+
+_AUTHOR_TAG = re.compile(r"\s*(?:\[(?:created-by|edited-by)::[^\]]*\]|`(?:created-by|edited-by):[^`]*`)", re.I)
+_ID_TAG = re.compile(r"\s(?:`id:[^`]*`|\[id::[^\]]*\])", re.I)
+
+
+def _with_authors(line, created, edited):
+    """`line` carrying exactly these two tags, in front of its id the way
+    serializeTask() in core/todo.js writes them, and otherwise unchanged."""
+    bare = _AUTHOR_TAG.sub("", line)
+    tags = " ".join(t for t in ("`created-by:%s`" % created if created else "",
+                                "`edited-by:%s`" % edited if edited else "") if t)
+    if not tags:
+        return bare
+    m = _ID_TAG.search(bare)
+    if m:
+        return bare[:m.start()] + " " + tags + bare[m.start():]
+    return bare.rstrip() + " " + tags
+
+
+def _changed_fields(b, t):
+    """What changed on a task between two versions, by the names the merge uses.
+    Not its id: a tab gives every task without one an id as it loads, which is
+    the board tidying up rather than anybody editing."""
+    out = [f for f in MERGE_FIELDS if f not in MERGE_AUTHORS and f != "stableId"
+           and b["fields"][f] != t["fields"][f]]
+    if b["where"] != t["where"]:
+        out.append("column")
+    if b["parts"]["notes"] != t["parts"]["notes"]:
+        out.append("notes")
+    if [_mg_plain_step(s) for s in b["parts"]["steps"]] != [_mg_plain_step(s) for s in t["parts"]["steps"]]:
+        out.append("sub-tasks")
+    return out
+
+
+def _mg_plain_step(s):
+    f = _mg_plain(s["fields"])
+    f.pop("stableId", None)
+    return {"fields": f, "notes": s["notes"]}
+
+
+def stamp_authors(old_text, new_text, who):
+    """`new_text` with who wrote and who last changed each task and sub-task,
+    measured against `old_text`, the file it is about to replace. A task or
+    sub-task that is new is created by `who`; one that changed is last edited
+    by `who`, and a task counts as changed when anything on its card did; every
+    other keeps what the file says. `who` is an email, or "" for a board nobody
+    signs in to, which writes no tags at all and gives the text back as sent.
+
+    Returns (text, changes): changes is one entry per task added, edited or
+    deleted, {"task", "id", "what", "fields"}, for the activity log."""
+    if old_text is None:
+        return new_text, []
+    old, new = _mg_side(old_text), _mg_side(new_text)
+    _mg_groups(old["buckets"], [], new["buckets"], _mg_match_buckets, lambda a, b: a["name"] == b["name"])
+
+    def tasks_of(side):
+        return [r for b in side["buckets"] for tier in b["tiers"] for r in tier["tasks"]]
+
+    for side in (old, new):
+        for r in tasks_of(side):
+            r["where"] = "%d\n%s" % (r["bucket"]["g"]["gid"], r["tier"])
+    groups = _mg_groups(tasks_of(old), [], tasks_of(new), _mg_match_tasks,
+                        lambda a, b: bool(a["id"]) and a["id"] == b["id"])
+    who = (who or "").strip().lower()
+    changes, touched = [], False
+    for g in groups:
+        b, t = g["b"], g["t"]
+        if not t:
+            changes.append({"task": b["fields"]["title"], "id": b["id"], "what": "deleted", "fields": []})
+            continue
+        if not b:
+            changes.append({"task": t["fields"]["title"], "id": t["id"], "what": "added", "fields": []})
+            authors = (who, "")
+        else:
+            fields = _changed_fields(b, t)
+            if fields:
+                changes.append({"task": t["fields"]["title"], "id": t["id"], "what": "edited", "fields": fields})
+            authors = (b["fields"]["createdBy"], who if fields else b["fields"]["editedBy"])
+        if not who:
+            continue
+        node = t["node"]
+        if authors != (t["fields"]["createdBy"], t["fields"]["editedBy"]):
+            node["raw"] = _with_authors(node["raw"], *authors)
+            touched = True
+        body = list(node["body"])
+        steps = _mg_groups(b["parts"]["steps"] if b else [], [], t["parts"]["steps"], _mg_match_tasks,
+                           lambda x, y: bool(x["id"]) and x["id"] == y["id"])
+        for sg in steps:
+            s = sg["t"]
+            if not s:
+                continue
+            if sg["b"]:
+                same = _mg_plain_step(sg["b"]) == _mg_plain_step(s)
+                want = (sg["b"]["fields"]["createdBy"], sg["b"]["fields"]["editedBy"] if same else who)
+            else:
+                want = (who, "")
+            if want != (s["fields"]["createdBy"], s["fields"]["editedBy"]):
+                body[s["at"]] = _with_authors(body[s["at"]], *want)
+        if body != node["body"]:
+            node["body"] = body
+            touched = True
+    return (_serialize_tree(new["doc"]) if touched else new_text), changes

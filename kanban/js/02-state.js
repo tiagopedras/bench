@@ -30,6 +30,10 @@ const state = {
   /* {email, name, teams} on the shared board, from /whoami; null on the Mac
      board, where nobody signs in. See loadWhoami() in 21-datasets.js. */
   who: null,
+  /* A name for each email the list's activity log has seen, from
+     /activity.json (loadActivity() in 21-datasets.js), so `created-by:` and
+     `edited-by:` show as people rather than addresses. */
+  authorNames: {},
   /* Everything about the Claude chat engine — the CLI's status, which
      sessions sit under which task, any run in flight, the modal itself —
      lives inside the `chat` object from ai_chat_engine's window rather
@@ -106,6 +110,9 @@ const state = {
      narrowing for right now, not a preference worth remembering across
      sessions. */
   agentFilter: false,
+  /* "Mine": tasks whose `[to:: ]`, or a sub-task's, names whoever is signed
+     in (forMe() in 21-datasets.js). In memory only, like agentFilter. */
+  mineFilter: false,
   /* Whether this list has an agent set up: a bucket with a planner of its own
      on disk, or a brief with something the person wrote in it. null until
      /bucket-brief.json has answered, and read only through agentsSetUp()

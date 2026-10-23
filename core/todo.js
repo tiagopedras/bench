@@ -110,7 +110,7 @@ function readTags(rest){
   const tags = {};
   const extra = [];                                   // any tag we don't know about, kept verbatim
   let blockedBy = [], rank = null, tlrank = null, slug = '', headline = '', chat = '', repeat = '';
-  let stableId = '', cancelled = '', archived = '';
+  let stableId = '', cancelled = '', archived = '', createdBy = '', editedBy = '';
   /* Either syntax lands here, so a tag means the same thing whichever form it
      arrived in. `whole` is what goes into `extra`, which keeps an unrecognised
      tag exactly as it was written. */
@@ -155,6 +155,12 @@ function readTags(rest){
        necessarily `done:`. */
     else if (key === 'cancelled') cancelled = v.trim();
     else if (key === 'archived') archived = v.trim();
+    /* Who wrote the task and who last changed it, by the email they signed in
+       with. Only the server writes these, on a shared board, from the sign-in
+       header and never from what a tab sends (stamp_authors() in
+       core/todo.py); a list nobody signs in to never carries them. */
+    else if (key === 'created-by') createdBy = v.trim().toLowerCase();
+    else if (key === 'edited-by') editedBy = v.trim().toLowerCase();
     else extra.push(whole);
     return ' ';
   };
@@ -194,7 +200,7 @@ function readTags(rest){
        audits.`, readable only by a language model rather than by a query. */
     theme: tags.theme || '',
     urgent, week, doing, slug, blockedBy, rank, tlrank, headline, chat, repeat, stableId,
-    cancelled, archived, extra
+    cancelled, archived, createdBy, editedBy, extra
   };
 }
 
@@ -280,6 +286,11 @@ function serializeTask(t){
     if (t.headline) tags.push('`headline:' + t.headline + '`');
     if (t.chat)   tags.push('`chat:' + t.chat + '`');
     if (t.repeat) tags.push('`repeat:' + t.repeat + '`');
+    /* Before the id rather than after it, for the reason the id's own comment
+       gives: the server adds these to a line by inserting them in front of
+       the id and touching nothing else, and this has to write the same line. */
+    if (t.createdBy) tags.push('`created-by:' + t.createdBy + '`');
+    if (t.editedBy)  tags.push('`edited-by:' + t.editedBy + '`');
     /* Last among the tags this file knows, and that position is load-bearing.
        Ids were added to a file of 137 existing tasks by appending this one
        token to each line and changing nothing else, which only round-trips
@@ -462,7 +473,7 @@ function splitBody(t){
         impact: r.impact, effort: r.effort, doneOn: r.doneOn, urgent: r.urgent,
         headline: r.headline, chat: r.chat, tlrank: r.tlrank, repeat: r.repeat,
         stableId: r.stableId, doing: r.doing, cancelled: r.cancelled, archived: r.archived,
-        extra: r.extra,
+        createdBy: r.createdBy, editedBy: r.editedBy, extra: r.extra,
         due:   readField(text, 'due'),
         start: readField(text, 'start'),
         to:    readField(text, 'to'),
@@ -790,9 +801,18 @@ function priorityScore(t){
 
 const MERGE_FIELDS = ['title', 'bold', 'done', 'impact', 'effort', 'due', 'start', 'doneOn', 'to',
   'theme', 'urgent', 'week', 'doing', 'slug', 'blockedBy', 'rank', 'tlrank', 'headline', 'chat',
-  'repeat', 'stableId', 'cancelled', 'archived', 'extra'];
+  'repeat', 'stableId', 'cancelled', 'archived', 'createdBy', 'editedBy', 'extra'];
 
 function mgSame(a, b){ return JSON.stringify(a) === JSON.stringify(b); }
+/* Who wrote and last changed a task are the server's to say (stamp_authors()
+   in core/todo.py), restamped on every save against the file. So a merge
+   takes them from the file and never counts them as an edit. */
+const MERGE_AUTHORS = ['createdBy', 'editedBy'];
+function mgPlain(f){
+  const out = Object.assign({}, f);
+  MERGE_AUTHORS.forEach(k => { delete out[k]; });
+  return out;
+}
 function mgKey(title){ return String(title || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
 
 /* A task or sub-task line as fields: its tick and every tag readTags() reads. */
@@ -818,12 +838,12 @@ function mgLine(f, indent){
 function mgBody(body){
   const head = [], tail = [], steps = [];
   let base = null, into = false;
-  body.forEach(line => {
+  body.forEach((line, at) => {
     const m = SUB_RE.exec(line);
     if (m && (base === null || m[1].length <= base)) {
       base = m[1].length;
       const f = mgFields(line);
-      steps.push({ fields:f, head:line, indent:m[1], more:[], id:f.stableId, key:mgKey(f.title) });
+      steps.push({ fields:f, head:line, at, indent:m[1], more:[], id:f.stableId, key:mgKey(f.title) });
       into = true;
       return;
     }
@@ -955,6 +975,7 @@ function mgMergeFields(g, clash){
     const b = g.b ? g.b.fields[f] : undefined, m = g.m.fields[f], t = g.t.fields[f];
     /* Both tabs gave a task with no id one of their own: the file's stands. */
     if (f === 'stableId' && !b && m && t) { out[f] = t; return; }
+    if (MERGE_AUTHORS.indexOf(f) >= 0) { out[f] = t; return; }
     out[f] = mgPick(b, m, t, (mv, tv) => clash(f, mv, tv));
   });
   return out;
@@ -966,8 +987,8 @@ function mgHead(f, g, indent){
   return mgLine(f, indent);
 }
 
-const mgStepSig = s => ({ fields:s.fields, notes:s.notes });
-const mgTaskSig = r => ({ fields:r.fields, where:r.where, notes:r.parts.notes,
+const mgStepSig = s => ({ fields:mgPlain(s.fields), notes:s.notes });
+const mgTaskSig = r => ({ fields:mgPlain(r.fields), where:r.where, notes:r.parts.notes,
                           steps:r.parts.steps.map(mgStepSig) });
 
 /* A task's steps, merged. Each comes back as { fields, notes, lines }. */

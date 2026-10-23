@@ -24,7 +24,9 @@
     "cancelled",
     "archived",
     "extra",
-    "doing"
+    "doing",
+    "createdBy",
+    "editedBy"
   ],
   "agents": [
     {
@@ -90,7 +92,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **Every tag at once** `#allsorts` [impact:: high] [effort:: M] `start:2026-09-01` [due:: 2026-09-11] `urgent` `week` [to:: Alex] `blocked-by:one,two` `rank:4` `tlrank:2` `headline:the one thing` `chat:7vysow` `repeat:wed`"
     },
@@ -120,7 +124,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [x] **A finished one** [impact:: low] [effort:: S] `done:2026-09-02`"
     },
@@ -150,7 +156,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] A title with no bold on it [impact:: med] [effort:: L]"
     },
@@ -180,7 +188,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **Trailing whitespace and runs** [effort:: S]"
     },
@@ -210,7 +220,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **No space after the box** [effort:: S]"
     },
@@ -242,7 +254,9 @@
         "extra": [
           "`nonsense:kept`"
         ],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **An unknown tag rides along** [impact:: high] [effort:: S] `nonsense:kept`"
     },
@@ -274,7 +288,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **Blocked by one thing** `blocked-by:solo`"
     },
@@ -308,7 +324,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **Blocked by three, spaced** `blocked-by:a,b,c`"
     },
@@ -338,7 +356,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] ****"
     },
@@ -368,7 +388,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **"
     },
@@ -398,7 +420,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] ***"
     },
@@ -428,7 +452,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **x**"
     },
@@ -458,7 +484,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **Rank with junk on it** `rank:3`"
     },
@@ -488,7 +516,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **Rank that is pure junk**"
     },
@@ -518,7 +548,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **Rank written as a decimal** `rank:3`"
     },
@@ -548,7 +580,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **Timeline rank with junk on it** `tlrank:2`"
     },
@@ -578,7 +612,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **Slug is lowercased** `#mixedcase`"
     },
@@ -608,7 +644,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **Chat key is lowercased** `chat:7vysow`"
     },
@@ -638,7 +676,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **Repeat is lowercased** `repeat:wed2/3`"
     },
@@ -668,7 +708,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [x] **A capital X ticks too** [effort:: S]"
     },
@@ -698,7 +740,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **Empty inline field** [effort:: S]"
     },
@@ -731,7 +775,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **Every tag at once, with an id** `#allsorts` [impact:: high] [effort:: M] `start:2026-09-01` [due:: 2026-09-11] `urgent` `week` [to:: Alex] `blocked-by:one,two` `rank:4` `tlrank:2` `headline:the one thing` `chat:7vysow` `repeat:wed` `id:ab12cd`"
     },
@@ -761,7 +807,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **An id and nothing else** `id:zz9zz9`"
     },
@@ -791,7 +839,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **No id at all, the way every task looked before today** [impact:: low]"
     },
@@ -821,7 +871,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **An id in the other syntax is read too** `id:qq11qq`"
     },
@@ -851,7 +903,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **An id is lowercased like a slug and a chat key** `id:ab12cd`"
     },
@@ -883,7 +937,9 @@
         "extra": [
           "`mystery:7`"
         ],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **An unknown tag still rides along beside an id** `id:ab12cd` `mystery:7`"
     },
@@ -913,7 +969,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [x] **A finished task keeps its id** `done:2026-09-10` `id:ff00ff`"
     },
@@ -943,7 +1001,9 @@
         "cancelled": "2026-09-15",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [x] **A cancelled task is ticked and says so** `done:2026-09-15` `cancelled:2026-09-15`"
     },
@@ -973,7 +1033,9 @@
         "cancelled": "",
         "archived": "2026-09-14",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [x] **An archived task is the other half of the same rule** `done:2026-09-15` `archived:2026-09-14`"
     },
@@ -1003,7 +1065,9 @@
         "cancelled": "2026-09-15",
         "archived": "2026-09-15",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [x] **Both at once, which is odd but has to round-trip** `done:2026-09-15` `cancelled:2026-09-15` `archived:2026-09-15`"
     },
@@ -1033,7 +1097,9 @@
         "cancelled": "2026-09-15",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [x] **The other syntax reads too** `done:2026-09-15` `cancelled:2026-09-15`"
     },
@@ -1063,7 +1129,9 @@
         "cancelled": "2026-09-15",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **Unticked, so the tag is kept for him to fix rather than dropped** `cancelled:2026-09-15`"
     },
@@ -1093,7 +1161,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **Handed to the Plan agent** [impact:: med] [to:: Plan agent] `id:pl4n00`"
     },
@@ -1123,7 +1193,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **Handed to the Implement agent** [to:: Implement agent] `rank:2`"
     },
@@ -1153,7 +1225,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **A backup from before the assignee field** [impact:: high] `rank:3`"
     },
@@ -1183,7 +1257,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **The old syntax of the retired tag goes too** [to:: Jordan]"
     },
@@ -1213,7 +1289,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": true
+        "doing": true,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **Plan** `#ab12cd-plan` `doing` [to:: Plan agent] `id:pl0001`"
     },
@@ -1245,7 +1323,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **Review the plan** `#ab12cd-plan-review` [to:: Morgan] `blocked-by:ab12cd-plan` `id:pl0002`"
     },
@@ -1275,7 +1355,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [x] **Implement** `#ab12cd-implement` `done:2026-09-21` [to:: Implement agent] `id:pl0003`"
     },
@@ -1305,7 +1387,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **Filed under a theme** [impact:: high] [theme:: audits]"
     },
@@ -1335,7 +1419,9 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **The other syntax reads too** [theme:: ways-of-working]"
     },
@@ -1365,9 +1451,141 @@
         "cancelled": "",
         "archived": "",
         "extra": [],
-        "doing": false
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
       },
       "roundTrip": "- [ ] **No theme at all, the way every task looked before today** [impact:: low]"
+    },
+    {
+      "line": "- [ ] **Written and changed by two people** [due:: 2026-11-01] `created-by:jerome@example.com` `edited-by:ana@example.com` `id:au0001`",
+      "expect": {
+        "done": false,
+        "title": "Written and changed by two people",
+        "bold": true,
+        "impact": "",
+        "effort": "",
+        "due": "2026-11-01",
+        "start": "",
+        "doneOn": "",
+        "to": "",
+        "theme": "",
+        "urgent": false,
+        "week": false,
+        "slug": "",
+        "blockedBy": [],
+        "rank": null,
+        "tlrank": null,
+        "headline": "",
+        "chat": "",
+        "repeat": "",
+        "stableId": "au0001",
+        "cancelled": "",
+        "archived": "",
+        "extra": [],
+        "doing": false,
+        "createdBy": "jerome@example.com",
+        "editedBy": "ana@example.com"
+      },
+      "roundTrip": "- [ ] **Written and changed by two people** [due:: 2026-11-01] `created-by:jerome@example.com` `edited-by:ana@example.com` `id:au0001`"
+    },
+    {
+      "line": "- [ ] **Only ever touched by its writer** `created-by:Jerome@Example.com` `id:au0002`",
+      "expect": {
+        "done": false,
+        "title": "Only ever touched by its writer",
+        "bold": true,
+        "impact": "",
+        "effort": "",
+        "due": "",
+        "start": "",
+        "doneOn": "",
+        "to": "",
+        "theme": "",
+        "urgent": false,
+        "week": false,
+        "slug": "",
+        "blockedBy": [],
+        "rank": null,
+        "tlrank": null,
+        "headline": "",
+        "chat": "",
+        "repeat": "",
+        "stableId": "au0002",
+        "cancelled": "",
+        "archived": "",
+        "extra": [],
+        "doing": false,
+        "createdBy": "jerome@example.com",
+        "editedBy": ""
+      },
+      "roundTrip": "- [ ] **Only ever touched by its writer** `created-by:jerome@example.com` `id:au0002`"
+    },
+    {
+      "line": "- [ ] **The other syntax reads too** [edited-by:: ana@example.com]",
+      "expect": {
+        "done": false,
+        "title": "The other syntax reads too",
+        "bold": true,
+        "impact": "",
+        "effort": "",
+        "due": "",
+        "start": "",
+        "doneOn": "",
+        "to": "",
+        "theme": "",
+        "urgent": false,
+        "week": false,
+        "slug": "",
+        "blockedBy": [],
+        "rank": null,
+        "tlrank": null,
+        "headline": "",
+        "chat": "",
+        "repeat": "",
+        "stableId": "",
+        "cancelled": "",
+        "archived": "",
+        "extra": [],
+        "doing": false,
+        "createdBy": "",
+        "editedBy": "ana@example.com"
+      },
+      "roundTrip": "- [ ] **The other syntax reads too** `edited-by:ana@example.com`"
+    },
+    {
+      "line": "- [ ] **An unknown tag still rides along after the authors** `created-by:a@b.c` `id:au0003` `mystery:7`",
+      "expect": {
+        "done": false,
+        "title": "An unknown tag still rides along after the authors",
+        "bold": true,
+        "impact": "",
+        "effort": "",
+        "due": "",
+        "start": "",
+        "doneOn": "",
+        "to": "",
+        "theme": "",
+        "urgent": false,
+        "week": false,
+        "slug": "",
+        "blockedBy": [],
+        "rank": null,
+        "tlrank": null,
+        "headline": "",
+        "chat": "",
+        "repeat": "",
+        "stableId": "au0003",
+        "cancelled": "",
+        "archived": "",
+        "extra": [
+          "`mystery:7`"
+        ],
+        "doing": false,
+        "createdBy": "a@b.c",
+        "editedBy": ""
+      },
+      "roundTrip": "- [ ] **An unknown tag still rides along after the authors** `created-by:a@b.c` `id:au0003` `mystery:7`"
     }
   ],
   "docs": [
@@ -1804,6 +2022,8 @@
           "doing": false,
           "cancelled": "",
           "archived": "",
+          "createdBy": "",
+          "editedBy": "",
           "extra": [],
           "inherits": {
             "due": "2026-09-30",
@@ -1841,6 +2061,8 @@
           "doing": true,
           "cancelled": "",
           "archived": "",
+          "createdBy": "",
+          "editedBy": "",
           "extra": [],
           "inherits": {
             "due": "2026-09-25",
@@ -1873,6 +2095,8 @@
           "doing": false,
           "cancelled": "2026-09-20",
           "archived": "",
+          "createdBy": "",
+          "editedBy": "",
           "extra": [],
           "inherits": {
             "due": "2026-09-30",
@@ -1918,6 +2142,8 @@
           "doing": false,
           "cancelled": "",
           "archived": "",
+          "createdBy": "",
+          "editedBy": "",
           "extra": [],
           "inherits": {
             "due": "2026-10-01",
@@ -1953,6 +2179,8 @@
           "doing": false,
           "cancelled": "",
           "archived": "",
+          "createdBy": "",
+          "editedBy": "",
           "extra": [],
           "inherits": {
             "due": "2026-09-25",
@@ -1987,6 +2215,8 @@
           "doing": false,
           "cancelled": "",
           "archived": "",
+          "createdBy": "",
+          "editedBy": "",
           "extra": [],
           "inherits": {
             "due": "2026-10-01",
@@ -2033,6 +2263,8 @@
           "doing": false,
           "cancelled": "",
           "archived": "",
+          "createdBy": "",
+          "editedBy": "",
           "extra": [],
           "inherits": {
             "due": "",
@@ -2067,6 +2299,8 @@
           "doing": false,
           "cancelled": "",
           "archived": "",
+          "createdBy": "",
+          "editedBy": "",
           "extra": [],
           "inherits": {
             "due": "",
@@ -2101,6 +2335,8 @@
           "doing": true,
           "cancelled": "",
           "archived": "",
+          "createdBy": "",
+          "editedBy": "",
           "extra": [],
           "inherits": {
             "due": "",
@@ -2135,6 +2371,8 @@
           "doing": false,
           "cancelled": "",
           "archived": "",
+          "createdBy": "",
+          "editedBy": "",
           "extra": [],
           "inherits": {
             "due": "",
@@ -2144,6 +2382,47 @@
             "inherited": [
               "impact"
             ]
+          }
+        }
+      ]
+    },
+    {
+      "why": "a step carries who wrote it and who last changed it, the way a task does",
+      "lines": [
+        "- [ ] **Shared task** `created-by:jerome@example.com` `id:au0010`",
+        "  - [ ] Step two people touched `created-by:jerome@example.com` `edited-by:ana@example.com` `id:au0011`"
+      ],
+      "steps": [
+        {
+          "done": false,
+          "due": "",
+          "start": "",
+          "to": "",
+          "slug": "",
+          "blockedBy": [],
+          "rank": null,
+          "week": false,
+          "impact": "",
+          "effort": "",
+          "urgent": false,
+          "doneOn": "",
+          "headline": "",
+          "chat": "",
+          "tlrank": null,
+          "repeat": "",
+          "stableId": "au0011",
+          "doing": false,
+          "cancelled": "",
+          "archived": "",
+          "createdBy": "jerome@example.com",
+          "editedBy": "ana@example.com",
+          "extra": [],
+          "inherits": {
+            "due": "",
+            "impact": "",
+            "urgent": false,
+            "week": false,
+            "inherited": []
           }
         }
       ]

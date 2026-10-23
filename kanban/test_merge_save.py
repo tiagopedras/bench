@@ -26,6 +26,7 @@ What it holds to:
 
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -62,6 +63,15 @@ LIST = """# To-do
 """
 
 
+# Signed in, every save also says who wrote and changed each task
+# (test_authorship.py). What is merged is compared without that.
+AUTHORS = re.compile(r" `(?:created-by|edited-by):[^`]*`")
+
+
+def plain(text):
+    return AUTHORS.sub("", text or "")
+
+
 def edit(text, *pairs):
     for old, new in pairs:
         assert old in text, old
@@ -82,7 +92,7 @@ def checks(srv, path, who, label):
 
     def disk():
         with open(path, encoding="utf-8") as fh:
-            return fh.read()
+            return plain(fh.read())
 
     # --- built on the version on disk ------------------------------------------
     reset()
@@ -105,7 +115,7 @@ def checks(srv, path, who, label):
     ok("%s: two saves on different tasks both land" % label, code == 200 and disk() == both,
        "%d %r\n%s" % (code, got, disk()))
     ok("%s: the second is called merged, with what was written" % label,
-       got.get("merged") is True and got.get("text") == both, repr(got))
+       got.get("merged") is True and plain(got.get("text")) == both, repr(got))
 
     # --- the same task, different fields ---------------------------------------
     reset()
@@ -124,12 +134,13 @@ def checks(srv, path, who, label):
     ok("%s: the same field changed apart is a 409" % label, code == 409, "%d %r" % (code, got))
     ok("%s: naming the task and the field" % label,
        got.get("conflicts") == [{"task": "Write the brief", "step": "", "field": "due"}], repr(got))
-    ok("%s: carrying the file as it stands" % label, got.get("current") == theirs, repr(got)[:200])
+    ok("%s: carrying the file as it stands" % label, plain(got.get("current")) == theirs, repr(got)[:200])
     ok("%s: and nothing is written" % label, disk() == theirs)
 
     # Answered: the tab merges with its choice and saves on the file it was given.
-    answer = todo.merge_saves(LIST, mine, got.get("current") or "", "mine")["text"]
-    code, got = save(answer, theirs)
+    current = got.get("current") or ""
+    answer = todo.merge_saves(LIST, mine, current, "mine")["text"]
+    code, got = save(answer, current)
     ok("%s: the answer to a conflict saves" % label, code == 200 and disk() == mine, "%d %r" % (code, got))
 
     # --- a sub-task's field ------------------------------------------------------
@@ -167,9 +178,9 @@ def checks(srv, path, who, label):
     code, body, head = srv.ask("GET", "/data/todo.md", who)
     stamp, digest = head.get("Last-Modified"), head.get("X-Todo-Hash")
     write(path, edit(LIST, ("**Order badges**", "**Order name badges**")))
-    plain = dict(who, **{"X-Board": "1", "Content-Type": "text/markdown; charset=utf-8",
+    bare = dict(who, **{"X-Board": "1", "Content-Type": "text/markdown; charset=utf-8",
                          "If-Unmodified-Since": stamp, "If-Match": digest})
-    code, _, _ = srv.ask("PUT", "/data/todo.md", plain, LIST.encode())
+    code, _, _ = srv.ask("PUT", "/data/todo.md", bare, LIST.encode())
     ok("%s: a bare document on a moved file is still refused" % label, code == 409, "got %d" % code)
     code, _, _ = srv.ask("PUT", "/data/todo.md", dict(who, **{"X-Board": "1"}), LIST.encode())
     ok("%s: and still needs If-Unmodified-Since" % label, code == 428, "got %d" % code)

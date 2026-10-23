@@ -176,6 +176,13 @@ merging two saves, refusing the same field changed apart, and taking two saves
 sent at once one at a time. The merge itself is pinned by
 `core/fixtures/merge.json`, which both `core/test_todo.*` suites read.
 
+**`test_authorship.py`** starts its own server the same way and holds the
+server to who wrote and changed each task: the sign-in header decides the name,
+`created-by:` or `edited-by:` sent by a tab is put back, every change reaches
+`activity.jsonl`, and the Mac board writes no tag at all.
+**`test_authorship.mjs`** is the on-screen half, locked: the names on cards and
+in the task and sub-task panels, the status line, and the Mine chip.
+
 The watcher polls with `HEAD` every three seconds, so a suite that tears every
 non-`GET` out of `fetch` sees one within a few seconds. It is a read: answer it
 from the stub and leave it out of what counts as a write.

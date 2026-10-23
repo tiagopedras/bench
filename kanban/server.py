@@ -304,6 +304,59 @@ def file_hash(path):
         return None
 
 
+def activity_path(name=None):
+    """The list's activity log: one JSON line per task added, edited or
+    deleted, saying who and when. Append-only, written by do_PUT after each
+    save lands and by nothing else, so it is a record and never a source of
+    the list. Kept beside todo.md rather than in it because who did what is
+    about the list, and the file is the list."""
+    return os.path.join(dataset_dir(name or current_dataset()), "activity.jsonl")
+
+
+def append_activity(ds, changes):
+    """Adds one save's changes to the log, under the person who made it: the
+    signed-in email and name, or on the Mac nobody's email and the owner's
+    name from the profile."""
+    if not changes:
+        return
+    import owner_profile
+    who = requester()
+    at = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+    email = who["email"] if who else ""
+    name = who["name"] if who else owner_profile.owner_name(DATA_ROOT)
+    with open(activity_path(ds), "a", encoding="utf-8") as fh:
+        for c in changes:
+            fh.write(json.dumps(dict(at=at, who=email, name=name, **c), ensure_ascii=False) + "\n")
+
+
+def read_activity(ds, limit=50):
+    """The newest `limit` entries, newest first, and a name for every email
+    the log has seen, the latest name winning. Reads the last 512 KB only,
+    which is thousands of entries; an older name falls back to the email."""
+    try:
+        with open(activity_path(ds), "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            fh.seek(max(0, size - 512 * 1024))
+            raw = fh.read().decode("utf-8", "replace")
+    except OSError:
+        return [], {}
+    lines = raw.split("\n")
+    if size > 512 * 1024:
+        lines = lines[1:]          # the first is most likely cut in half
+    entries, names = [], {}
+    for line in lines:
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(e, dict):
+            entries.append(e)
+            if e.get("who") and e.get("name"):
+                names[e["who"]] = e["name"]
+    return entries[::-1][:limit], names
+
+
 def chat_viewed_path(name=None):
     """When each conversation card was last opened, so the drawer's Chats
     field knows which ones to mark unread.
@@ -2440,6 +2493,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if not AUTH:
                 return self._json(404, {"error": "nobody signs in to this board"})
             return self._json(200, requester())
+        # Who did what on this list, newest first, for the status line and for
+        # the names on the cards. `me` is the signed-in email, "" on the Mac.
+        if path == "/activity.json":
+            entries, names = read_activity(current_dataset())
+            who = requester()
+            if who:
+                names[who["email"]] = who["name"]
+            return self._json(200, {"entries": entries, "names": names, "me": who["email"] if who else ""})
         if path == "/settings.json":
             saved = settings.load(DATA_ROOT)
             if AUTH:
@@ -3414,9 +3475,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # 409 carries the file as it is, so the tab can answer without
         # reading it again. todo.merge_saves() is the board's mergeSaves().
         merged = False
-        if base is not None and os.path.exists(path):
+        sent = text
+        current_text = None
+        if os.path.exists(path):
             with open(path, encoding="utf-8", newline="") as fh:
                 current_text = fh.read()
+        if base is not None and current_text is not None:
             if current_text != base:
                 if todo is None:
                     return self._json(409, {"error": "todo.md changed on disk since this tab last read it",
@@ -3459,6 +3523,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                         "disk": self.date_time_string(os.stat(path).st_mtime),
                                         "hash": digest})
 
+        # Who wrote each task and who last changed it, measured against the file
+        # this replaces, and set here so a tab cannot claim either for anyone:
+        # what it sent for them is put back to what the file says. Signed in,
+        # that is the email nginx vouched for; on the Mac nobody signs in, no
+        # tag is written and the text goes out as sent. Either way the
+        # changes go to the list's activity log once the write has landed.
+        changes = []
+        if todo is not None and current_text is not None:
+            who = requester()
+            text, changes = todo.stamp_authors(current_text, text, who["email"] if who else "")
+
         backup_name = None
 
         # A save is also a chance to notice the week turned over.
@@ -3499,10 +3574,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # land after somebody else's save and hand it a version its document
         # was never built on. A merged save also carries the text written, so
         # the tab can show what the other side changed.
+        append_activity(ds, changes)
         reply = {"ok": True, "bytes": size, "backup": backup_name, "weekly": weekly_name,
                  "hash": file_hash(path), "disk": self.date_time_string(os.stat(path).st_mtime)}
+        # The text as written, whenever it is not what the tab sent: merged
+        # with somebody else's save, or carrying who wrote what.
+        if text != sent:
+            reply["text"] = text
         if merged:
-            reply.update({"merged": True, "text": text})
+            reply["merged"] = True
         self._json(200, reply)
 
 

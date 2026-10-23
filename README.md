@@ -1513,6 +1513,23 @@ working on it now. What it does not carry it takes from its task: the due date, 
 impact, `urgent` and `week`. Handing a task over lays four of them out with a
 slug each, made from the task's id and the step.
 
+On a shared board every task and sub-task also says who wrote it and who last
+changed it, `` `created-by:` `` and `` `edited-by:` ``, by the email the person
+signed in with, written in front of the `id:`. Only the server writes them: on
+every save it compares what it is about to write with the file
+(`stamp_authors()` in `core/todo.py`), so a new task is created by whoever
+saved it, a changed one is last edited by them, and anything a tab sends for
+either tag is put back to what the file says. The card shows the name, from
+the list's activity log, and the task panel shows both. A list nobody signs in
+to never carries them, so the Mac board's file is unchanged by any of this.
+
+Every save also appends what changed to `data/<list>/activity.jsonl`, one JSON
+line per task added, edited or deleted, with who, their name, when, and which
+fields. It is append-only and nothing reads it back into the list. The status
+line uses it to say whose the latest change by somebody else was ("Jerome edited
+2 min ago"), and a **Mine** chip beside the other filters narrows the board to
+tasks whose `[to:: ]`, or a sub-task's, names whoever is signed in.
+
 **Reviewing** holds work that is finished as far as you are concerned and is now
 sitting with somebody else for sign-off, or with you, on a review sub-task. Nothing
 is owed on it until it comes back, which is a different thing from Doing (live) and

@@ -33,8 +33,9 @@ function editingNow(){
 /* The board redrawn from `text`, where `disk` is the version of the file it
    now stands on; the two differ when this tab still has changes of its own
    on top, which then wait to be saved. The open task stays open, found again
-   by its id, since every card gets a fresh one from the parse. */
-function reloadInPlace(text, disk, named){
+   by its id, since every card gets a fresh one from the parse. `quiet` skips
+   the glow on what changed. */
+function reloadInPlace(text, disk, named, quiet){
   const open = state.openTask != null ? locate(state.openTask) : null;
   const key = open ? taskKey(open.task) : null;
   const changes = describeChanges(state.originalText, disk);
@@ -42,7 +43,7 @@ function reloadInPlace(text, disk, named){
   closeDrawer();
   load(text, 'todo.md');
   state.originalText = disk;
-  settleChanges(before, changes, named || null);
+  if (!quiet) settleChanges(before, changes, named || null);
   if (key) { const t = findTaskByKey(key); if (t) openDrawer(t.id); }
   if (text !== disk) markDirty();
   return changes;
@@ -136,6 +137,7 @@ async function watchOnce(){
     // The fresh parse may have re-run the load-time tidy-up, which is a real
     // pending save. Say what happened without clearing it.
     if (state.migratedOnly) autoStatus(note); else markClean(note, true);
+    loadActivity();                                // and whose it was, on a shared list
   } catch (err) { /* try again on the next tick */ }
 }
 

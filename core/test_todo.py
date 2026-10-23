@@ -395,11 +395,12 @@ PRIORITY = fixture("priority.json")
 # The board's names for the fields, and this file's. Only `bold` has no Python
 # side: it exists to remember whether to put the asterisks back on write, which
 # is a writer's question.
-PY_FIELD = {"doneOn": "done_on", "blockedBy": "blocked_by", "stableId": "stable_id"}
-SKIP_FIELD = {"bold"}
+PY_FIELD = {"doneOn": "done_on", "blockedBy": "blocked_by", "stableId": "stable_id",
+            "createdBy": "created_by", "editedBy": "edited_by"}
+SKIP_FIELD = set()
 STEP_FIELDS = ["done", "due", "start", "to", "slug", "blockedBy", "rank", "week", "impact", "effort",
                "urgent", "doneOn", "headline", "chat", "tlrank", "repeat", "stableId", "doing",
-               "cancelled", "archived", "extra"]
+               "cancelled", "archived", "createdBy", "editedBy", "extra"]
 
 
 def check_parse():

@@ -68,7 +68,8 @@ function subSteps(t){
       doneOn: readField(m[3], 'done'),
       clean: stripTags(m[3]).replace(/\s+/g, ' ').replace(/\s*—\s*$/, '').trim(),
       to: r.to, doing: r.doing, stableId: r.stableId, slug: r.slug, blockedBy: r.blockedBy,
-      impact: r.impact, effort: r.effort, urgent: r.urgent, week: r.week, start: r.start
+      impact: r.impact, effort: r.effort, urgent: r.urgent, week: r.week, start: r.start,
+      createdBy: r.createdBy, editedBy: r.editedBy
     });
   });
   return out;

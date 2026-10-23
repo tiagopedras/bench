@@ -1146,11 +1146,12 @@ function renderAgentFilterChip(){ renderFilterChips(); }
 function renderFilterChips(){
   const host = $('#filterChips');
   if (!host) return;
-  let unscoredN = 0, agentN = 0;
+  let unscoredN = 0, agentN = 0, mineN = 0;
   if (state.doc) state.doc.buckets.forEach(b => b.tiers.forEach(ti => ti.tasks.forEach(t => {
     if (t.done) return;
     if (unscored(t)) unscoredN++;
     if (delegatedToAgent(t)) agentN++;
+    if (forMe(t)) mineN++;
   })));
   const noDoc = !state.doc;
   BoardUI.mountFlushed(host, BoardUI.h(BoardUI.FilterChips, { chips: [
@@ -1173,6 +1174,18 @@ function renderFilterChips(){
         ? 'Back to the whole list'
         : 'Tasks handed to an agent, or with a sub-task handed to one. Click to see just those.',
       onClick: () => { state.agentFilter = !state.agentFilter; refreshView(); }
+    },
+    /* Signed in only: on the Mac every task is the owner's unless it says
+       otherwise, so "mine" would be most of the list. */
+    {
+      id: 'mineChip',
+      hidden: noDoc || !state.who || (mineN === 0 && !state.mineFilter),
+      on: state.mineFilter,
+      text: state.mineFilter ? 'Showing ' + mineN + ' mine · show all' : mineN + ' mine',
+      title: state.mineFilter
+        ? 'Back to the whole list'
+        : 'Tasks with you in “to”, or a sub-task with you in it. Click to see just those.',
+      onClick: () => { state.mineFilter = !state.mineFilter; refreshView(); }
     }
   ] }));
 }

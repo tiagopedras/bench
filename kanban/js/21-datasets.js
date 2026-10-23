@@ -96,6 +96,59 @@ async function loadWhoami(){
   if (state.doc) renderView();
 }
 
+/* ---- Who did what ----------------------------------------------------------
+   On the shared board the server writes who wrote each task and who last
+   changed it (`created-by:` and `edited-by:`, by email, stamp_authors() in
+   core/todo.py) and logs every change in the list's activity.jsonl. Here the
+   emails become names, from /activity.json, and the latest change by somebody
+   else goes in the status line. A Mac list carries neither tag and its log
+   only ever names its owner, so none of this shows there. */
+function personName(email){
+  if (!email) return '';
+  if (state.who && state.who.email === email) return state.who.name || email;
+  return state.authorNames[email] || email.split('@')[0];
+}
+/* The card's short form, "by Jerome" or "edited by Ana", and the long one
+   for the task panel and the card's tooltip. '' with neither tag. */
+function authorShort(t){
+  if (t.editedBy && t.editedBy !== t.createdBy) return 'edited by ' + personName(t.editedBy);
+  return t.createdBy ? 'by ' + personName(t.createdBy) : '';
+}
+function authorLong(t){
+  const parts = [];
+  if (t.createdBy) parts.push('Created by ' + personName(t.createdBy));
+  if (t.editedBy) parts.push((parts.length ? 'last edited by ' : 'Last edited by ') + personName(t.editedBy));
+  return parts.join(' · ');
+}
+/* Whether `[to:: ]` names whoever is signed in: their email, the part of it
+   before the @, their name or their first name, which is how people.md and
+   `[to::]` usually spell a person. */
+function namesMe(to){
+  const who = state.who, v = String(to || '').trim().toLowerCase();
+  if (!who || !v) return false;
+  const name = String(who.name || '').trim().toLowerCase();
+  return [who.email, who.email.split('@')[0], name, name.split(/\s+/)[0]].some(n => n && n === v);
+}
+function forMe(t){ return namesMe(t.to) || subSteps(t).some(s => namesMe(s.to)); }
+
+/* Names, and "Jerome edited 2 min ago" for the newest change by somebody
+   other than whoever is asking. Called when the list loads, when the watcher
+   brings in a change, and after a save the server merged. */
+async function loadActivity(){
+  if (state.demo || listFolder) return;
+  let got;
+  try { got = await getJSON('/activity.json'); } catch (err) { return; }
+  if (!got || !Array.isArray(got.entries)) return;
+  const names = got.names || {};
+  const fresh = JSON.stringify(names) !== JSON.stringify(state.authorNames);
+  state.authorNames = names;
+  if (fresh && state.doc) refreshView();
+  const other = got.me ? got.entries.find(e => e.who && e.who !== got.me) : null;
+  if (!other || state.dirty) return;
+  const at = Date.parse(other.at);
+  if (!isNaN(at)) autoStatusAt((other.name || personName(other.who)) + ' edited', at);
+}
+
 /* ---- Who sees a list -----------------------------------------------------
    Signed in, every list is someone's: personal (only its owner) or shared
    with teams the owner is in, or people by email. The server keeps it in the
@@ -665,8 +718,9 @@ async function saveFile(auto, forceBackup){
        is brought up to it. When that cannot happen yet (a field is being
        typed in) the version is left as it was, so the watcher sees the file
        as moved and catches up once the field is left. */
-    const caughtUp = info.merged && typeof info.text === 'string' ? settleMerged(text, info, note, auto) : true;
-    if (!info.merged) {
+    const written = typeof info.text === 'string' && info.text !== text;
+    const caughtUp = written ? settleMerged(text, info, note, auto) : true;
+    if (!written) {
       state.originalText = text;
       // The relative stamp is the timestamp on an auto-save, so the clock time
       // would only repeat it. A manual save keeps the clock.
@@ -679,6 +733,8 @@ async function saveFile(auto, forceBackup){
       if (info.hash && info.disk) { state.diskStamp = info.disk; state.diskHash = info.hash; }
       else await rememberStamp();
     }
+    // Somebody else's change came in with this save: say whose.
+    if (info.merged) loadActivity();
     // A hand-over or an approval that asked for its agent to start now.
     flushAgentStarts();
   } catch (err) {
@@ -707,11 +763,13 @@ async function saveFile(auto, forceBackup){
   }
 }
 
-/* After a save the server merged: `sent` is what this tab sent, info.text what
-   was written. Anything typed while the save was out is merged on top, so it
-   is not lost to the redraw. Returns false when the tab was left on `sent`,
-   because a field is being typed in or the typing since touched what the
-   other side changed; the next save or watcher tick does the rest. */
+/* After a save the server wrote other than as sent: merged with somebody
+   else's, or carrying who wrote and changed each task. `sent` is what this
+   tab sent, info.text what was written. Anything typed while the save was out
+   is merged on top, so it is not lost to the redraw. Returns false when the
+   tab was left on `sent`, because a field is being typed in or the typing
+   since touched what the other side changed; the next save or watcher tick
+   does the rest. */
 function settleMerged(sent, info, note, auto){
   const now = serializeDoc(state.doc);
   const local = editingNow() ? null : mergeSaves(sent, now, info.text);
@@ -720,7 +778,9 @@ function settleMerged(sent, info, note, auto){
     if (now === sent) markClean(note, auto); else markDirty();
     return false;
   }
-  reloadInPlace(local.text, info.text);
+  /* Only the author tags changed: nobody else's work came in, so no card
+     glows for it. */
+  reloadInPlace(local.text, info.text, null, !info.merged);
   if (!state.dirty) markClean(note, auto);
   return true;
 }
