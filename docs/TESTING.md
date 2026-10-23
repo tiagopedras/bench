@@ -133,6 +133,7 @@ python3 kanban/test_board_access.py # signed-in mode and board access — starts
 # the ones below need the board: scripts/test-board.sh --all runs every one
 node kanban/test_schedule.mjs
 node kanban/test_one_board.mjs     # handing a task over, the two reviews, whose move it is
+node kanban/test_signed_in.mjs     # signed in: the name, the Mac-only parts gone, sharing a list
 node kanban/test_subtasks.mjs      # sub-tasks in the drawer, and the agents' tick queue
 node kanban/test_board.mjs         # drag, drop, sort, add, Done as a heading, string card vs React one
 node kanban/test_chats.mjs

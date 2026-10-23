@@ -203,6 +203,27 @@ can read them and not change them. Every POST must carry `X-Board: 1`, because o
 address a form on another site could otherwise post with the visitor's cookie. "Me" on the
 board, the person review sub-tasks go to, is whoever is signed in.
 
+Each board says who may see it in `data/<board>/access.json`: an owner, and the people (by
+email) and teams who share it. A board is personal or shared from the moment it is made.
+The New list wizard asks as its last step, and the owner changes it later from Settings,
+which on the shared board is the list's sharing and nothing else. A team can only be added
+by someone in it. The server writes the file, so nothing else should. A board without one,
+or with one that does not parse, is seen by nobody once sign-in is on, because a board
+should be opened up on purpose and never by default. For a board that existed before,
+`scripts/set-board-access.py <board> --owner <email> --team <id>` sets it once. Team
+membership comes only from the header, which keeps the sign-in service's `teams.json` the
+one list of who is in which team.
+
+Every route reaches a board through `list_datasets()` and `current_dataset()`, and both
+answer for the person asking, so a board outside someone's access drops out of every route
+at once. It is missing from the Lists menu, naming it is a 404, and nothing under `data/`
+is served except through `/data/` on their own board. Someone who can see no board gets a
+404 from every board route rather than a shared empty folder. Which board is on screen is
+kept per person in `data/users/<email>.json`, so one person switching does not switch
+anyone else. `data/.current` stays the Mac's pointer, and on the server it only decides
+which board the weekly backup and `boards.md` treat as current. Access is off on the Mac:
+every board shows, `access.json` or not.
+
 ## The board
 
 `kanban/index.html` is one page, still. No build step, no dependencies, and

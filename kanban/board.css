@@ -3107,5 +3107,8 @@
 body.signed-in #f-projopen,
 body.signed-in #projOpenFolder,
 body.signed-in #refCardsBtn,
-body.signed-in #runAgentBtn,
-body.signed-in #settingsBtn{display:none !important}
+body.signed-in #runAgentBtn{display:none !important}
+/* Who sees a list: the wizard's last step, and Settings on the shared board. */
+.sharing .sharekind, .sharing .shareteam{display:block; margin:4px 0}
+.sharing .sharewith{margin-top:8px}
+.sharing .sharewith[hidden]{display:none}

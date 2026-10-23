@@ -112,6 +112,9 @@ MAX_BYTES = 5 * 1024 * 1024
 # One-backup-per-run applies per dataset, not to the server as a whole — the
 # rare session that visits two lists gets one grace save on each.
 backup_made = set()
+# The plan agent's paths module keeps the list it is pointed at in one module
+# global (paths.using), so the routes that go through it take turns.
+_plan_paths_lock = threading.Lock()
 
 
 def requester():
@@ -129,11 +132,18 @@ def requester():
 # blank or naming something deleted, it falls back to the first dataset found,
 # which covers a fresh clone (data/.current does not exist) the same way it
 # covers a dataset removed by hand outside the board.
+#
+# Signed in (BENCH_AUTH=header), both answers are the person's own: the list
+# is the boards their access.json lets them see, and which one is on screen is
+# kept per person in data/users/, never in data/.current. Every route below
+# reaches a board through current_dataset(), so filtering here is what keeps a
+# board outside someone's access out of every route at once. See
+# core/board_access.py.
 
 # A name starting with "_" is kept out of the dropdown, except when
 # TODOS_SHOW_HIDDEN is set: scripts/test-board.sh sets it, because its list is
 # called _test and the suites must see it along with any other hidden one.
-def list_datasets():
+def list_datasets(everyone=False):
     base = DATA_ROOT
     if not os.path.isdir(base):
         return []
@@ -141,15 +151,33 @@ def list_datasets():
     out = [name for name in os.listdir(base)
            if not name.startswith(hidden)
            and os.path.isfile(os.path.join(base, name, "todo.md"))]
-    return sorted(out)
+    return sorted(n for n in out if everyone or board_visible(n))
+
+
+def board_visible(name):
+    """Whether the person asking may see this board. Always, on the Mac board
+    and outside a request; signed in, only through the board's access.json."""
+    who = requester()
+    if not AUTH or who is None:
+        return True
+    return board_access.can_see(board_access.read(os.path.join(DATA_ROOT, name)), who)
+
+
+def _pointer():
+    """What data/.current says, whoever is asking."""
+    try:
+        with open(CURRENT_FILE, encoding="utf-8") as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
 
 
 def current_dataset():
-    try:
-        with open(CURRENT_FILE, encoding="utf-8") as fh:
-            name = fh.read().strip()
-    except OSError:
-        name = ""
+    who = requester()
+    if AUTH and who:
+        name = board_access.read_current(DATA_ROOT, who["email"])
+    else:
+        name = _pointer()
     names = list_datasets()
     if name in names:
         return name
@@ -157,6 +185,10 @@ def current_dataset():
 
 
 def set_current_dataset(name):
+    who = requester()
+    if AUTH and who:
+        board_access.write_current(DATA_ROOT, who["email"], name)
+        return
     os.makedirs(DATA_ROOT, exist_ok=True)
     with open(CURRENT_FILE, "w", encoding="utf-8") as fh:
         fh.write(name)
@@ -189,8 +221,12 @@ def publish_boards():
     """Rewrite <memory_root>/boards.md, when settings.json names a memory
     folder. A failure is printed and the board carries on: the file is for
     agents outside Bench, and nothing here reads it back."""
+    # Every board and the server's own pointer, whoever made the change: the
+    # file is for agents on this machine, not for the person signed in.
+    names = list_datasets(everyone=True)
+    current = _pointer() if _pointer() in names else (names[0] if names else None)
     try:
-        settings.write_boards(list_datasets(), current_dataset(), DATA_ROOT)
+        settings.write_boards(names, current, DATA_ROOT)
     except OSError as err:
         print("Could not write boards.md in the memory folder: %s" % err)
 
@@ -347,7 +383,8 @@ def bucket_brief_path(bucket, name=None):
     """
     if planning_agent_plan is None:
         return None, None
-    stream = planning_agent_plan.bucket_stream(bucket)
+    with plan_paths():
+        stream = planning_agent_plan.bucket_stream(bucket)
     # bucket_stream() returns a value from its own table or the fallback, so
     # this cannot be a path today. Checked anyway, because the entry that
     # retires that table slugifies the live heading instead, and a heading is
@@ -356,6 +393,27 @@ def bucket_brief_path(bucket, name=None):
         return None, None
     base = os.path.join(dataset_dir(name or current_dataset()), "buckets")
     return stream, os.path.join(base, stream, "%s.md" % stream)
+
+
+class plan_paths:
+    """agents/plan-agent/paths.py pointed at the board this request is on, for
+    the length of a block. Its own pointer is data/.current, which on the
+    shared board is nobody's board in particular."""
+
+    def __enter__(self):
+        _plan_paths_lock.acquire()
+        try:
+            self._using = planning_agent_plan.paths.using(current_dataset())
+            self._using.__enter__()
+        except BaseException:
+            _plan_paths_lock.release()
+            raise
+
+    def __exit__(self, *exc):
+        try:
+            self._using.__exit__(*exc)
+        finally:
+            _plan_paths_lock.release()
 
 
 def brief_template():
@@ -871,6 +929,28 @@ def readme_note_bucket(dataset, heading, stream, was=None):
     with open(path, "w", encoding="utf-8", newline="") as fh:
         fh.write(new)
     return stream
+
+
+def sharing_from(raw, who):
+    """The access.json a new list starts with, from the wizard's sharing step.
+
+    Personal (the default, and what the first-list form sends by sending
+    nothing) is only the person making it. Shared names teams they are in, or
+    people by email, or both."""
+    raw = raw if isinstance(raw, dict) else {}
+    if raw.get("kind", "personal") == "personal":
+        return board_access.clean(who["email"])
+    if raw.get("kind") != "shared":
+        return None, "sharing is personal or shared"
+    access, err = board_access.clean(who["email"], raw.get("people") or [], raw.get("teams") or [])
+    if err:
+        return None, err
+    stray = set(access["teams"]) - set(who["teams"])
+    if stray:
+        return None, "you are not in %s" % ", ".join(sorted(stray))
+    if not access["people"] and not access["teams"]:
+        return None, "a shared list needs a team or a person to share it with"
+    return access, None
 
 
 def create_dataset(name, buckets=None):
@@ -1922,6 +2002,11 @@ _ai_chat_cache = {}
 CHAT_WRITE_DENIES = ["**/data/*/todo.md"]
 
 
+def planner_missing(bucket):
+    with plan_paths():
+        return not planning_agent_plan.agent_on_disk(planning_agent_plan.bucket_agent(bucket))
+
+
 def ai_chat_for(name):
     # Signed in, there is no chat: it runs Claude Code as whoever started this
     # server, and that login is the server owner's own.
@@ -2055,6 +2140,24 @@ def shared_refusal(method, path):
     return None
 
 
+# What a signed-in person with no board yet can still ask for: the page, who
+# they are, the list of boards (empty) and the route that makes one.
+BOARDLESS_GET = ("/datasets.json", "/settings.json", "/profile-basics.json",
+                 "/holiday-countries.json", "/holiday-regions.json", "/streams.json")
+BOARDLESS_POST = ("/datasets", "/dataset/select")
+
+
+def needs_board(method, path):
+    """Whether a route reads or writes a board. On the shared board, one asked
+    for by someone with no board is a 404 rather than a read of the empty
+    placeholder folder every such person would share."""
+    if method in ("GET", "HEAD"):
+        if path == "/" + DATA or path.startswith("/" + DATA + "/"):
+            return True
+        return path.endswith(".json") and path not in BOARDLESS_GET
+    return path not in BOARDLESS_POST
+
+
 def _holiday_place_json():
     """The profile's holiday country and region, "" for neither."""
     import owner_profile
@@ -2103,6 +2206,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             refusal = shared_refusal(self.command, self.path.split("?")[0])
             if not refusal and self.command == "POST" and self.headers.get("X-Board") != "1":
                 refusal = (403, {"error": "not from the board"})
+            if not refusal and current_dataset() is None and needs_board(self.command, self.path.split("?")[0]):
+                refusal = (404, {"error": "no list you can see"})
         if refusal:
             # The body, if any, is never read, so the connection cannot be
             # reused for a next request.
@@ -2200,7 +2305,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # GET and HEAD both funnel through here (send_head calls this), so a
         # dataset switch takes effect for every read without the board's own
         # fetch calls changing at all.
-        p = path.split("?")[0]
+        # Cleaned the way the base class cleans it before the prefix is looked
+        # at, so /kanban/../data/<another list>/ or /%64ata/ cannot reach a
+        # list by a path that only becomes /data/ after this check.
+        import posixpath
+        from urllib.parse import unquote
+        raw = unquote(path.split("?")[0].split("#")[0])
+        p = posixpath.normpath(raw)
+        # normpath drops a trailing slash, which is what asks for a folder.
+        if raw.endswith("/") and not p.endswith("/"):
+            p += "/"
         prefix = "/" + DATA
         if p == prefix or p.startswith(prefix + "/"):
             ds = current_dataset()
@@ -2219,7 +2333,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                         return os.path.join(DATA_ROOT, ".outside-data-root")
                     return os.path.join(DATA_ROOT, rel)
                 return real
-        return super().translate_path(path)
+            return os.path.join(DATA_ROOT, ".no-list", ".nothing")
+        real = super().translate_path(path)
+        # Nothing under data/ is served except through the branch above: not
+        # settings.json, not anyone's data/users/ file, not another list.
+        for base in (DEFAULT_DATA_ROOT, DATA_ROOT):
+            rel = os.path.relpath(os.path.realpath(real), os.path.realpath(base))
+            if rel == "." or not (rel == ".." or rel.startswith(".." + os.sep)):
+                return os.path.join(DATA_ROOT, ".outside-data-root")
+        return real
 
     def _shared_project(self, ds, rest):
         # /data/projects/<name>/... for a folder that resolves under the
@@ -2255,7 +2377,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json(404, {"error": "nobody signs in to this board"})
             return self._json(200, requester())
         if path == "/settings.json":
-            return self._json(200, settings_reply(settings.load(DATA_ROOT)))
+            saved = settings.load(DATA_ROOT)
+            if AUTH:
+                saved = settings.for_boards(saved, list_datasets())
+            return self._json(200, settings_reply(saved))
+        # Who may see the board on screen, for its sharing in Settings.
+        if path == "/dataset/access.json":
+            if not AUTH:
+                return self._json(404, {"error": "nobody signs in to this board"})
+            ds = current_dataset()
+            got = board_access.read(dataset_dir(ds)) or {"owner": "", "people": [], "teams": []}
+            return self._json(200, dict(got, board=ds, mine=got["owner"] == requester()["email"]))
         if path == "/profile-basics.json":
             import owner_profile
             if AUTH:
@@ -2430,8 +2562,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 # means no planner of that name exists on disk yet, which is the
                 # thing worth saying: the bucket has a brief nobody is pointed
                 # at until somebody writes data/<dataset>/buckets/<stream>/<dataset>-<stream>-agent.md.
-                "fallback": not planning_agent_plan.agent_on_disk(
-                    planning_agent_plan.bucket_agent(bucket)),
+                "fallback": planner_missing(bucket),
             })
         # The Agents tab's own planner list: one row per bucket the caller
         # names (the board already has the current list's buckets in
@@ -2448,13 +2579,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if planning_agent_plan is None or not current_dataset():
                 return self._json(200, {"planners": []})
             planners = []
-            for name in names:
-                agent = planning_agent_plan.bucket_agent(name)
-                planners.append({
-                    "bucket": name,
-                    "agent": agent,
-                    "onDisk": planning_agent_plan.agent_on_disk(agent),
-                })
+            with plan_paths():
+                for name in names:
+                    agent = planning_agent_plan.bucket_agent(name)
+                    planners.append({
+                        "bucket": name,
+                        "agent": agent,
+                        "onDisk": planning_agent_plan.agent_on_disk(agent),
+                    })
             return self._json(200, {"planners": planners})
         if path == "/reports.json":
             return self._json(200, {"reports": report_listing()})
@@ -2602,13 +2734,27 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             name = slugify(payload.get("name"))
             if not name:
                 return self._json(400, {"error": "that name has nothing usable in it"})
-            if name in list_datasets():
+            if name in board_access.RESERVED:
+                return self._json(400, {"error": "“%s” is a folder Bench keeps for itself" % name})
+            if name in list_datasets(everyone=True):
                 return self._json(409, {"error": "there is already a list called “%s”" % name})
+            # Signed in, a list is someone's from the moment it exists: worked
+            # out before anything is made, so a refusal makes nothing.
+            access = None
+            if AUTH:
+                access, err = sharing_from(payload.get("sharing"), requester())
+                if err:
+                    return self._json(400, {"error": err})
             # The wizard posts the buckets it collected, each with the one-line
             # description that becomes its brief's opening. An older board posts
             # a name and nothing else, which create_dataset() still answers.
             buckets = payload.get("buckets")
-            create_dataset(name, buckets if isinstance(buckets, list) else None)
+            if not create_dataset(name, buckets if isinstance(buckets, list) else None):
+                return self._json(409, {"error": "there is already a folder called “%s”" % name})
+            # Until this lands the list has no access.json, which signed in
+            # means nobody sees it, so there is no moment it is open to all.
+            if access:
+                board_access.write(dataset_dir(name), access)
             set_current_dataset(name)
             publish_boards()
             return self._json(200, {"ok": True, "name": name,
@@ -2625,6 +2771,36 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             set_current_dataset(name)
             publish_boards()
             return self._json(200, {"ok": True, "current": name})
+        # The owner changes who else sees the board on screen. Personal is
+        # neither people nor teams.
+        if path == "/dataset/access":
+            if not AUTH:
+                return self._json(404, {"error": "nobody signs in to this board"})
+            try:
+                payload = json.loads((self._body() or b"{}").decode("utf-8"))
+            except (UnicodeDecodeError, ValueError):
+                return self._json(400, {"error": "body was not valid JSON"})
+            if not isinstance(payload, dict):
+                return self._json(400, {"error": "expected people and teams"})
+            ds = str(payload.get("name") or current_dataset() or "")
+            if ds not in list_datasets():
+                return self._json(404, {"error": "no list called “%s”" % ds})
+            was = board_access.read(dataset_dir(ds))
+            who = requester()
+            if not was or was["owner"] != who["email"]:
+                return self._json(403, {"error": "only the list’s owner can change who sees it"})
+            access, err = board_access.clean(who["email"], payload.get("people") or [],
+                                             payload.get("teams") or [])
+            if not err:
+                # A team kept from before may stay even if its owner has since
+                # left it; a new one has to be theirs.
+                new = set(access["teams"]) - set(was["teams"]) - set(who["teams"])
+                if new:
+                    err = "you are not in %s" % ", ".join(sorted(new))
+            if err:
+                return self._json(400, {"error": err})
+            board_access.write(dataset_dir(ds), access)
+            return self._json(200, dict(access, board=ds, mine=True))
         ai_chat = ai_chat_for(current_dataset())
         # Both routes below are refused unless the request carries X-Board: 1.
         # Any page in any tab can POST to 127.0.0.1 — that is what CSRF is —

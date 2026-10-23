@@ -453,7 +453,39 @@ async function maybeOnboard(){
   } catch (err) { /* no server, no setup */ }
 }
 
-$('#settingsBtn').onclick = () => openSettings(false);
+/* On the shared board the settings are the server's, so Settings is the one
+   thing a visitor can change there: who sees the list on screen, and only
+   the owner can change it. */
+async function openSharing(){
+  let acc;
+  try { acc = await getJSON('/dataset/access.json'); }
+  catch (err) { showToast('Could not read who sees this list: ' + (err.message || err), 'bad'); return; }
+  const title = 'Who sees ' + prettyDataset(acc.board);
+  if (!acc.mine) {
+    const shared = acc.teams.concat(acc.people);
+    showModal(title, '', '<div class="repdoc"><p>' +
+      (acc.owner ? esc(acc.owner) + ' owns this list' : 'Nobody owns this list yet') +
+      (shared.length ? ', shared with ' + esc(shared.join(', ')) + '.' : '.') +
+      ' Only the owner can change who sees it.</p></div>', [{ label: 'Close' }]);
+    return;
+  }
+  const sh = { kind: acc.teams.length || acc.people.length ? 'shared' : 'personal',
+               teams: acc.teams.slice(), people: acc.people.join('\n') };
+  const teams = (state.who.teams || []).concat(acc.teams.filter(t => (state.who.teams || []).indexOf(t) < 0));
+  showModal(title, 'You own this list.', sharingFormHTML(sh, teams), [
+    { label: 'Save', primary: true, run: async () => {
+      const got = sharingBody(sh);
+      if (got.error) { showToast(got.error, 'bad'); return; }
+      try { await postJSON('/dataset/access', { name: acc.board, teams: got.body.teams, people: got.body.people }); }
+      catch (err) { showToast('Could not save: ' + (err.message || err), 'bad'); return; }
+      closeModal();
+      showToast('Saved.', 'good');
+    } },
+    { label: 'Cancel', run: closeModal }], { keepOpen: true });
+  trackSharing(sh);
+}
+
+$('#settingsBtn').onclick = () => state.who ? openSharing() : openSettings(false);
 
 /* ---- Starting an agent straight away ------------------------------------
    Settings > Agent options says, per agent, whether a task handed to it waits

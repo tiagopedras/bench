@@ -393,6 +393,14 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(project_folders.locate("idea", work), os.path.join(proj, "idea"))
         home = os.path.join(self.root, "home")
         self.assertEqual(project_folders.homes(home), [os.path.join(home, "projects")])
+    def test_for_boards_names_only_those_boards(self):
+        a, b = self.projects(), os.path.join(self.root, "b")
+        os.makedirs(b)
+        self.write({"projects_roots": {"work": a, "secret": b}})
+        saved = settings.load(self.root)
+        self.assertEqual(settings.for_boards(saved, ["work"])["projects_roots"], {"work": a})
+        self.assertNotIn("projects_roots", settings.for_boards(saved, []))
+        self.assertIn("secret", saved["projects_roots"])
 
 if __name__ == "__main__":
     unittest.main()
