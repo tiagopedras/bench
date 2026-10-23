@@ -53,14 +53,73 @@ function hasOwnChanges(){ return state.dirty && !state.migratedOnly; }
 async function reload(){
   if (state.locked) return;
   if (!hasOwnChanges()) return loadFile();
-  // Same collision as an outside edit, so it gets the same modal — the owner can see
-  // what the owner would be throwing away before the owner throws it away.
-  let diskText = null;
+  // Same collision as an outside edit, so it gets the same answer: merged when
+  // the two touched different cards, the modal when they did not.
+  await mergeOrAsk(true);
+}
+
+/* The file moved while this tab had changes of its own: a save refused with a
+   409, or the watcher seeing a new version. Merged card by card first
+   (mergeLists() in 22a-merging.js), so two people on the shared board who
+   edited different cards never see a modal. Cards both changed ask which
+   version to keep. A change outside the cards on both sides, or a file that
+   cannot be read, falls back to choosing a whole copy.
+
+   The stamp and hash adopted are the ones that came with the text merged
+   against, so the save that follows is checked against exactly that. */
+async function mergeOrAsk(manual){
+  let disk = null;
   try {
     const res = await fetchList();
-    if (res.ok) diskText = await res.text();
+    if (res.ok) disk = { text: await res.text(),
+                         stamp: res.headers.get('Last-Modified') || null,
+                         hash: res.headers.get('X-Todo-Hash') || null };
   } catch (err) { /* handled below by the null check */ }
-  offerReload(diskText, true);
+  if (!disk) return offerReload(null, manual);
+  state.diskStamp = disk.stamp;
+  state.diskHash = disk.hash;
+
+  const base = state.originalText;
+  const mineText = serializeDoc(state.doc);
+  const merged = mergeLists(base, mineText, disk.text, 'mine');
+  if (!merged) return offerReload(disk.text, manual);
+  if (!merged.clashes.length) return applyMerge(disk, merged.text, mineText);
+
+  const one = merged.clashes.length === 1;
+  const sub = 'Someone else saved this list while you were editing it. Everything else is merged, ' +
+    'but ' + (one ? 'this card was' : 'these cards were') + ' changed in both copies.';
+  const body = '<div class="changes"><h3>Changed in both copies (' + merged.clashes.length + ')</h3><ul>' +
+    merged.clashes.map(title => '<li><span><strong>' + mdInline(title) + '</strong></span></li>').join('') +
+    '</ul></div>';
+  const pick = prefer => () => {
+    closeModal();
+    applyMerge(disk, mergeLists(base, mineText, disk.text, prefer).text, mineText);
+  };
+  showModal('Two versions of ' + (one ? 'a card' : 'some cards'), sub, body, [
+    { label: 'Keep mine', primary: true, run: pick('mine') },
+    { label: 'Use the other copy', run: pick('theirs') },
+    { label: 'Download my copy first', run: () => downloadText(mineText, state.fileName) },
+  ], { required: true });
+}
+
+/* The merged list on the board, with the drawer still on the card that was
+   open. What disk holds becomes the version this tab last read, so the merge
+   itself is the unsaved change the autosave writes next. */
+function applyMerge(disk, text, mineText){
+  const changes = describeChanges(mineText, text);
+  const open = state.openTask != null && locate(state.openTask);
+  const openKey = open && open.task.stableId;
+  closeDrawer();                                   // ids are rebuilt by the parse
+  const before = cardPlaces();
+  load(text, state.fileName);
+  settleChanges(before, changes, null);
+  if (openKey) openTaskByKey(openKey);
+  state.originalText = disk.text;
+  // Nothing of this tab's was left to add. load() may still have found its own
+  // tidy-up to save, which stands.
+  if (text === disk.text) { if (!state.dirty) markClean('reloaded — the file changed on disk'); return; }
+  const n = changes ? changes.length : 0;
+  applyDirty('merged ' + (n ? n + ' change' + (n > 1 ? 's' : '') + ' from' : 'with') + ' the other copy');
 }
 
 /* The modal both Reload and the outside-edit watcher land in when there is
