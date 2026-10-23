@@ -108,6 +108,15 @@ const state = {
      /bucket-brief.json has answered, and read only through agentsSetUp()
      (27-agents.js), which also counts any task already delegated to an agent. */
   agentsSetup: null,
+  /* Whether an agent can run on this machine at all: the `claude` CLI and
+     agents-engine both there (/agents-status.json, loadAgentsStatus() in
+     27-agents.js). null until it answers, and where there is no server to ask,
+     so nothing is hidden on a guess; false hides everything that would start a
+     run. */
+  agentsReady: null,
+  /* Which of the two is missing when agentsReady is false: 'claude' or
+     'engine'. Only the Agents tab reads it, to say what to install. */
+  agentsMissing: '',
   matrixHideWaiting: false,
   /* Ids held for a bulk action — Move to column, Move to bucket, Delete — via
      the bar the board shows once this holds anything (renderBulkBar(),

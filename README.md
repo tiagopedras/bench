@@ -40,6 +40,8 @@ Three sibling folders are optional. Each is looked up as `../PACKAGES/<name>` ne
 
 The agents (`agents/plan-agent`, `agents/implement-agent`) need the `claude` command line tool and do nothing until a list is switched on in the Agents view. The tests are in `docs/TESTING.md`: run them with `scripts/test-board.sh --all`.
 
+**Claude Code is optional.** Without it, the board works in full: lists, buckets, columns, editing, backups, reports, the archive and Settings. What needs it: the chat window and the PA, the Plan and Implement agents, and bucket briefs. With no `claude` on the path, the board hides all of those. The Agents tab says what to install, and the run buttons refuse rather than start something that cannot run. Install Claude Code and log in, then reload the board to turn them on.
+
 ## What it is for
 
 The point of all of it is delegation. The loop is plan, accept, execute, and it
@@ -599,7 +601,8 @@ file says.
 
 **Spend and schedules** in the Data menu, opening a sheet, with **Run the Plan agent
 now** beside it. Not a tab, because it is about the machinery around the list rather
-than about the list.
+than about the list. Both only show when an agent can run on this machine, so not without Claude Code
+or `agents-engine`.
 
 Three things here run on a clock rather than when you ask them to: the nightly
 agent's twelve launchd wakes, the companion's morning briefing, and the weekly
