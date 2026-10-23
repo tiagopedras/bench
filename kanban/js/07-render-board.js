@@ -17,6 +17,7 @@ function matches(t, tierName){
   // count as needing it however they are tagged.
   if (state.unscoredOnly && (t.done || !unscored(t))) return false;
   if (state.agentFilter && !delegatedToAgent(t)) return false;
+  if (state.mineFilter && !forMe(t)) return false;
   // Only ever populated while a single bucket is on screen — see
   // renderThemeTabs() below — so this costs nothing everywhere else.
   if (state.themeFilter.size && !state.themeFilter.has(t.theme)) return false;

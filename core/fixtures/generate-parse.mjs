@@ -32,7 +32,7 @@ const old = JSON.parse(fs.readFileSync(path.join(HERE, 'parse.json'), 'utf8'))
    not here: it is uid(), fresh every parse, and means nothing outside one tab. */
 const FIELDS = ['done', 'title', 'bold', 'impact', 'effort', 'due', 'start', 'doneOn',
   'to', 'theme', 'urgent', 'week', 'slug', 'blockedBy', 'rank', 'tlrank', 'headline',
-  'chat', 'repeat', 'stableId', 'cancelled', 'archived', 'extra', 'doing']
+  'chat', 'repeat', 'stableId', 'cancelled', 'archived', 'extra', 'doing', 'createdBy', 'editedBy']
 
 /* New cases, appended as the grammar grows. The existing lines are untouched
    and the list is de-duplicated below, so re-running this is idempotent. */
@@ -66,7 +66,13 @@ const NEW_LINES = [
      per bucket rather than invented per task — see IMPROVEMENTS.md. */
   '- [ ] **Filed under a theme** [impact:: high] [theme:: audits]',
   '- [ ] **The other syntax reads too** `theme:ways-of-working`',
-  '- [ ] **No theme at all, the way every task looked before today** [impact:: low]'
+  '- [ ] **No theme at all, the way every task looked before today** [impact:: low]',
+  /* 23 Oct 2026: who wrote a task and who last changed it, by sign-in email,
+     written by the server on a shared board and in front of the id. */
+  '- [ ] **Written and changed by two people** [due:: 2026-11-01] `created-by:jerome@example.com` `edited-by:ana@example.com` `id:au0001`',
+  '- [ ] **Only ever touched by its writer** `created-by:Jerome@Example.com` `id:au0002`',
+  '- [ ] **The other syntax reads too** [edited-by:: ana@example.com]',
+  '- [ ] **An unknown tag still rides along after the authors** `created-by:a@b.c` `id:au0003` `mystery:7`'
 ]
 
 /* Sub-tasks, read out of a task's body. Each entry is a task line and the
@@ -95,11 +101,17 @@ const STEP_TASKS = [
       '  - [ ] Review the plan [to:: Morgan] `#ab12cd-plan-review` `blocked-by:ab12cd-plan` `id:aa0002`',
       '  - [ ] Implement [to:: Implement agent] `doing` `#ab12cd-implement` `blocked-by:ab12cd-plan-review` `id:aa0003`',
       '  - [ ] Review the work [to:: Morgan] `#ab12cd-work-review` `blocked-by:ab12cd-implement` `id:aa0004`'
+    ] },
+  { why: 'a step carries who wrote it and who last changed it, the way a task does',
+    lines: [
+      '- [ ] **Shared task** `created-by:jerome@example.com` `id:au0010`',
+      '  - [ ] Step two people touched `created-by:jerome@example.com` `edited-by:ana@example.com` `id:au0011`'
     ] }
 ]
 
 const STEP_FIELDS = ['done', 'due', 'start', 'to', 'slug', 'blockedBy', 'rank', 'week', 'impact', 'effort',
-  'urgent', 'doneOn', 'headline', 'chat', 'tlrank', 'repeat', 'stableId', 'doing', 'cancelled', 'archived', 'extra']
+  'urgent', 'doneOn', 'headline', 'chat', 'tlrank', 'repeat', 'stableId', 'doing', 'cancelled', 'archived',
+  'createdBy', 'editedBy', 'extra']
 const stepsFor = d => {
   const task = board.parseTask(d.lines)
   return {

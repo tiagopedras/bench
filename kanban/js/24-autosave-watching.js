@@ -4,16 +4,50 @@
    Auto-save and watching the file
 
    Two jobs that share one fact: what the file on disk looked like the last time
-   this tab agreed with it. Last-Modified is enough — the board is the only
-   thing writing, so a changed timestamp means a real change.
+   this tab agreed with it. state.originalText is that version whole, and is
+   what a save is merged from; the stamp and hash are how the watcher notices
+   it has moved.
    ========================================================================= */
 
 /* No toggle and no button any more — a change on a card, in the sidebar or on
    the board, saves to disk on its own within a few seconds. That is the one
    behaviour now, not an option someone could switch off and forget. */
 const AUTOSAVE_MS = 4 * 1000;
-const WATCH_MS = 15 * 1000;
-let conflictShown = false;
+/* Every three seconds while the tab is on screen, so somebody else's change on
+   a shared list shows up about as fast as one's own saves; every fifteen while
+   it is hidden, which is all a tab nobody is looking at needs. */
+const WATCH_MS = 3 * 1000;
+const WATCH_HIDDEN_MS = 15 * 1000;
+let lastWatchAt = 0;
+
+/* Somebody typing on the board right now: a field in a card, the drawer or the
+   sub-task panel has focus. Redrawing from the file would take the field away
+   mid-word, so catching up waits for it to be left. A tick box is not typing. */
+function editingNow(){
+  const a = document.activeElement;
+  if (!a || !a.closest || !a.closest('#drawer, #subpanel, #lists')) return false;
+  if (a.tagName === 'INPUT' && /^(checkbox|radio|button|submit)$/i.test(a.type)) return false;
+  return a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName);
+}
+
+/* The board redrawn from `text`, where `disk` is the version of the file it
+   now stands on; the two differ when this tab still has changes of its own
+   on top, which then wait to be saved. The open task stays open, found again
+   by its id, since every card gets a fresh one from the parse. `quiet` skips
+   the glow on what changed. */
+function reloadInPlace(text, disk, named, quiet){
+  const open = state.openTask != null ? locate(state.openTask) : null;
+  const key = open ? taskKey(open.task) : null;
+  const changes = describeChanges(state.originalText, disk);
+  const before = cardPlaces();
+  closeDrawer();
+  load(text, 'todo.md');
+  state.originalText = disk;
+  if (!quiet) settleChanges(before, changes, named || null);
+  if (key) { const t = findTaskByKey(key); if (t) openDrawer(t.id); }
+  if (text !== disk) markDirty();
+  return changes;
+}
 
 /* One HEAD, both answers: the timestamp and the content hash the server sends
    with every read of todo.md. Returns nulls rather than throwing when the
@@ -50,10 +84,12 @@ async function autosaveTick(){
   await saveFile(true);
 }
 
-/* Picks up edits made outside the board — Claude working through the list, or
-   the file being changed in an editor. With nothing of the owner's unsaved here,
-   reloading is free, so it happens quietly and says so afterwards rather than
-   asking first. Only the owner's own unsaved work turns it into a question.
+/* Picks up edits made outside the board — somebody else on a shared list,
+   Claude working through it, or the file being changed in an editor. With
+   nothing of the owner's unsaved here, reloading is free, so it happens quietly
+   and says so afterwards rather than asking first. With unsaved work here, the
+   work is saved and the server merges the two; only the same thing changed in
+   both places turns it into a question.
 
    Held while pa says it is mid-edit (see "pa at work" below), so its edit
    arrives as one change rather than one per line it touched. One tick at a
@@ -62,7 +98,9 @@ async function autosaveTick(){
 let watchBusy = false;
 async function watchTick(){
   checkRunStartedHere();                           // no-op unless this tab started a run
-  if (state.locked || !state.doc || modalEl || conflictShown || paWorking || watchBusy) return;
+  if (state.locked || !state.doc || modalEl || paWorking || watchBusy) return;
+  if (document.hidden && Date.now() - lastWatchAt < WATCH_HIDDEN_MS) return;
+  lastWatchAt = Date.now();
   watchBusy = true;
   try { await watchOnce(); } finally { watchBusy = false; }
 }
@@ -77,41 +115,30 @@ async function watchOnce(){
      is the fallback for a server from before X-Todo-Hash existed. */
   const moved = (hash && state.diskHash) ? hash !== state.diskHash : stamp !== state.diskStamp;
   if (!moved) { state.diskStamp = stamp; state.diskHash = hash; return; }
+  // Asked again on the next tick, once the field is left.
+  if (editingNow()) return;
 
-  if (!hasOwnChanges()) {
-    try {
-      const res = await fetchList();
-      if (!res.ok) return;
-      const text = await res.text();
-      if (text === state.originalText) { state.diskStamp = stamp; state.diskHash = hash; return; }
-      const changes = describeChanges(state.originalText, text);
-      closeDrawer();                               // ids are rebuilt by the parse
-      const before = cardPlaces();
-      load(text, 'todo.md');
-      settleChanges(before, changes, named);
-      state.diskStamp = stamp;
-      state.diskHash = hash;
-      const n = changes ? changes.length : 0;
-      const note = 'reloaded — the file changed on disk' +
-        (n ? ' (' + n + ' task' + (n > 1 ? 's' : '') + ')' : '');
-      // The fresh parse may have re-run the load-time tidy-up, which is a real
-      // pending save. Say what happened without clearing it.
-      if (state.migratedOnly) autoStatus(note); else markClean(note, true);
-    } catch (err) { /* try again on the next tick */ }
-    return;
-  }
+  /* Unsaved work here as well: saved now, which merges it with the file on
+     the server and brings this tab up to what was written. Only the same
+     thing changed in both places stops to ask (offerMerge). */
+  if (hasOwnChanges()) { await saveFile(true); return; }
 
-  // Unsaved work here and a changed file there: the owner's call, not the board's.
-  conflictShown = true;
-  let diskText = null;
   try {
     const res = await fetchList();
-    if (res.ok) diskText = await res.text();
-  } catch (err) { /* offerReload copes with null */ }
-  state.diskStamp = stamp;                         // asked once per outside change
-  state.diskHash = hash;
-  conflictShown = false;
-  offerReload(diskText);
+    if (!res.ok) return;
+    const text = await res.text();
+    if (text === state.originalText) { state.diskStamp = stamp; state.diskHash = hash; return; }
+    const changes = reloadInPlace(text, text, named);
+    state.diskStamp = stamp;
+    state.diskHash = hash;
+    const n = changes ? changes.length : 0;
+    const note = 'reloaded — the file changed on disk' +
+      (n ? ' (' + n + ' task' + (n > 1 ? 's' : '') + ')' : '');
+    // The fresh parse may have re-run the load-time tidy-up, which is a real
+    // pending save. Say what happened without clearing it.
+    if (state.migratedOnly) autoStatus(note); else markClean(note, true);
+    loadActivity();                                // and whose it was, on a shared list
+  } catch (err) { /* try again on the next tick */ }
 }
 
 

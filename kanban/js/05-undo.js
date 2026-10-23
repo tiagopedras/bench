@@ -93,6 +93,12 @@ function autoStatus(msg){
   statusAgo = { at: Date.now(), msg, painted: null };
   paintStatusAgo();
 }
+/* Something that happened at `at` rather than just now, read as one phrase:
+   "Jerome edited 2 min ago". */
+function autoStatusAt(msg, at){
+  statusAgo = { at, msg, painted: null, sep: ' ' };
+  paintStatusAgo();
+}
 function paintStatusAgo(){
   if (!statusAgo) return;
   const s = $('#status');
@@ -100,7 +106,7 @@ function paintStatusAgo(){
   // unsaved-changes flag. That message owns the space now, so stand down rather
   // than overwrite it on the next tick.
   if (statusAgo.painted !== null && s.textContent !== statusAgo.painted) { statusAgo = null; return; }
-  statusAgo.painted = statusAgo.msg + ' · ' + shortAgo(statusAgo.at);
+  statusAgo.painted = statusAgo.msg + (statusAgo.sep || ' · ') + shortAgo(statusAgo.at);
   s.textContent = statusAgo.painted;
 }
 setInterval(paintStatusAgo, 30000);

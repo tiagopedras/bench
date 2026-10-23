@@ -110,7 +110,7 @@ function readTags(rest){
   const tags = {};
   const extra = [];                                   // any tag we don't know about, kept verbatim
   let blockedBy = [], rank = null, tlrank = null, slug = '', headline = '', chat = '', repeat = '';
-  let stableId = '', cancelled = '', archived = '';
+  let stableId = '', cancelled = '', archived = '', createdBy = '', editedBy = '';
   /* Either syntax lands here, so a tag means the same thing whichever form it
      arrived in. `whole` is what goes into `extra`, which keeps an unrecognised
      tag exactly as it was written. */
@@ -155,6 +155,12 @@ function readTags(rest){
        necessarily `done:`. */
     else if (key === 'cancelled') cancelled = v.trim();
     else if (key === 'archived') archived = v.trim();
+    /* Who wrote the task and who last changed it, by the email they signed in
+       with. Only the server writes these, on a shared board, from the sign-in
+       header and never from what a tab sends (stamp_authors() in
+       core/todo.py); a list nobody signs in to never carries them. */
+    else if (key === 'created-by') createdBy = v.trim().toLowerCase();
+    else if (key === 'edited-by') editedBy = v.trim().toLowerCase();
     else extra.push(whole);
     return ' ';
   };
@@ -194,7 +200,7 @@ function readTags(rest){
        audits.`, readable only by a language model rather than by a query. */
     theme: tags.theme || '',
     urgent, week, doing, slug, blockedBy, rank, tlrank, headline, chat, repeat, stableId,
-    cancelled, archived, extra
+    cancelled, archived, createdBy, editedBy, extra
   };
 }
 
@@ -280,6 +286,11 @@ function serializeTask(t){
     if (t.headline) tags.push('`headline:' + t.headline + '`');
     if (t.chat)   tags.push('`chat:' + t.chat + '`');
     if (t.repeat) tags.push('`repeat:' + t.repeat + '`');
+    /* Before the id rather than after it, for the reason the id's own comment
+       gives: the server adds these to a line by inserting them in front of
+       the id and touching nothing else, and this has to write the same line. */
+    if (t.createdBy) tags.push('`created-by:' + t.createdBy + '`');
+    if (t.editedBy)  tags.push('`edited-by:' + t.editedBy + '`');
     /* Last among the tags this file knows, and that position is load-bearing.
        Ids were added to a file of 137 existing tasks by appending this one
        token to each line and changing nothing else, which only round-trips
@@ -462,7 +473,7 @@ function splitBody(t){
         impact: r.impact, effort: r.effort, doneOn: r.doneOn, urgent: r.urgent,
         headline: r.headline, chat: r.chat, tlrank: r.tlrank, repeat: r.repeat,
         stableId: r.stableId, doing: r.doing, cancelled: r.cancelled, archived: r.archived,
-        extra: r.extra,
+        createdBy: r.createdBy, editedBy: r.editedBy, extra: r.extra,
         due:   readField(text, 'due'),
         start: readField(text, 'start'),
         to:    readField(text, 'to'),
@@ -755,4 +766,348 @@ function unscored(t){ return !IMPACT_N[t.impact] || !EFFORT_N[t.effort]; }
 function priorityScore(t){
   if (unscored(t)) return -1;               // sinks below everything that is scored
   return IMPACT_N[t.impact] / EFFORT_N[t.effort];
+}
+
+
+/* =========================================================================
+   Merging two saves
+
+   Two people on one list, or one person in two tabs, each working from the
+   version they last read. Until this, the second save to arrive was refused
+   and its owner was asked which whole document should win, which on a shared
+   list is a question asked every few minutes about edits that never touched
+   each other. So a save built on an old version is merged instead: the
+   version it started from (base), the save itself (mine) and the file as it
+   is now (theirs), compared task by task and field by field.
+
+   A field one side changed and the other did not takes the change. Both sides
+   changing it to different values is the only conflict, and the only thing
+   that ever reaches the owner as a question, named by task and field. A task
+   deleted on one side and edited on the other is a conflict too, because
+   either answer throws away somebody's work. Sub-tasks merge the same way,
+   inside their task.
+
+   Order is the current file's, with whatever the save added slotted in after
+   the task it followed when it was added. A reorder made only on the save's
+   side is the one thing a merge gives up, and it is a drag, not a task.
+
+   Tasks are matched by `id:` first and by title only where one side has no id
+   yet, which is the case of a task written by hand or by pa and given an id by
+   whichever tab loaded it first. Two tabs minting two different ids for the
+   same task take the file's.
+
+   core/todo.py's merge_saves() is the same function, line for line, and
+   core/fixtures/merge.json holds the cases both are held to. */
+
+const MERGE_FIELDS = ['title', 'bold', 'done', 'impact', 'effort', 'due', 'start', 'doneOn', 'to',
+  'theme', 'urgent', 'week', 'doing', 'slug', 'blockedBy', 'rank', 'tlrank', 'headline', 'chat',
+  'repeat', 'stableId', 'cancelled', 'archived', 'createdBy', 'editedBy', 'extra'];
+
+function mgSame(a, b){ return JSON.stringify(a) === JSON.stringify(b); }
+/* Who wrote and last changed a task are the server's to say (stamp_authors()
+   in core/todo.py), restamped on every save against the file. So a merge
+   takes them from the file and never counts them as an edit. */
+const MERGE_AUTHORS = ['createdBy', 'editedBy'];
+function mgPlain(f){
+  const out = Object.assign({}, f);
+  MERGE_AUTHORS.forEach(k => { delete out[k]; });
+  return out;
+}
+function mgKey(title){ return String(title || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
+
+/* A task or sub-task line as fields: its tick and every tag readTags() reads. */
+function mgFields(line){
+  const m = TASK_RE.exec(line.replace(/^\s+/, ''));
+  const r = readTags(m[2]);
+  const out = {};
+  MERGE_FIELDS.forEach(f => { out[f] = f === 'done' ? m[1].toLowerCase() === 'x' : r[f]; });
+  if (out.rank != null && isNaN(out.rank)) out.rank = null;
+  if (out.tlrank != null && isNaN(out.tlrank)) out.tlrank = null;
+  return out;
+}
+/* The line those fields make, written the way the board writes an edited task. */
+function mgLine(f, indent){
+  return indent + serializeTask(Object.assign({}, f, { dirty:true, body:[] }))[0];
+}
+
+/* A body split the way splitBody() reads it, keeping every line: the task's
+   own notes before its first step (head) and after it (tail), and each step
+   with the lines under it. A note after the first step always starts at the
+   step indent or shallower, which is what made it the task's, so writing all
+   of them after the last step keeps them the task's. */
+function mgBody(body){
+  const head = [], tail = [], steps = [];
+  let base = null, into = false;
+  body.forEach((line, at) => {
+    const m = SUB_RE.exec(line);
+    if (m && (base === null || m[1].length <= base)) {
+      base = m[1].length;
+      const f = mgFields(line);
+      steps.push({ fields:f, head:line, at, indent:m[1], more:[], id:f.stableId, key:mgKey(f.title) });
+      into = true;
+      return;
+    }
+    if (line.trim() && base !== null && leadIndent(line) <= base) into = false;
+    if (into) steps[steps.length - 1].more.push(line);
+    else (steps.length ? tail : head).push(line);
+  });
+  steps.forEach(s => { s.notes = s.more.filter(l => l.trim()); });
+  return { head, tail, steps, notes: head.concat(tail).filter(l => l.trim()) };
+}
+
+function mgSide(text){
+  const doc = parseDoc(text);
+  const buckets = doc.buckets.map(b => ({
+    name: b.name, num: b.num, header: b.raw != null ? b.raw : '## ' + b.num + '. ' + b.name,
+    intro: b.intro, tail: b.tail,
+    tiers: b.tiers.map(tier => ({
+      name: tier.name, header: tier.raw != null ? tier.raw : '### ' + tier.name,
+      lead: tier.lead != null ? tier.lead : [''], tail: tier.tail || [],
+      tasks: tier.tasks.map(t => {
+        const f = mgFields(t.raw);
+        return { fields:f, head:t.raw, body:t.body, sep:t.sep, parts:mgBody(t.body),
+                 id:f.stableId, key:mgKey(f.title), tier:tier.name };
+      })
+    }))
+  }));
+  buckets.forEach(b => b.tiers.forEach(tier => tier.tasks.forEach(r => { r.bucket = b; })));
+  return { pre: doc.pre, post: doc.post, buckets };
+}
+
+/* Which record of `base` each record of `side` is, or -1. By id, then by title
+   where one of the pair has no id. */
+function mgMatchTasks(base, side){
+  const out = side.map(() => -1), used = new Set(), byId = new Map();
+  base.forEach((r, i) => { if (r.id && !byId.has(r.id)) byId.set(r.id, i); });
+  side.forEach((r, j) => {
+    const i = r.id && byId.has(r.id) ? byId.get(r.id) : -1;
+    if (i >= 0 && !used.has(i)) { out[j] = i; used.add(i); }
+  });
+  side.forEach((r, j) => {
+    if (out[j] >= 0) return;
+    const i = base.findIndex((b, k) => !used.has(k) && b.key === r.key && (!b.id || !r.id));
+    if (i >= 0) { out[j] = i; used.add(i); }
+  });
+  return out;
+}
+/* Buckets by name, then a renamed one by its number. Columns by name. */
+function mgMatchBuckets(base, side){
+  const out = side.map(() => -1), used = new Set();
+  ['name', 'num'].forEach(by => side.forEach((r, j) => {
+    if (out[j] >= 0) return;
+    const i = base.findIndex((b, k) => !used.has(k) && b[by] === r[by]);
+    if (i >= 0) { out[j] = i; used.add(i); }
+  }));
+  return out;
+}
+function mgMatchTiers(base, side){
+  const out = side.map(() => -1), used = new Set();
+  side.forEach((r, j) => {
+    const i = base.findIndex((b, k) => !used.has(k) && b.name === r.name);
+    if (i >= 0) { out[j] = i; used.add(i); }
+  });
+  return out;
+}
+
+/* Every thing the three versions hold, as { b, m, t } with the absent ones
+   null and a `gid` that orders them. Something added on both sides is paired
+   when `pair` says the two are one. Each record is told its group (r.g). */
+function mgGroups(B, M, T, match, pair){
+  const groups = B.map(b => ({ b, m:null, t:null }));
+  const mi = match(B, M), ti = match(B, T), added = [];
+  M.forEach((r, j) => {
+    if (mi[j] >= 0) groups[mi[j]].m = r;
+    else { const g = { b:null, m:r, t:null }; groups.push(g); added.push(g); }
+  });
+  T.forEach((r, j) => {
+    if (ti[j] >= 0) { groups[ti[j]].t = r; return; }
+    const g = added.find(a => !a.t && pair(a.m, r));
+    if (g) g.t = r; else groups.push({ b:null, m:null, t:r });
+  });
+  groups.forEach((g, i) => {
+    g.gid = i;
+    [g.b, g.m, g.t].forEach(r => { if (r) r.g = g; });
+  });
+  return groups;
+}
+
+/* One value from three. Whichever side moved it wins; both moving it apart is
+   `clash`, which records the conflict and answers for it. */
+function mgPick(b, m, t, clash){
+  if (mgSame(m, t)) return m;
+  if (mgSame(m, b)) return t;
+  if (mgSame(t, b)) return m;
+  return clash(m, t);
+}
+
+/* Whether a group survives, and from which side. Present on both: 'both'.
+   Added on one: that side. Deleted on one side: gone if the other left it
+   alone, a conflict if the other changed it. */
+function mgKeep(g, sig, clash){
+  if (g.m && g.t) return 'both';
+  if (!g.m && !g.t) return null;
+  const kept = g.m ? 'mine' : 'theirs';
+  if (!g.b) return kept;
+  if (mgSame(sig(g.m || g.t), sig(g.b))) return null;
+  return clash('deleted', g.m ? 'mine' : null, g.t ? 'theirs' : null) || null;
+}
+
+/* Lines in `primary`'s order, with what only `secondary` has slotted after
+   whatever came before it there. `keep` is everything wanted, and anything
+   neither order places goes last rather than nowhere. */
+function mgOrder(primary, secondary, keep){
+  const want = new Set(keep);
+  const out = primary.filter(k => want.has(k));
+  const placed = new Set(out);
+  let prev = null;
+  secondary.forEach(k => {
+    if (!want.has(k)) return;
+    if (!placed.has(k)) { out.splice(prev === null ? 0 : out.indexOf(prev) + 1, 0, k); placed.add(k); }
+    prev = k;
+  });
+  keep.forEach(k => { if (!placed.has(k)) { out.push(k); placed.add(k); } });
+  return out;
+}
+
+function mgMergeFields(g, clash){
+  const out = {};
+  MERGE_FIELDS.forEach(f => {
+    const b = g.b ? g.b.fields[f] : undefined, m = g.m.fields[f], t = g.t.fields[f];
+    /* Both tabs gave a task with no id one of their own: the file's stands. */
+    if (f === 'stableId' && !b && m && t) { out[f] = t; return; }
+    if (MERGE_AUTHORS.indexOf(f) >= 0) { out[f] = t; return; }
+    out[f] = mgPick(b, m, t, (mv, tv) => clash(f, mv, tv));
+  });
+  return out;
+}
+/* Takes a side's line as it was written when the merged fields are that side's. */
+function mgHead(f, g, indent){
+  if (g.t && mgSame(f, g.t.fields)) return g.t.head;
+  if (g.m && mgSame(f, g.m.fields)) return g.m.head;
+  return mgLine(f, indent);
+}
+
+const mgStepSig = s => ({ fields:mgPlain(s.fields), notes:s.notes });
+const mgTaskSig = r => ({ fields:mgPlain(r.fields), where:r.where, notes:r.parts.notes,
+                          steps:r.parts.steps.map(mgStepSig) });
+
+/* A task's steps, merged. Each comes back as { fields, notes, lines }. */
+function mgMergeSteps(g, clash){
+  const groups = mgGroups(g.b ? g.b.parts.steps : [], g.m.parts.steps, g.t.parts.steps,
+                          mgMatchTasks, (a, b) => !!a.id && a.id === b.id);
+  const merged = new Map();
+  groups.forEach(sg => {
+    const title = (sg.m || sg.t || sg.b).fields.title;
+    const keep = mgKeep(sg, mgStepSig, (field, mv, tv) => clash(title, field, mv, tv));
+    if (!keep) return;
+    if (keep !== 'both') {
+      const r = keep === 'mine' ? sg.m : sg.t;
+      merged.set(sg.gid, { fields:r.fields, notes:r.notes, lines:[r.head].concat(r.more) });
+      return;
+    }
+    const fields = mgMergeFields(sg, (f, mv, tv) => clash(title, f, mv, tv));
+    const notes = mgPick(sg.b ? sg.b.notes : undefined, sg.m.notes, sg.t.notes,
+                         (mv, tv) => clash(title, 'notes', mv, tv));
+    const from = mgSame(notes, sg.t.notes) ? sg.t : sg.m;
+    merged.set(sg.gid, { fields, notes, lines:[mgHead(fields, sg, sg.t.indent)].concat(from.more) });
+  });
+  const order = mgOrder(g.t.parts.steps.map(s => s.g.gid), g.m.parts.steps.map(s => s.g.gid),
+                        Array.from(merged.keys()));
+  return order.map(k => merged.get(k));
+}
+
+/* Three versions of the list into one. opts.prefer ('mine' or 'theirs')
+   answers every conflict; without it a merge with conflicts has no text, and
+   `conflicts` says what has to be decided: [{ task, step, field }], step ''
+   for the task itself, task '' for the file's top or bottom. */
+function mergeSaves(baseText, mineText, theirsText, opts){
+  const prefer = (opts && opts.prefer) || '';
+  if (mineText === theirsText || theirsText === baseText) return { text:mineText, conflicts:[] };
+  if (mineText === baseText) return { text:theirsText, conflicts:[] };
+  const B = mgSide(baseText), M = mgSide(mineText), T = mgSide(theirsText);
+  const conflicts = [];
+  const answer = (mv, tv) => prefer === 'theirs' ? tv : mv;
+  const clash = (task, step, field) => (mv, tv) => {
+    conflicts.push({ task, step, field });
+    return answer(mv, tv);
+  };
+
+  const pre = mgPick(B.pre, M.pre, T.pre, clash('', '', 'top of the file'));
+  const post = mgPick(B.post, M.post, T.post, clash('', '', 'bottom of the file'));
+
+  /* Buckets first, so a task's place can be said as bucket and column. */
+  const bgroups = mgGroups(B.buckets, M.buckets, T.buckets, mgMatchBuckets, (a, b) => a.name === b.name);
+  const tasksOf = side => [].concat.apply([], side.buckets.map(b => [].concat.apply([], b.tiers.map(t => t.tasks))));
+  [B, M, T].forEach(side => tasksOf(side).forEach(r => { r.where = r.bucket.g.gid + '\n' + r.tier; }));
+
+  /* Then every task. */
+  const tgroups = mgGroups(tasksOf(B), tasksOf(M), tasksOf(T), mgMatchTasks, (a, b) => !!a.id && a.id === b.id);
+  const placed = new Map();
+  tgroups.forEach(g => {
+    const title = (g.m || g.t || g.b).fields.title;
+    const onTask = (field, mv, tv) => clash(title, '', field)(mv, tv);
+    const keep = mgKeep(g, mgTaskSig, onTask);
+    if (!keep) return;
+    if (keep !== 'both') {
+      const r = keep === 'mine' ? g.m : g.t;
+      placed.set(g.gid, { where:r.where, head:r.head, body:r.body, sep:r.sep });
+      return;
+    }
+    const fields = mgMergeFields(g, onTask);
+    const where = mgPick(g.b ? g.b.where : undefined, g.m.where, g.t.where, (mv, tv) => onTask('column', mv, tv));
+    const notes = mgPick(g.b ? g.b.parts.notes : undefined, g.m.parts.notes, g.t.parts.notes,
+                         (mv, tv) => onTask('notes', mv, tv));
+    const steps = mgMergeSteps(g, (st, field, mv, tv) => clash(title, st, field)(mv, tv));
+    const sig = { notes, steps:steps.map(mgStepSig) };
+    let body;
+    if (mgSame(sig, { notes:g.t.parts.notes, steps:g.t.parts.steps.map(mgStepSig) })) body = g.t.body;
+    else if (mgSame(sig, { notes:g.m.parts.notes, steps:g.m.parts.steps.map(mgStepSig) })) body = g.m.body;
+    else {
+      const from = mgSame(notes, g.t.parts.notes) ? g.t : g.m;
+      body = from.parts.head.concat([].concat.apply([], steps.map(s => s.lines)), from.parts.tail);
+    }
+    placed.set(g.gid, { where, head:mgHead(fields, g, ''), body, sep:(g.t || g.m).sep });
+  });
+
+  /* The skeleton, keeping a bucket or column one side deleted only while a
+     task still sits in it. */
+  const used = new Set(Array.from(placed.values()).map(p => p.where));
+  const holds = (bgid, name) => name == null
+    ? Array.from(used).some(w => w.split('\n')[0] === String(bgid))
+    : used.has(bgid + '\n' + name);
+  const keptBuckets = bgroups.filter(g => (g.m && g.t) || (!g.b && (g.m || g.t)) || ((g.m || g.t) && holds(g.gid)));
+  const border = mgOrder(T.buckets.map(b => b.g.gid), M.buckets.map(b => b.g.gid), keptBuckets.map(g => g.gid));
+  const buckets = border.map(gid => {
+    const g = bgroups[gid];
+    const src = g.t || g.m;
+    const both = g.m && g.t;
+    const header = both ? mgPick(g.b ? g.b.header : undefined, g.m.header, g.t.header,
+                                 clash(src.name, '', 'bucket name')) : src.header;
+    const intro = both ? mgPick(g.b ? g.b.intro : undefined, g.m.intro, g.t.intro,
+                                clash(src.name, '', 'bucket notes')) : src.intro;
+    const tgr = mgGroups(g.b ? g.b.tiers : [], g.m ? g.m.tiers : [], g.t ? g.t.tiers : [],
+                         mgMatchTiers, (a, b) => a.name === b.name);
+    const keptTiers = tgr.filter(x => (x.m && x.t) || (!x.b && (x.m || x.t)) ||
+                                      ((x.m || x.t) && holds(gid, (x.m || x.t).name)));
+    const torder = mgOrder(g.t ? g.t.tiers.map(x => x.g.gid) : [], g.m ? g.m.tiers.map(x => x.g.gid) : [],
+                           keptTiers.map(x => x.gid));
+    const tiers = torder.map(tgid => {
+      const x = tgr[tgid], tsrc = x.t || x.m;
+      const here = gid + '\n' + tsrc.name;
+      const keys = tgroups.filter(tg => placed.has(tg.gid) && placed.get(tg.gid).where === here).map(tg => tg.gid);
+      const order = mgOrder(x.t ? x.t.tasks.map(r => r.g.gid) : [], x.m ? x.m.tasks.map(r => r.g.gid) : [], keys);
+      let lead = tsrc.lead, tail = tsrc.tail;
+      if (order.length && !tsrc.tasks.length && !tail.length) tail = [''];
+      if (!order.length && tsrc.tasks.length) {
+        lead = lead.length ? lead : [''];
+        tail = tail.some(l => l.trim() !== '') ? tail : [];
+      }
+      return { name:tsrc.name, raw:tsrc.header, lead, tail,
+               tasks:order.map(k => { const p = placed.get(k); return { raw:p.head, dirty:false, body:p.body, sep:p.sep }; }) };
+    });
+    return { raw:header, intro, tiers, tail:src.tail };
+  });
+
+  const text = serializeDoc({ pre, buckets, post });
+  return { text: conflicts.length && !prefer ? null : text, conflicts };
 }

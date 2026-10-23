@@ -348,17 +348,31 @@ check while it sits running — and the last twelve are kept. The two are pruned
 separately, so a busy fortnight of saves can never delete the only copy of how the
 list looked last month.
 
-**Auto-reload** picks up edits made outside the board: Claude working through the
-list, or the file opened in an editor. With nothing unsaved in the tab, reloading
-costs nothing, so it happens quietly and says so in the status line.
+**Auto-reload** picks up edits made outside the board: somebody else on a shared
+list, Claude working through it, or the file opened in an editor. The board checks
+every three seconds while its tab is on screen and every fifteen while it is
+hidden. With nothing unsaved in the tab, reloading costs nothing, so it happens
+quietly and says so in the status line, and the task open in the panel stays
+open. It waits while a field is being typed in, so a reload never takes the field
+away mid-word.
 
-**The conflict modal** is the one time the board interrupts. If the file changed on
-disk *and* there is unsaved work in the tab, it lists both sets of changes — task
-by task, marked new, deleted, done, moved, renamed or edited — and offers three
-ways out: keep what is in the tab, download it first, or discard it and take the
-file. Nothing is overwritten until that choice is made. Renames are shown as
-renames rather than as a delete plus an add, because the second reads like lost
-work.
+**Merging on save** is what happens when the file moved and there is unsaved work
+in the tab too. Each save carries the version it was built on, and the server
+merges the two task by task (`merge_saves()` in `core/todo.py`, the port of
+`mergeSaves()` in `core/todo.js`): a field only one side changed takes that
+change, a task one side added lands after the task it followed, and the file's
+order is kept. Sub-tasks merge the same way inside their task. The merged list
+is written and the tab redraws from it. It is built this way because on a list
+two people share, the old question (which whole version wins?) came up every few
+minutes about edits that never touched each other, and either answer threw one
+person's work away.
+
+**The conflict box** is the one time the board interrupts. It appears only when
+both sides changed the same field of the same task, or one deleted a task the
+other edited, and it names each task and field. Keep mine or Use theirs settles
+all of them, and Download my copy first is there before either. Nothing is
+written until that choice is made, and no answer can lose a task nobody chose to
+delete.
 
 ### Archiving finished work
 
@@ -1498,6 +1512,32 @@ so something outside the file can point at it) and a bare `doing`, for an agent
 working on it now. What it does not carry it takes from its task: the due date, the
 impact, `urgent` and `week`. Handing a task over lays four of them out with a
 slug each, made from the task's id and the step.
+
+On a shared board every task and sub-task also says who wrote it and who last
+changed it, `` `created-by:` `` and `` `edited-by:` ``, by the email the person
+signed in with, written in front of the `id:`. Only the server writes them: on
+every save it compares what it is about to write with the file
+(`stamp_authors()` in `core/todo.py`), so a new task is created by whoever
+saved it, a changed one is last edited by them, and anything a tab sends for
+either tag is put back to what the file says. The card shows the name, from
+the list's activity log, and the task panel shows both. A list nobody signs in
+to never carries them, so the Mac board's file is unchanged by any of this.
+
+Every save also appends what changed to `data/<list>/activity.jsonl`, one JSON
+line per task added, edited or deleted, with who, their name, when, and which
+fields. It is append-only and nothing reads it back into the list. Two kinds
+of change have nobody's tab behind them. A card an agent's queued request
+changed (a tick, a handover, a move) is credited to the agent, as
+`implement-agent` in the tags and "Implement agent" in the log, even though the
+save that wrote it came from whoever's tab drained the queue. An edit written
+straight to `todo.md`, the way the pa skill writes, is found the next time the
+server reads the list, by comparing it with the last version the server wrote
+(`data/<list>/.known-todo.md`), and is logged under `pa` and, signed in,
+stamped on the cards it changed. That waits while `pa-working.json` says pa is
+mid-edit, so the edit is counted once, whole. The status
+line uses it to say whose the latest change by somebody else was ("Jerome edited
+2 min ago"), and a **Mine** chip beside the other filters narrows the board to
+tasks whose `[to:: ]`, or a sub-task's, names whoever is signed in.
 
 **Reviewing** holds work that is finished as far as you are concerned and is now
 sitting with somebody else for sign-off, or with you, on a review sub-task. Nothing

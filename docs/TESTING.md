@@ -165,6 +165,32 @@ meant to be refused and carries the file's own current bytes as its body, so a
 regression that lets one through rewrites `todo.md` with what it already said
 rather than with a fixture. Never give one of those requests a body of its own.
 
+**`test_merge_board.mjs`** saves for real, and so refuses to run anywhere but
+the script's `_test` list. It plays the second person by saving `{text, base}`
+over HTTP itself, then checks the tab: a merged save shows both changes, the
+watcher brings one in without closing the open task, and the conflict box names
+the task and field and saves whichever answer is clicked.
+**`test_merge_save.py`** is the server's half, with no browser: it starts its own
+server over a temp folder, as the Mac board and signed in, and holds do_PUT to
+merging two saves, refusing the same field changed apart, and taking two saves
+sent at once one at a time. The merge itself is pinned by
+`core/fixtures/merge.json`, which both `core/test_todo.*` suites read.
+
+**`test_authorship.py`** starts its own server the same way and holds the
+server to who wrote and changed each task: the sign-in header decides the name,
+`created-by:` or `edited-by:` sent by a tab is put back, every change reaches
+`activity.jsonl`, and the Mac board writes no tag at all. It also queues
+agent ticks with `core/tick_queue.py` and writes `todo.md` behind the server's
+back, to hold the agent and `pa` attribution. **`test_save_inprocess.py`** runs
+the server in its own thread for the two cases no route reaches from outside:
+a first save to a list with no file, and the drain holding the save lock.
+**`test_authorship.mjs`** is the on-screen half, locked: the names on cards and
+in the task and sub-task panels, the status line, and the Mine chip.
+
+The watcher polls with `HEAD` every three seconds, so a suite that tears every
+non-`GET` out of `fetch` sees one within a few seconds. It is a read: answer it
+from the stub and leave it out of what counts as a write.
+
 Never write into a real list under `data/` from a test, not even a
 small, temporary one — that's real content, private and irreplaceable in a way
 `data/_test/` deliberately isn't.

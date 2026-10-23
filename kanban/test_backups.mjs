@@ -128,7 +128,7 @@ await evalJS(`(() => {
   window.fetch = (url, opts) => {
     const method = (opts && opts.method) || 'GET';
     if (method !== 'GET') {
-      window.__blocked.push(method + ' ' + url + ' ' + ((opts && opts.body) || ''));
+      if (method !== 'HEAD') window.__blocked.push(method + ' ' + url + ' ' + ((opts && opts.body) || ''));
       return Promise.resolve(new Response('{"ok":true}', { status: 200 }));
     }
     const u = String(url);

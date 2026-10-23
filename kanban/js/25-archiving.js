@@ -162,7 +162,8 @@ async function autoArchiveTick(){
 }
 
 setInterval(autosaveTick, 2 * 1000);                // checked often, saves at most every 4 seconds
-setInterval(watchTick, WATCH_MS);
+setInterval(watchTick, WATCH_MS);                   // every 3 seconds on screen, 15 hidden
+document.addEventListener('visibilitychange', () => { if (!document.hidden) watchTick(); });
 /* Once an hour, and once a minute after the board opens — the common case is a
    tab opened in the morning and left all day, so waiting a full hour for the
    first check would mean most days never got one. */

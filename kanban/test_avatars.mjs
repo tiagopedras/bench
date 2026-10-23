@@ -72,7 +72,7 @@ try {
     window.__blocked = [];
     window.fetch = (u, o) => {
       const m = (o && o.method) || 'GET';
-      if (m !== 'GET') { window.__blocked.push(m + ' ' + u); return Promise.resolve(new Response('{}', { status: 200 })) }
+      if (m !== 'GET') { if (m !== 'HEAD') window.__blocked.push(m + ' ' + u); return Promise.resolve(new Response('{}', { status: 200 })) }
       return real(u, o);
     };
     load([

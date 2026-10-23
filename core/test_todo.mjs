@@ -40,7 +40,8 @@ const fixture = name =>
    value of that expression is what comes back. */
 const WANTED = ['TASK_RE', 'SUB_RE', 'MSG_NOTE', 'parseTask', 'serializeTask', 'agentOf',
                 'parseDoc', 'serializeDoc', 'splitBody', 'quoted', 'readRepeat',
-                'occurrenceFrom', 'occurrenceAfter', 'unscored', 'priorityScore', 'inheritedFields'];
+                'occurrenceFrom', 'occurrenceAfter', 'unscored', 'priorityScore', 'inheritedFields',
+                'mergeSaves'];
 const source = fs.readFileSync(path.join(HERE, 'todo.js'), 'utf8')
   + '\n;({ ' + WANTED.join(', ') + ' });\n';
 const board = vm.runInNewContext(source, {}, { filename: 'core/todo.js' });
@@ -256,8 +257,45 @@ function checkPriority() {
   console.log(`${table.cases.length} score combinations, ${table.descending.length} ranked — all agree`);
 }
 
+/* Merging two saves, against fixtures/merge.json. The whole answer is
+   compared, conflicts in the order they were found as well as the text, and
+   every merge that wrote something is checked for the one promise that matters
+   most: a task present on both sides, or added on either, is still there. */
+function checkMerge() {
+  const table = fixture('merge.json');
+  /* By id and by title, since a task two tabs each gave an id keeps the
+     file's, and is the same task under either. */
+  const tasks = text => {
+    const out = new Set();
+    board.parseDoc(text).buckets.forEach(b => b.tiers.forEach(t => t.tasks.forEach(k => out.add(k.stableId || k.title))));
+    return out;
+  };
+  const titles = text => {
+    const out = new Set();
+    board.parseDoc(text).buckets.forEach(b => b.tiers.forEach(t => t.tasks.forEach(k => out.add(k.title))));
+    return out;
+  };
+  for (const c of table.cases) {
+    const got = board.mergeSaves(c.base, c.mine, c.theirs, c.prefer ? { prefer: c.prefer } : {});
+    if (got.text !== c.text) fail(`merge — ${c.why}: the text differs`);
+    if (!same(got.conflicts, c.conflicts))
+      fail(`merge — ${c.why}\n     conflicts ${JSON.stringify(got.conflicts)}, want ${JSON.stringify(c.conflicts)}`);
+    if (got.text === null) continue;
+    const kept = new Set([...tasks(got.text), ...titles(got.text)]);
+    const B = tasks(c.base), M = tasks(c.mine), T = tasks(c.theirs);
+    const named = text => new Map(board.parseDoc(text).buckets.flatMap(b => b.tiers.flatMap(t =>
+      t.tasks.map(k => [k.stableId || k.title, k.title]))));
+    const titleOf = new Map([...named(c.mine), ...named(c.theirs)]);
+    for (const k of new Set([...M, ...T]))
+      if (((M.has(k) && T.has(k)) || !B.has(k)) && !kept.has(k) && !kept.has(titleOf.get(k)))
+        fail(`merge — ${c.why}: lost ${k}`);
+  }
+  console.log(`${table.cases.length} merges — ${failures ? 'see above' : 'all agree'}`);
+}
+
 checkRepeat();
 checkMessages();
+checkMerge();
 checkParse();
 checkPriority();
 checkRoundTrip();

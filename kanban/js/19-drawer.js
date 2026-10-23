@@ -1176,7 +1176,8 @@ function openDrawer(id, focusTitle){
      the read-only one is the sentence worth reading. */
   mountDrawerHead({
     title: ro ? 'View task (read-only)' : 'Edit task',
-    help: ro ? 'Read-only — from a backup, nothing here can be changed.' : 'Changes save automatically',
+    help: (ro ? 'Read-only — from a backup, nothing here can be changed.' : 'Changes save automatically') +
+          (authorLong(t) ? ' · ' + authorLong(t) : ''),
     headline: {
       on: !!t.headline,
       label: t.headline ? 'The one thing' : 'Make headline',
@@ -1624,7 +1625,8 @@ function openSubtaskDrawer(found){
   panel.classList.toggle('readonly', ro);
   $('#subTitle').textContent = ro ? 'View sub-task (read-only)' : 'Sub-task';
   const help = $('#subHelp');
-  help.textContent = ro ? 'Read-only — from a backup, nothing here can be changed.' : 'Changes save automatically';
+  help.textContent = (ro ? 'Read-only — from a backup, nothing here can be changed.' : 'Changes save automatically') +
+                     (authorLong(step) ? ' · ' + authorLong(step) : '');
   help.title = help.textContent;
 
   const SUB_STATES = [

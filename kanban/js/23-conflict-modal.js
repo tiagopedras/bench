@@ -90,3 +90,49 @@ function offerReload(diskText, manual){
   showModal('Two versions of this list', sub, body, buttons);
 }
 
+
+/* What a merge could not decide, by task and field, as the merge names them
+   (mergeSaves() in core/todo.js). */
+const MERGE_FIELD_NAMES = {
+  title:'title', bold:'bold', done:'tick', impact:'impact', effort:'effort', due:'due date',
+  start:'start date', doneOn:'done date', to:'who it is with', theme:'theme', urgent:'urgent',
+  week:'this week', doing:'doing', slug:'slug', blockedBy:'blocked by', rank:'queue position',
+  tlrank:'timeline position', headline:'headline', chat:'chats', repeat:'repeat', stableId:'id',
+  cancelled:'cancelled', archived:'archived', extra:'other tags', column:'column', notes:'notes',
+  deleted:'deleted in one place, edited in the other'
+};
+
+/* A save the server could not merge, because the same field of the same task
+   was changed here and in the file. Everything else already merges, so the
+   box names only those, and one answer settles them all. It has to be
+   answered: closing it would only bring it back with the next autosave.
+
+   info: { conflicts, current, disk, hash } as do_PUT's 409 sends them, with
+   `current` the file as it stands. base and mine are what the save was built
+   on and what it carried. */
+function offerMerge(info, base, mine){
+  const rows = info.conflicts.map(c => {
+    const where = c.task ? esc(c.task) + (c.step ? ' › ' + esc(c.step) : '') : 'The list';
+    return '<li><strong>' + where + '</strong>: ' + esc(MERGE_FIELD_NAMES[c.field] || c.field) + '</li>';
+  });
+  const sub = 'Someone else saved this list while you were changing it. Everything else is merged; ' +
+    'these were changed in both places.';
+  const body = '<div class="changes"><h3>Changed in both places</h3><ul>' + rows.join('') + '</ul></div>';
+  const settle = prefer => () => {
+    closeModal();
+    const got = mergeSaves(base, mine, info.current, { prefer });
+    // Nothing can be typed while the box is up, but a tab is not a promise.
+    const now = serializeDoc(state.doc);
+    const text = now === mine ? got.text : (mergeSaves(mine, now, got.text, { prefer:'mine' }).text);
+    reloadInPlace(text, info.current);
+    if (info.disk) state.diskStamp = info.disk;
+    if (info.hash) state.diskHash = info.hash;
+    if (text !== info.current) { markDirty(); saveFile(true); }
+    else markClean('kept the other version', true);
+  };
+  showModal('Changed in two places', sub, body, [
+    { label:'Keep mine', primary:true, run: settle('mine') },
+    { label:'Download my copy first', run: () => downloadText(mine, state.fileName) },
+    { label:'Use theirs', danger:true, run: settle('theirs') }
+  ], { required:true });
+}

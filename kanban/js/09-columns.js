@@ -408,6 +408,11 @@ function cardModel(t, opts){
   const rep = readRepeat(t.repeat);
   if (rep) chips.push({ tone: 'neutral', text: rep.label,
     title: 'Recurring ' + rep.label + '. The board moves the date on once this one has passed.' });
+  /* Whose the card is, on a shared list: who wrote it, or who last changed
+     it when that was somebody else. Last, because it is about the card
+     rather than the work. A list nobody signs in to never has the tags. */
+  const by = authorShort(t);
+  if (by) chips.push({ tone: 'neutral', text: by, title: authorLong(t) });
   // Urgent and due are the "look at this now" signals, so they get their own
   // corner rather than sitting in the wrap with everything else.
   const when = [];
