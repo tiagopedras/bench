@@ -359,15 +359,27 @@ def agent_slug(name):
     return "-".join(str(name).lower().split())
 
 
+# The one list and the one agent a move request is honoured from, the same as
+# MOVE_DATASET and MOVE_AGENT in kanban/js/10-reference-sections.js.
+MOVE_DATASET = "content"
+MOVE_AGENT = "Content strategist agent"
+
+
 def credit_agents(ds, entries, text):
-    """Notes the cards these queued requests change: a handover's or a move's
-    card by its id, and a tick's by the task its sub-task sits under, only
-    when the sub-task is the requesting agent's (the board refuses it
-    otherwise)."""
+    """Notes the cards these queued requests change, only where the board
+    applies the request rather than refusing it, since a refused one changes
+    nothing and must not claim the next person's edit. A tick credits the task
+    its sub-task sits under when the sub-task is the requesting agent's; a
+    handover credits its card when the card is open and its `[to::]` still
+    names that agent (drainHandover()); a move only on the content list, from
+    the content agent, into Reviewing, on an open card (drainMove())."""
     if todo is None:
         return
     parent = {}
+    cards = {}
     for t in todo.parse_doc(text or ""):
+        if t.stable_id:
+            cards[t.stable_id] = t
         for st in todo.split_body(t)[1]:
             step = st["task"]
             if step.stable_id and t.stable_id:
@@ -378,8 +390,18 @@ def credit_agents(ds, entries, text):
         by = str(e.get("by") or "").strip()
         if not by:
             continue
-        if e.get("handover") or e.get("move"):
-            tid = str(e.get("handover") or e.get("move")).strip().lower()
+        if e.get("handover"):
+            tid = str(e["handover"]).strip().lower()
+            card = cards.get(tid)
+            want = todo.agent_of(e.get("to")).lower()
+            if not card or card.done or not want or want != by.lower() or todo.agent_of(card.to).lower() != want:
+                tid = ""
+        elif e.get("move"):
+            tid = str(e["move"]).strip().lower()
+            card = cards.get(tid)
+            if (ds != MOVE_DATASET or by != MOVE_AGENT or str(e.get("column") or "").strip() != "Reviewing"
+                    or not card or card.done):
+                tid = ""
         else:
             tid, to = parent.get(str(e.get("sub") or "").strip().lower(), ("", ""))
             if tid and todo.agent_of(to).lower() != by.lower():

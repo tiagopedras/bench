@@ -220,9 +220,14 @@ def agents_and_outside(root):
         # --- the agent's tick ------------------------------------------------------
         good = tick_queue.append("s00001", "Implement agent", path=queue)
         bad = tick_queue.append("s00003", "Implement agent", path=queue)   # not its sub-task
+        # Two more the board refuses: a handover for a card whose [to::] names
+        # no agent, and a move off the content list.
+        hand = tick_queue.append_handover("cccccc", "Plan agent", "Plan agent", path=queue)
+        move = tick_queue.append_move("bbbbbb", "Reviewing", "Content strategist agent", path=queue)
         code, body, _ = srv.ask("POST", "/tick-queue.json", dict(JEROME, **{"X-Board": "1",
-                                "Content-Type": "application/json"}), {"done": [good["id"], bad["id"]]})
-        ok("the board's drain answers", code == 200 and (as_json(body) or {}).get("removed") == 2, body)
+                                "Content-Type": "application/json"}),
+                                {"done": [good["id"], bad["id"], hand["id"], move["id"]]})
+        ok("the board's drain answers", code == 200 and (as_json(body) or {}).get("removed") == 4, body)
         # What Jerome's tab saves: the tick it applied, the card moved on, and
         # an edit of his own on another card, all in one save.
         base = disk()
@@ -240,6 +245,10 @@ def agents_and_outside(root):
         ok("the saver's own edit in the same save stays theirs", "`edited-by:jerome@example.com`" in own, own)
         refused = line_of(now, "Plan the launch now")
         ok("a request the board refused credits nobody", "`edited-by:jerome@example.com`" in refused, refused)
+        ok("a handover for a card not handed to that agent credits nobody",
+           "`edited-by:jerome@example.com`" in own and "plan-agent" not in own, own)
+        ok("nor does a move off the content list",
+           "content-strategist-agent" not in refused and "`edited-by:jerome@example.com`" in refused, refused)
         log = log_of(folder)
         ship = [e for e in log if e["task"] == "Ship the page"]
         ok("the log has the tick under the agent",
