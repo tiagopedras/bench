@@ -117,6 +117,14 @@ try {
   check('Files is in Outputs and says so when the task has no folder', await evalJS(`!taskProject(__t()) && !!document.querySelector('details[data-collapse="sugg:files"] #f-files') && document.querySelector('#f-files').textContent === 'No files yet.'`))
   await evalJS(`${dsel}.open = true`)
   await wait(150)
+  check('Description and Column are 14px apart in Details', await evalJS(`(() => {
+    const d = ${dsel}, n = d.querySelector('details[data-collapse=notes]'), c = d.querySelector('#f-tier').closest('.field');
+    return Math.round(c.getBoundingClientRect().top - n.getBoundingClientRect().bottom);
+  })()`) === 14)
+  await evalJS(`${dsel}.open = false`)
+  await wait(150)
+  check('closing Details hides its fields, and opening shows them again', await evalJS(`!document.querySelector('#f-tier').checkVisibility({ contentVisibilityAuto: true })`) &&
+    (await evalJS(`${dsel}.open = true`), await wait(150), await evalJS(`document.querySelector('#f-tier').checkVisibility({ contentVisibilityAuto: true })`)))
 
   check('Impact opens on the task\'s own value', await val('#f-impact') === 'Med')
   check('Column opens on the column it is in, with a select beside it', await val('#f-tier') === 'Doing' &&
