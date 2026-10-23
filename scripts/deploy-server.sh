@@ -12,7 +12,7 @@
 #
 # --apply records the current commits, fetches, checks out the refs, installs
 # and builds the board's front end, restarts bench.service and waits up to 20 s
-# for the board to answer 200. If it does not, the recorded commits go back and
+# for the board to answer (200, or 302 and 401 under sign-in). If it does not, the recorded commits go back and
 # the service restarts again. data/ is never touched.
 #
 # DEPLOY_HOST changes the server (default root@167.235.25.240).
@@ -156,7 +156,7 @@ health() {
   local i code
   for i in $(seq 1 20); do
     code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/ || true)"
-    if [ "$code" = 200 ]; then say "  200 after ${i} s"; return 0; fi
+    case "$code" in 200|302|401) say "  ${code} after ${i} s"; return 0 ;; esac
     sleep 1
   done
   say "  last answer: ${code:-none}"
@@ -180,7 +180,7 @@ if [ "$APPLY" != 1 ]; then
   say "  3. git checkout --detach <commit> in each repo"
   say "  4. npm ci and npm run build in $BENCH_REPO (data/ untouched)"
   say "  5. systemctl restart bench.service"
-  say "  6. wait up to 20 s for 200 from http://127.0.0.1:8765/"
+  say "  6. wait up to 20 s for the board to answer on http://127.0.0.1:8765/ (200, 302 or 401)"
   say "  7. on failure: check out the recorded commits, rebuild, restart"
   exit 0
 fi
