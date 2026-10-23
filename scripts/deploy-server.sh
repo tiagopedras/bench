@@ -49,17 +49,28 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$BENCH_REF" ] || usage
 
+# Refs are checked here, before any ssh call, and quoted again when sent.
+valid_ref() { [[ "$1" =~ ^[A-Za-z0-9._/-]+$ && "$1" != -* ]]; }
+valid_ref "$BENCH_REF" || { echo "Refused ref '$BENCH_REF': use letters, digits, . _ / - only, and not a leading -." >&2; exit 2; }
 for p in ${PKGS[@]+"${PKGS[@]}"}; do
   case "${p%%=*}" in
     agents-engine|ai_chat_engine|work-streams) ;;
     *) echo "Unknown package '${p%%=*}'. Use agents-engine, ai_chat_engine or work-streams." >&2; exit 2 ;;
   esac
+  valid_ref "${p#*=}" || { echo "Refused ref '${p#*=}' for ${p%%=*}: use letters, digits, . _ / - only, and not a leading -." >&2; exit 2; }
+done
+
+# ssh joins its arguments into one string for the server's shell, so each is
+# quoted with %q.
+ARGS=""
+for a in "$APPLY" "$BENCH_REPO" "$PKG_DIR" "$BENCH_REF" ${PKGS[@]+"${PKGS[@]}"}; do
+  ARGS+=" $(printf '%q' "$a")"
 done
 
 # Everything below runs on the server, as root, with git and npm handed to the
 # bench user (git refuses a checkout owned by someone else).
-ssh "$HOST" bash -s -- "$APPLY" "$BENCH_REPO" "$PKG_DIR" "$BENCH_REF" ${PKGS[@]+"${PKGS[@]}"} <<'REMOTE'
-set -u
+ssh "$HOST" "bash -s --$ARGS" <<'REMOTE'
+set -uo pipefail
 APPLY="$1"; BENCH_REPO="$2"; PKG_DIR="$3"; BENCH_REF="$4"; shift 4
 BHOME="$(getent passwd bench | cut -d: -f6)"
 as_bench() { runuser -u bench -- env HOME="$BHOME" "$@"; }
@@ -73,16 +84,24 @@ die() { say "ABORT: $*" >&2; exit 1; }
 
 # Resolve a ref to a full commit. Dry run asks the remote without writing
 # anything; apply resolves after the fetch.
+# Both follow one order: branch, then tag (the commit a tag points at), then,
+# on --apply only, anything else git can name (a short commit id).
 resolve_remote() {
   local dir="$1" ref="$2" out
   if [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then echo "$ref"; return; fi
-  out="$(git_in "$dir" ls-remote origin "refs/heads/$ref" "refs/tags/$ref^{}" "refs/tags/$ref" 2>/dev/null)"
-  # Prefer the peeled tag line (the commit), then the first match.
-  echo "$out" | awk '/\^\{\}/{print $1; exit} !f{f=$1} END{if(f)print f}' | head -1
+  out="$(git_in "$dir" ls-remote origin "refs/heads/$ref" 2>/dev/null | head -1 | cut -f1)"
+  if [ -z "$out" ]; then
+    out="$(git_in "$dir" ls-remote origin "refs/tags/$ref^{}" 2>/dev/null | head -1 | cut -f1)"
+  fi
+  if [ -z "$out" ]; then
+    out="$(git_in "$dir" ls-remote origin "refs/tags/$ref" 2>/dev/null | head -1 | cut -f1)"
+  fi
+  echo "$out"
 }
 resolve_local() {
   local dir="$1" ref="$2"
-  git_in "$dir" rev-parse --verify --quiet "origin/$ref^{commit}" \
+  git_in "$dir" rev-parse --verify --quiet "refs/remotes/origin/$ref^{commit}" \
+    || git_in "$dir" rev-parse --verify --quiet "refs/tags/$ref^{commit}" \
     || git_in "$dir" rev-parse --verify --quiet "$ref^{commit}"
 }
 short() { echo "${1:0:9}"; }
@@ -125,12 +144,11 @@ for r in "${REPOS[@]}"; do
 done
 
 build() {
-  # The board's front end builds to kanban/dist (gitignored). The packages
+  # npm ci installs exactly package-lock.json and never rewrites it. The board's front end builds to kanban/dist (gitignored). The packages
   # ship their built files in git, so only bench needs it.
   local bhead="$1"
-  say "== npm install + build (bench)"
-  as_bench bash -c "cd '$BENCH_REPO' && npm install --no-audit --no-fund --loglevel=error && npm run build --silent" 2>&1 | sed 's/^/  /'
-  return "${PIPESTATUS[0]}"
+  say "== npm ci + build (bench)"
+  as_bench bash -c "cd '$BENCH_REPO' && npm ci --no-audit --no-fund --loglevel=error && npm run build --silent" 2>&1 | sed 's/^/  /'
 }
 
 health() {
@@ -145,10 +163,11 @@ health() {
   return 1
 }
 
-checkout_all() {  # args: associative array name to read
+checkout_all() {  # args: associative array name to read, then 1 to discard edits to tracked files first
   local -n target="$1"
   for r in "${REPOS[@]}"; do
     IFS='|' read -r name dir ref <<<"$r"
+    if [ "${2:-0}" = 1 ]; then git_in "$dir" checkout --quiet -- . || return 1; fi
     git_in "$dir" checkout --quiet --detach "${target[$name]}" || return 1
   done
 }
@@ -159,7 +178,7 @@ if [ "$APPLY" != 1 ]; then
   say "  1. record the commits above"
   say "  2. git fetch --tags origin in each repo, as the bench user"
   say "  3. git checkout --detach <commit> in each repo"
-  say "  4. npm install and npm run build in $BENCH_REPO (data/ untouched)"
+  say "  4. npm ci and npm run build in $BENCH_REPO (data/ untouched)"
   say "  5. systemctl restart bench.service"
   say "  6. wait up to 20 s for 200 from http://127.0.0.1:8765/"
   say "  7. on failure: check out the recorded commits, rebuild, restart"
@@ -170,18 +189,22 @@ say
 say "== Checkout"
 if ! checkout_all NEW; then
   say "Checkout failed, putting the recorded commits back."
-  checkout_all OLD
+  checkout_all OLD 1
   exit 1
 fi
 
 if build x && systemctl restart bench.service && health; then
-  say "Deployed."
+  say "Deployed. Each repo on the server is now on a detached HEAD at:"
+  for r in "${REPOS[@]}"; do
+    IFS='|' read -r name dir ref <<<"$r"
+    say "  $name $(git_in "$dir" rev-parse HEAD)"
+  done
   exit 0
 fi
 
 say
 say "== FAILED, rolling back"
-checkout_all OLD || say "  rollback checkout failed; check $BENCH_REPO by hand"
+checkout_all OLD 1 || say "  rollback checkout failed; check $BENCH_REPO by hand"
 build x || say "  rebuild failed"
 systemctl restart bench.service
 if health; then say "Rolled back to the recorded commits; the board answers."; else say "Rolled back, but the board is not answering. Check: journalctl -u bench.service -n 50"; fi

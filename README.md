@@ -49,7 +49,7 @@ scripts/deploy-server.sh main                                     # dry run
 scripts/deploy-server.sh main --packages agents-engine=main --apply
 ```
 
-Without `--apply` it only reads: it prints each repo's current commit on the server and the commit the ref points to on GitHub. With `--apply` it records the current commits, fetches, checks out the refs, runs `npm install` and `npm run build` for the board's front end, restarts `bench.service` and waits up to 20 seconds for the board to answer 200 on `127.0.0.1:8765`. If it does not, the recorded commits go back and the service restarts again. A ref is a branch, tag or commit, and a short commit id only resolves once fetched. It stops if a checkout on the server has uncommitted changes to tracked files. `DEPLOY_HOST` changes the server.
+Without `--apply` it only reads: it prints each repo's current commit on the server and the commit the ref points to on GitHub. With `--apply` it records the current commits, fetches, checks out the refs, runs `npm ci` (which installs exactly `package-lock.json` and rewrites nothing) and `npm run build` for the board's front end, restarts `bench.service` and waits up to 20 seconds for the board to answer 200 on `127.0.0.1:8765`. If it does not, the recorded commits go back and the service restarts again. A ref is a branch, tag or commit, and a short commit id only resolves once fetched. Refs may only use letters, digits and `. _ / -`, and the script refuses anything else before it connects. Afterwards each checkout on the server sits on a detached HEAD at the commit the script prints, not on a branch, which is expected. It stops if a checkout on the server has uncommitted changes to tracked files. `DEPLOY_HOST` changes the server.
 
 ## What it is for
 
