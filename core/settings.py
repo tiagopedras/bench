@@ -168,6 +168,21 @@ def planner_model(root=None, default=None):
     return own or model_for("plan", root, default)
 
 
+def for_boards(saved, boards):
+    """`saved` as one person may read it on the shared board: no board they
+    cannot see is named, and no folder is given as a path on the server. The
+    memory folder goes, and each projects folder is its folder name alone."""
+    out = copy.deepcopy(saved)
+    out.pop("memory_root", None)
+    roots = {k: os.path.basename(os.path.normpath(v))
+             for k, v in (out.get("projects_roots") or {}).items() if k in boards}
+    if roots:
+        out["projects_roots"] = roots
+    else:
+        out.pop("projects_roots", None)
+    return out
+
+
 def people_path(dataset, root=None):
     """Where a list's people.md is read and written: the memory folder's copy,
     `<memory_root>/bench/<list>/people.md`, when that file is there, else the

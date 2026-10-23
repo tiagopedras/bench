@@ -12,6 +12,7 @@ wireDrawerHold();
 loadFile();
 loadJira();
 loadDatasets();
+loadWhoami();
 loadBucketColors();
 loadBucketThemes();
 loadColumnNames();

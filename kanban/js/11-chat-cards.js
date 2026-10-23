@@ -431,6 +431,9 @@ function viewDefs(){
     { id:'projects', label:'Projects' },
     { id:'agents',   label:'Agents' }
   ];
+  /* The agents run on the owner's Mac, so the shared board has no Agents tab
+     (loadWhoami() in 21-datasets.js). */
+  if (state.who) return defs.filter(d => d.id !== 'agents');
   return defs;
 }
 /* Backups isn't a view of the board, it's a data operation — see the Backups

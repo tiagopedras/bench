@@ -191,6 +191,59 @@ symlink or a `..` cannot lead out of an approved folder.
 The board reads the pointer and nothing else. It never opens the folder, so what is in there
 can be in any shape the work needs.
 
+### On a shared server
+
+The same board can run on a server for more than one person, behind nginx and the Offdesk
+sign-in. `BENCH_AUTH=header` in the server's environment turns that on. Unset, nothing in
+this section applies and the board on your Mac behaves as it always has.
+
+nginx asks the sign-in service who each visitor is and passes the answer on in three
+headers: `X-Offdesk-Email`, `X-Offdesk-Name` (percent-encoded UTF-8) and `X-Offdesk-Teams`
+(a comma list of team ids). Bench can trust them because it only ever listens on
+127.0.0.1, so nothing but nginx on the same machine reaches it, and it refuses to start
+signed-in mode on any other address. A request with no email gets a 401 before any route
+runs. Any value of `BENCH_AUTH` other than `header` stops the server at start-up, so a typo
+cannot leave a public board open. `/whoami` returns the three, and the header shows the name
+with a Sign out button, which posts to nginx's own `/auth/logout`.
+
+What only works on the owner's Mac is refused, and its buttons are hidden: revealing a
+folder in Finder or approving one on disk, the Agents tab and its launchd schedules, Spend
+and schedules, starting the Plan agent, and the Claude chat, which would run on the server
+owner's own Claude login. The settings and the profile belong to the server, so a visitor
+can read them and not change them. Every POST must carry `X-Board: 1`, because on a public
+address a form on another site could otherwise post with the visitor's cookie. "Me" on the
+board, the person review sub-tasks go to, is whoever is signed in.
+
+Each board says who may see it in `data/<board>/access.json`: an owner, and the people (by
+email) and teams who share it. A board is personal or shared from the moment it is made.
+The New list wizard asks as its last step, and the owner changes it later from Settings,
+which on the shared board is the list's sharing and nothing else. A team can only be added
+by someone in it. The server writes the file, so nothing else should. A board without one,
+or with one that does not parse, is seen by nobody once sign-in is on, because a board
+should be opened up on purpose and never by default. For a board that existed before,
+`scripts/set-board-access.py <board> --owner <email> --team <id>` sets it once. Team
+membership comes only from the header, which keeps the sign-in service's `teams.json` the
+one list of who is in which team.
+
+Every route reaches a board through `list_datasets()` and `current_dataset()`, and both
+answer for the person asking, so a board outside someone's access drops out of every route
+at once. It is missing from the Lists menu, naming it is a 404, and nothing under `data/`
+is served except through `/data/` on their own board. Someone who can see no board gets a
+404 from every board route rather than a shared empty folder. Which board is on screen is
+kept per person in `data/users/`, one file each named from a hash of the address, so one
+person switching does not switch anyone else. `data/.current` stays the Mac's pointer, and
+on the server it only decides which board the weekly backup and `boards.md` treat as
+current. Access is off on the Mac: every board shows, `access.json` or not.
+
+The server builds every file path itself from the address decoded once, and refuses any
+part that is empty, starts with a dot or still holds `%`, a backslash or a NUL, so neither
+a double-encoded `..` nor `.git` gets through, on the Mac included. The result must stay
+inside the board's own folder, or the repo for anything else, once symlinks are followed.
+Signed in, only what the page loads is served from outside `/data/`: `kanban/index.html`,
+`kanban/board.css`, `kanban/js/`, `kanban/dist/`, the example list, `core/todo.js` and
+`core/avatar.js`. Folders are never listed, and the routes answer with names rather than
+paths on the server.
+
 ## The board
 
 `kanban/index.html` is one page, still. No build step, no dependencies, and

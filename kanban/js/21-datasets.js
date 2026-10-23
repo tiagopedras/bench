@@ -74,6 +74,80 @@ async function switchDataset(name){
   }
 }
 
+/* ---- Who is signed in ----------------------------------------------------
+   Only on the shared board, behind nginx's sign-in (BENCH_AUTH=header in
+   kanban/server.py). The Mac board answers /whoami with a 404, state.who stays
+   null and nothing here changes the page.
+
+   Signed in, the header says who you are and offers Sign out, which nginx's
+   /auth/ route answers rather than this server. The parts that only work on
+   the owner's Mac go: the server refuses them, and body.signed-in hides their
+   buttons (board.css) so nothing on the page offers what will fail. The
+   Agents tab goes through viewDefs(), which is why the view is drawn again. */
+async function loadWhoami(){
+  let who;
+  try { who = await getJSON('/whoami'); } catch (err) { return; }
+  if (!who || !who.email) return;
+  state.who = who;
+  document.body.classList.add('signed-in');
+  $('#whoName').textContent = who.name || who.email;
+  $('#whoName').title = who.email;
+  $('#whoami').classList.remove('hidden');
+  if (state.doc) renderView();
+}
+
+/* ---- Who sees a list -----------------------------------------------------
+   Signed in, every list is someone's: personal (only its owner) or shared
+   with teams the owner is in, or people by email. The server keeps it in the
+   list's access.json and shows a list to nobody else. The same form is the
+   wizard's last step and, for the owner, Settings on the shared board
+   (openSharing() in 29-settings.js). `sh` is {kind, teams, people}, with
+   people as the textarea's text; trackSharing() keeps it in step with the
+   form, since a modal's buttons run after it has closed. */
+function sharingFormHTML(sh, teams){
+  const radio = (kind, label) =>
+    '<label class="sharekind"><input type="radio" name="shKind" value="' + kind + '"' +
+      (sh.kind === kind ? ' checked' : '') + '> ' + esc(label) + '</label>';
+  return '<div class="repdoc sharing">' +
+    radio('personal', 'Only me') +
+    radio('shared', 'Shared') +
+    '<div class="sharewith"' + (sh.kind === 'shared' ? '' : ' hidden') + '>' +
+      (teams.length
+        ? '<p>Everyone in these teams:</p>' + teams.map(t =>
+            '<label class="shareteam"><input type="checkbox" data-team="' + escAttr(t) + '"' +
+              (sh.teams.indexOf(t) >= 0 ? ' checked' : '') + '> ' + esc(t) + '</label>').join('')
+        : '') +
+      '<p>And these people, one email a line:</p>' +
+      '<textarea id="shPeople" class="redowhy" rows="3" placeholder="name@example.com">' +
+        esc(sh.people) + '</textarea>' +
+    '</div>' +
+  '</div>';
+}
+
+function trackSharing(sh){
+  if (!modalEl) return;
+  const sync = () => {
+    const kind = modalEl.querySelector('input[name="shKind"]:checked');
+    if (!kind) return;
+    sh.kind = kind.value;
+    sh.teams = Array.from(modalEl.querySelectorAll('[data-team]')).filter(c => c.checked).map(c => c.dataset.team);
+    const ppl = modalEl.querySelector('#shPeople');
+    if (ppl) sh.people = ppl.value;
+    const box = modalEl.querySelector('.sharewith');
+    if (box) box.hidden = sh.kind !== 'shared';
+  };
+  modalEl.addEventListener('input', sync);
+  modalEl.addEventListener('change', sync);
+}
+
+/* What the server is sent, or a sentence saying what is missing. */
+function sharingBody(sh){
+  if (sh.kind !== 'shared') return { body: { kind: 'personal', teams: [], people: [] } };
+  const people = sh.people.split(/[\s,;]+/).map(p => p.trim()).filter(Boolean);
+  if (!sh.teams.length && !people.length) return { error: 'Pick a team or add someone to share it with.' };
+  return { body: { kind: 'shared', teams: sh.teams.slice(), people } };
+}
+
 /* ---- Making a list ------------------------------------------------------
    A list needs more than a todo.md: a brief per bucket, and the README saying
    which buckets the list has, or every task in it plans against the fallback
@@ -84,13 +158,21 @@ async function switchDataset(name){
    it becomes the opening of the bucket's own brief rather than boilerplate
    under a "not filled in yet" marker, which is the difference between a brief
    an agent is pointed at and one it is not. Everything else is scaffolded from
-   it by create_dataset() in kanban/server.py. */
+   it by create_dataset() in kanban/server.py. Signed in, one more step says
+   who sees it. */
 
 const WIZARD_BUCKETS = ['People', 'Work oversight', 'Design System', 'Strategic'];
 
 let wizard = null;
 
+/* The sharing step, last, and only when someone is signed in. */
+function wizardSharingStep(){ return !!state.who && wizard.step === wizardSteps() - 1; }
+
 function wizardHTML(){
+  if (wizardSharingStep()) {
+    return '<p>Who sees <strong>' + esc(wizard.name) + '</strong>? You can change this later in Settings.</p>' +
+      sharingFormHTML(wizard.sharing, state.who.teams || []);
+  }
   if (wizard.step === 0) {
     return '<div class="repdoc">' +
       '<p>What is this list called? It becomes a folder under <code>data/</code>, ' +
@@ -122,6 +204,7 @@ function wizardHTML(){
 }
 
 function wizardRead(){
+  if (wizardSharingStep()) return !sharingBody(wizard.sharing).error;
   if (wizard.step === 0) {
     const el = $('#wizName');
     if (el) wizard.name = el.value.trim();
@@ -145,7 +228,7 @@ function wizardRead(){
   return true;
 }
 
-function wizardSteps(){ return 2 + wizard.buckets.length; }
+function wizardSteps(){ return 2 + wizard.buckets.length + (state.who ? 1 : 0); }
 
 function showWizard(){
   const last = wizard.step === wizardSteps() - 1;
@@ -153,7 +236,8 @@ function showWizard(){
   if (wizard.step > 0) buttons.push({ label:'Back', run: () => { wizard.step--; showWizard(); } });
   buttons.push({ label: last ? 'Make the list' : 'Next', primary:true, run: () => {
     if (!wizardRead()) {
-      showToast(wizard.step === 0 ? 'A list needs a name.' : 'A list needs at least one bucket.', 'bad');
+      showToast(wizardSharingStep() ? sharingBody(wizard.sharing).error
+        : wizard.step === 0 ? 'A list needs a name.' : 'A list needs at least one bucket.', 'bad');
       showWizard();
       return;
     }
@@ -163,17 +247,22 @@ function showWizard(){
     wizard.step++;
     showWizard();
   } });
-  buttons.push({ label:'Cancel', run: () => { wizard = null; loadDatasets(); } });
+  buttons.push({ label:'Cancel', run: () => { wizard = null; closeModal(); loadDatasets(); } });
   const sub = wizard.step === 0 ? 'Step 1 of 2, at least'
     : 'Step ' + (wizard.step + 1) + ' of ' + wizardSteps();
-  showModal('A new list', esc(sub), wizardHTML(), buttons, { cls:'wizard' });
+  /* keepOpen, because each button reads the step's fields before it moves on,
+     and a modal that closed first would leave nothing to read. */
+  showModal('A new list', esc(sub), wizardHTML(), buttons, { cls:'wizard', keepOpen:true });
+  if (wizardSharingStep()) trackSharing(wizard.sharing);
   const first = $('#wizName') || $('#wizBuckets') || $('#wizAbout');
   if (first) { first.focus(); if (first.select) first.select(); }
 }
 
 async function finishWizard(){
   const body = { name: wizard.name, buckets: wizard.buckets };
+  if (state.who) body.sharing = sharingBody(wizard.sharing).body;
   wizard = null;
+  closeModal();
   try {
     await postJSON('/datasets', body);
     location.reload();
@@ -184,7 +273,8 @@ async function finishWizard(){
 }
 
 function createDataset(){
-  wizard = { step: 0, name: '', buckets: WIZARD_BUCKETS.map(name => ({ name, about: '' })) };
+  wizard = { step: 0, name: '', buckets: WIZARD_BUCKETS.map(name => ({ name, about: '' })),
+             sharing: { kind: 'personal', teams: [], people: '' } };
   showWizard();
 }
 

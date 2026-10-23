@@ -3099,3 +3099,16 @@
   box-shadow:inset 0 0 0 2px var(--bc);
 }
 .tlsub .tlmilestone.tlstartonly{box-shadow:inset 0 0 0 1.5px var(--bc)}
+
+/* The shared board (signed in through nginx): who you are, and none of the
+   buttons that only work on the owner's Mac. The server refuses all of them;
+   these keep the page from offering them. See loadWhoami() in 21-datasets.js. */
+.whoami form{display:contents}
+body.signed-in #f-projopen,
+body.signed-in #projOpenFolder,
+body.signed-in #refCardsBtn,
+body.signed-in #runAgentBtn{display:none !important}
+/* Who sees a list: the wizard's last step, and Settings on the shared board. */
+.sharing .sharekind, .sharing .shareteam{display:block; margin:4px 0}
+.sharing .sharewith{margin-top:8px}
+.sharing .sharewith[hidden]{display:none}

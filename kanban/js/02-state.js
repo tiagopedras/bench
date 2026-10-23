@@ -27,6 +27,9 @@ const state = {
      with no such route leaves this false forever and the dropdown hidden —
      the board works exactly as it did before data sets existed. */
   datasets: false,
+  /* {email, name, teams} on the shared board, from /whoami; null on the Mac
+     board, where nobody signs in. See loadWhoami() in 21-datasets.js. */
+  who: null,
   /* Everything about the Claude chat engine — the CLI's status, which
      sessions sit under which task, any run in flight, the modal itself —
      lives inside the `chat` object from ai_chat_engine's window rather
