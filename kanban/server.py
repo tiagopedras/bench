@@ -446,7 +446,34 @@ def pa_busy(ds):
         return False
 
 
-def notice_outside_edit(ds):
+# How long the file must have been left alone before the server takes what it
+# reads for a finished outside edit. pa and an editor write outside the save
+# lock, and a write that is not atomic shows a partial file for as long as it
+# takes; a version younger than this is left for the next read.
+OUTSIDE_QUIET_S = 1.0
+
+
+def _steady_read(path):
+    """(text, stat) for todo.md, or (None, stat) when the read cannot be
+    trusted: the size or modification time moved while it was read, the bytes
+    read are not the size the file says, or they are not whole UTF-8 (a write
+    cut mid-character). (None, None) when there is no file."""
+    try:
+        before = os.stat(path)
+        with open(path, "rb") as fh:
+            raw = fh.read()
+        after = os.stat(path)
+    except OSError:
+        return None, None
+    if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns) or len(raw) != after.st_size:
+        return None, after
+    try:
+        return raw.decode("utf-8"), after
+    except UnicodeDecodeError:
+        return None, after
+
+
+def notice_outside_edit(ds, wait=False):
     """Accounts for an edit written straight to todo.md since the server last
     wrote it: the pa skill, or anything else. The difference from the last
     version the server knows goes in the activity log under `pa`, and, signed
@@ -458,23 +485,41 @@ def notice_outside_edit(ds):
     Held while pa says it is mid-edit, so its edit is accounted for once, as a
     whole, when it finishes, and never stamped under its feet; and while a
     migration holds the list. The first time a list is seen there is nothing
-    to compare with, and the version is only remembered."""
+    to compare with, and the version is only remembered.
+
+    The writer is not under the save lock, so nothing here trusts a read the
+    writer might still be in the middle of: a changed file is only taken once
+    a read of it is steady (_steady_read) and it has been left alone for
+    OUTSIDE_QUIET_S, and the stamped version replaces it only if the file is
+    still exactly what was read. Otherwise it waits for the next read; a save
+    (`wait`) waits here instead, briefly, so it merges with the whole edit."""
     if todo is None or not ds:
         return
     with _save_lock:
         path = todo_path(ds)
         try:
-            with open(path, encoding="utf-8", newline="") as fh:
-                text = fh.read()
-        except OSError:
-            return
-        try:
             with open(known_path(ds), encoding="utf-8", newline="") as fh:
                 known = fh.read()
         except OSError:
+            known = None
+        for _ in range(4 if wait else 1):
+            text, st = _steady_read(path)
+            if st is None:
+                return
+            if text is not None and text == known:
+                return
+            age = time.time() - st.st_mtime
+            if text is not None and age >= OUTSIDE_QUIET_S:
+                break
+            if not wait:
+                return
+            time.sleep(max(0.05, OUTSIDE_QUIET_S - age))
+        else:
+            return
+        if known is None:
             remember(ds, text)
             return
-        if known == text or pa_busy(ds) or os.path.exists(migrating_path(ds)):
+        if pa_busy(ds) or os.path.exists(migrating_path(ds)):
             return
         stamped, changes = todo.stamp_authors(known, text, "pa", write_tags=bool(AUTH))
         if stamped != text:
@@ -483,6 +528,15 @@ def notice_outside_edit(ds):
                 fh.write(stamped)
                 fh.flush()
                 os.fsync(fh.fileno())
+            # Compare before replace: a write that landed since the read is
+            # not stamped over. It is accounted for on the next read instead.
+            try:
+                now = os.stat(path)
+            except OSError:
+                now = None
+            if now is None or (now.st_size, now.st_mtime_ns) != (st.st_size, st.st_mtime_ns):
+                os.remove(tmp)
+                return
             os.replace(tmp, path)
         append_activity(ds, changes, who="pa", name="pa")
         remember(ds, stamped)
@@ -3659,7 +3713,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # Anything written straight to the file since the server last did is
         # accounted for first, so it is credited to `pa` rather than to this
         # save, and the merge below sees the file as it now stands.
-        notice_outside_edit(ds)
+        notice_outside_edit(ds, wait=True)
 
         merged = False
         sent = text

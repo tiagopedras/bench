@@ -35,6 +35,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -190,6 +191,11 @@ AGENTS = """# To-do
 """
 
 
+# An outside edit is only taken once the file has been left alone this long
+# (OUTSIDE_QUIET_S in kanban/server.py), so a read waits it out.
+QUIET = 1.2
+
+
 def log_of(folder):
     try:
         with open(os.path.join(folder, "activity.jsonl"), encoding="utf-8") as fh:
@@ -263,6 +269,7 @@ def agents_and_outside(root):
         srv.ask("HEAD", "/data/todo.md", JEROME)          # the server has seen this version
         write(os.path.join(folder, "pa-working.json"), json.dumps({"tasks": ["Order name badges"]}))
         write(path, disk().replace("**Order name badges**", "**Order name badges for the launch**"))
+        time.sleep(QUIET)
         srv.ask("HEAD", "/data/todo.md", JEROME)
         ok("held while pa says it is mid-edit",
            not any(e["who"] == "pa" for e in log_of(folder)) and "edited-by:pa" not in disk())
@@ -321,6 +328,7 @@ def mac(root):
         # An edit written straight to the file, on the Mac: logged, no tag.
         outside = mine.replace("**Book the venue**", "**Book a venue**")
         write(path, outside)
+        time.sleep(QUIET)
         srv.ask("HEAD", "/data/todo.md")
         with open(path, encoding="utf-8") as fh:
             ok("on the Mac an outside edit writes no tag", fh.read() == outside)

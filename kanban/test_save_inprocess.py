@@ -14,7 +14,11 @@ What it holds to:
     every task is created by whoever signed in;
   * the board's drain of agent requests holds the save lock while it reads
     the queue, credits the agents and takes the requests out, so no save can
-    land between the version it credits from and the removal.
+    land between the version it credits from and the removal;
+  * an outside writer is never written over: a file still being written (a
+    slow, non-atomic write with a pause in it) is left alone until it has
+    settled, and a write landing between the server's read and its stamp is
+    not replaced by the stamp.
 """
 
 import http.server
@@ -24,6 +28,7 @@ import shutil
 import sys
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.request
 
@@ -107,6 +112,72 @@ def tick_lock(base, folder):
     ok("both under the save lock", seen and all(held for _, held in seen), repr(seen))
 
 
+LIST = ("# To-do\n\n## 1. Tasks\n\n### To do\n\n"
+        "- [ ] **One** `id:aaaaaa`\n- [ ] **Two** `id:bbbbbb`\n")
+
+
+def outside_writers(folder):
+    """notice_outside_edit() against writers that do not take the lock."""
+    path = os.path.join(folder, "todo.md")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(LIST)
+    server.remember("fresh", LIST)
+    for f in ("activity.jsonl", "pa-working.json"):
+        if os.path.exists(os.path.join(folder, f)):
+            os.remove(os.path.join(folder, f))
+
+    # A slow writer: half the new file, a pause longer than the read, the rest.
+    new = LIST.replace("**One**", "**One, renamed**") + "- [ ] **Three, added at the end** `id:cccccc`\n"
+    half = len(new) // 2
+    started = threading.Event()
+
+    def slow():
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(new[:half])
+            fh.flush()
+            started.set()
+            time.sleep(0.6)
+            fh.write(new[half:])
+
+    writer = threading.Thread(target=slow)
+    writer.start()
+    started.wait()
+    server.notice_outside_edit("fresh")
+    writer.join()
+    with open(path, encoding="utf-8") as fh:
+        ok("a write still in progress is not written over", fh.read() == new)
+    ok("nor logged half-done", not os.path.exists(os.path.join(folder, "activity.jsonl")))
+    time.sleep(server.OUTSIDE_QUIET_S + 0.1)
+    server.notice_outside_edit("fresh")
+    with open(path, encoding="utf-8") as fh:
+        now = fh.read()
+    ok("once it has settled it is stamped, whole",
+       "**One, renamed** `edited-by:pa` `id:aaaaaa`" in now and "Three, added at the end** `created-by:pa`" in now, now)
+
+    # A write landing between the read and the stamp.
+    server.remember("fresh", now)
+    edited = now.replace("**Two**", "**Two, edited**")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(edited)
+    time.sleep(server.OUTSIDE_QUIET_S + 0.1)
+    late = edited.replace("**Two, edited**", "**Two, edited again**")
+    real = server.todo.stamp_authors
+
+    def stamp_while_written(*a, **k):
+        got = real(*a, **k)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(late)
+        return got
+
+    server.todo.stamp_authors = stamp_while_written
+    try:
+        server.notice_outside_edit("fresh")
+    finally:
+        server.todo.stamp_authors = real
+    with open(path, encoding="utf-8") as fh:
+        ok("a write landing mid-stamp is not replaced by the stamp", fh.read() == late)
+
+
 def main():
     folder = os.path.join(os.environ["TODOS_DATA_ROOT"], "fresh")
     os.makedirs(folder)
@@ -120,6 +191,7 @@ def main():
     try:
         first_save(base, folder)
         tick_lock(base, folder)
+        outside_writers(folder)
     finally:
         httpd.shutdown()
         shutil.rmtree(SCRATCH, ignore_errors=True)
