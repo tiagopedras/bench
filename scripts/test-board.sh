@@ -20,6 +20,10 @@
 
 set -u
 
+# The suites, and the servers some of them start themselves, list `_test` and any
+# other list whose name starts with "_" (see list_datasets in kanban/server.py).
+export TODOS_SHOW_HIDDEN=1
+
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO" || exit 1
 

@@ -107,12 +107,16 @@ backup_made = set()
 # which covers a fresh clone (data/.current does not exist) the same way it
 # covers a dataset removed by hand outside the board.
 
+# A name starting with "_" is kept out of the dropdown, except when
+# TODOS_SHOW_HIDDEN is set: scripts/test-board.sh sets it, because its list is
+# called _test and the suites must see it along with any other hidden one.
 def list_datasets():
     base = DATA_ROOT
     if not os.path.isdir(base):
         return []
+    hidden = (".",) if os.environ.get("TODOS_SHOW_HIDDEN") else (".", "_")
     out = [name for name in os.listdir(base)
-           if not name.startswith((".", "_"))
+           if not name.startswith(hidden)
            and os.path.isfile(os.path.join(base, name, "todo.md"))]
     return sorted(out)
 
