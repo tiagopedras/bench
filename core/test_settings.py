@@ -396,9 +396,10 @@ class SettingsTest(unittest.TestCase):
     def test_for_boards_names_only_those_boards(self):
         a, b = self.projects(), os.path.join(self.root, "b")
         os.makedirs(b)
-        self.write({"projects_roots": {"work": a, "secret": b}})
+        self.write({"projects_roots": {"work": a, "secret": b}, "memory_root": self.root})
         saved = settings.load(self.root)
-        self.assertEqual(settings.for_boards(saved, ["work"])["projects_roots"], {"work": a})
+        self.assertEqual(settings.for_boards(saved, ["work"])["projects_roots"], {"work": "PROJECTS"})
+        self.assertNotIn("memory_root", settings.for_boards(saved, ["work"]))
         self.assertNotIn("projects_roots", settings.for_boards(saved, []))
         self.assertIn("secret", saved["projects_roots"])
 

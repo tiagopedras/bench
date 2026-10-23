@@ -219,10 +219,19 @@ answer for the person asking, so a board outside someone's access drops out of e
 at once. It is missing from the Lists menu, naming it is a 404, and nothing under `data/`
 is served except through `/data/` on their own board. Someone who can see no board gets a
 404 from every board route rather than a shared empty folder. Which board is on screen is
-kept per person in `data/users/<email>.json`, so one person switching does not switch
-anyone else. `data/.current` stays the Mac's pointer, and on the server it only decides
-which board the weekly backup and `boards.md` treat as current. Access is off on the Mac:
-every board shows, `access.json` or not.
+kept per person in `data/users/`, one file each named from a hash of the address, so one
+person switching does not switch anyone else. `data/.current` stays the Mac's pointer, and
+on the server it only decides which board the weekly backup and `boards.md` treat as
+current. Access is off on the Mac: every board shows, `access.json` or not.
+
+The server builds every file path itself from the address decoded once, and refuses any
+part that is empty, starts with a dot or still holds `%`, a backslash or a NUL, so neither
+a double-encoded `..` nor `.git` gets through, on the Mac included. The result must stay
+inside the board's own folder, or the repo for anything else, once symlinks are followed.
+Signed in, only what the page loads is served from outside `/data/`: `kanban/index.html`,
+`kanban/board.css`, `kanban/js/`, `kanban/dist/`, the example list, `core/todo.js` and
+`core/avatar.js`. Folders are never listed, and the routes answer with names rather than
+paths on the server.
 
 ## The board
 

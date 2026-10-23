@@ -1613,6 +1613,10 @@ def agents_status():
     `claude`, so it counts here too."""
     claude = bool(os.environ.get("AGENTS_RUNNER_CLAUDE") or shutil.which("claude"))
     engine = agents_routes is not None
+    if AUTH:
+        # The shared board runs no agents (shared_refusal), so the board
+        # leaves out everything that would start one.
+        claude = engine = False
     return {"claude": claude, "engine": engine, "ready": claude and engine}
 
 
@@ -2067,6 +2071,12 @@ def work_streams_static(rel_path):
     return full
 
 
+def stream_name(path, root):
+    """Where a manifest is, for the board: relative to the workspace folder,
+    and signed in only the name of the folder it sits in."""
+    return os.path.basename(os.path.dirname(path)) if AUTH else os.path.relpath(path, root)
+
+
 def stream_listing():
     """Every stream manifest under the workspace folder, with whatever is wrong with each.
 
@@ -2081,11 +2091,11 @@ def stream_listing():
     for path in ws_manifest.discover(root):
         m, errors = ws_manifest.load(path)
         if m is None:
-            out.append({"path": path, "errors": errors})
+            out.append({"path": stream_name(path, root), "errors": errors})
             continue
         out.append({
             "id": m.get("id"), "name": m.get("name"), "blurb": m.get("blurb", ""),
-            "path": os.path.relpath(path, root),
+            "path": stream_name(path, root),
             "manifest": {k: v for k, v in m.items() if not k.startswith("_")},
             "lanes": ws_manifest.lanes(m),
             "ownsItsFile": ws_manifest.owns_its_file(m),
@@ -2169,6 +2179,58 @@ def _holiday_place_json():
     if "holidays" in prof and not re.fullmatch(r"[A-Za-z]{2}", prof.get("country", "")):
         legacy = list(owner_profile.holiday_regions(DATA_ROOT))
     return {"country": country or "", "region": region, "legacy_holidays": legacy}
+
+
+def url_segments(path):
+    """(folder names, trailing slash) for a URL's path, decoded exactly once,
+    or None when any part of it is refused: empty, a dot name (`.`, `..`,
+    `.git`, any dotfile), or holding `%`, a backslash or a NUL once decoded,
+    which only a second decoding or another platform would read as more."""
+    from urllib.parse import unquote
+    raw = path.split("?", 1)[0].split("#", 1)[0]
+    try:
+        decoded = unquote(raw, errors="strict")
+    except UnicodeDecodeError:
+        return None
+    if not decoded.startswith("/"):
+        return None
+    segs = decoded[1:].split("/")
+    trailing = segs[-1] == ""
+    if trailing:
+        segs = segs[:-1]
+    for seg in segs:
+        if not seg or seg.startswith(".") or any(c in seg for c in "%\\\x00"):
+            return None
+    return segs, trailing
+
+
+def within(path, base):
+    """Whether `path`, symlinks followed, is `base` or inside it."""
+    real, root = os.path.realpath(path), os.path.realpath(base)
+    return real == root or real.startswith(root.rstrip(os.sep) + os.sep)
+
+
+def inside(base, segs):
+    """`base` joined with `segs`, or None when following symlinks leads out."""
+    full = os.path.join(base, *segs)
+    return full if within(full, base) else None
+
+
+# What the shared board serves from outside /data/: the page and what it
+# loads (kanban/index.html), its built assets, the format's script, and the
+# example list. Everything else in the repo, its source and its git history
+# included, is refused, along with folder listings.
+STATIC_FILES = ("kanban/index.html", "kanban/board.css", "kanban/demo.md",
+                "kanban/jira.demo.json", "kanban/icon.svg", "core/todo.js", "core/avatar.js")
+STATIC_FOLDERS = ("kanban/js/", "kanban/dist/")
+
+
+def static_allowed(segs, trailing):
+    rel = "/".join(segs)
+    if trailing or not segs:
+        return False
+    return rel in STATIC_FILES or any(rel.startswith(f) and "/" not in rel[len(f):]
+                                      for f in STATIC_FOLDERS)
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -2305,66 +2367,58 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # GET and HEAD both funnel through here (send_head calls this), so a
         # dataset switch takes effect for every read without the board's own
         # fetch calls changing at all.
-        # Cleaned the way the base class cleans it before the prefix is looked
-        # at, so /kanban/../data/<another list>/ or /%64ata/ cannot reach a
-        # list by a path that only becomes /data/ after this check.
-        import posixpath
-        from urllib.parse import unquote
-        raw = unquote(path.split("?")[0].split("#")[0])
-        p = posixpath.normpath(raw)
-        # normpath drops a trailing slash, which is what asks for a folder.
-        if raw.endswith("/") and not p.endswith("/"):
-            p += "/"
-        prefix = "/" + DATA
-        if p == prefix or p.startswith(prefix + "/"):
+        #
+        # The file path is built here from the URL decoded once, and never
+        # handed back to the base class, which would decode it a second time:
+        # %252e%252e is %2e%2e after one pass and .. after two. Anything that
+        # does not resolve to a file the request may read points at a path
+        # that cannot exist, which the base class answers with a 404.
+        got = url_segments(path)
+        out = self._resolve(*got) if got else None
+        if out is None:
+            return os.path.join(DATA_ROOT, ".refused", "nothing")
+        return out + "/" if got[1] and not out.endswith("/") else out
+
+    def _resolve(self, segs, trailing):
+        if segs[:1] == [DATA]:
             ds = current_dataset()
-            if ds:
-                rest = p[len(prefix):]
-                shared = self._shared_project(ds, rest)
+            if not ds:
+                return None
+            rest = segs[1:]
+            if len(rest) >= 2 and rest[0] == "projects":
+                shared = self._shared_project(ds, rest[1], rest[2:])
                 if shared:
                     return shared
-                real = super().translate_path(prefix + "/" + ds + rest)
-                if SCRATCH:
-                    # Same resolution, then moved from ROOT/data to the
-                    # scratch root. Anything that climbs out stays refused
-                    # by pointing at a path that cannot exist.
-                    rel = os.path.relpath(real, DEFAULT_DATA_ROOT)
-                    if rel == ".." or rel.startswith(".." + os.sep):
-                        return os.path.join(DATA_ROOT, ".outside-data-root")
-                    return os.path.join(DATA_ROOT, rel)
-                return real
-            return os.path.join(DATA_ROOT, ".no-list", ".nothing")
-        real = super().translate_path(path)
+            return inside(dataset_dir(ds), rest)
+        if AUTH and not static_allowed(segs, trailing):
+            return None
+        full = inside(ROOT, segs)
         # Nothing under data/ is served except through the branch above: not
         # settings.json, not anyone's data/users/ file, not another list.
-        for base in (DEFAULT_DATA_ROOT, DATA_ROOT):
-            rel = os.path.relpath(os.path.realpath(real), os.path.realpath(base))
-            if rel == "." or not (rel == ".." or rel.startswith(".." + os.sep)):
-                return os.path.join(DATA_ROOT, ".outside-data-root")
-        return real
+        if full is None or any(within(full, base) for base in (DEFAULT_DATA_ROOT, DATA_ROOT)):
+            return None
+        return full
 
-    def _shared_project(self, ds, rest):
+    def _shared_project(self, ds, name, more):
         # /data/projects/<name>/... for a folder that resolves under the
         # list's projects folder, outside data/: the file inside it, or None
-        # to serve from data/ as before. The part after the name is cleaned by
-        # the normal file server first, so a .. in it climbs no further than
-        # the folder.
-        m = re.match(r"^/projects/([^/]+)(/.*)?$", rest)
-        if not m:
-            return None
+        # to serve from data/ as before.
         ddir = dataset_dir(ds)
         chosen = project_folders.chosen_dir(ddir)
         if not chosen:
             return None
-        from urllib.parse import unquote
-        real, err = project_folders.resolve(unquote(m.group(1)), ddir)
+        real, err = project_folders.resolve(name, ddir)
         if err or not project_folders.inside(os.path.realpath(chosen), real):
             return None
-        base = super().translate_path("/")
-        full = super().translate_path(m.group(2) or "/")
-        rel = os.path.relpath(full, base)
-        out = real if rel == "." else os.path.join(real, rel)
-        return out + "/" if full.endswith("/") and not out.endswith("/") else out
+        return inside(real, more)
+
+    def list_directory(self, path):
+        # A folder's own listing names every file in it. Signed in, the board
+        # never asks for one, so nobody gets one.
+        if AUTH:
+            self.send_error(404, "File not found")
+            return None
+        return super().list_directory(path)
 
     def do_GET(self):
         path = self.path.split("?")[0]
@@ -2372,6 +2426,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._agents_get(path[len(AGENTS_PREFIX):])
         # Who is signed in. The Mac board has nobody, and answers the way a
         # server from before sign-in would, so the board shows no name.
+        # Signed in, the root is the board rather than a listing of the repo.
+        if AUTH and path == "/":
+            self.send_response(302)
+            self.send_header("Location", "/kanban/index.html")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         if path == "/whoami":
             if not AUTH:
                 return self._json(404, {"error": "nobody signs in to this board"})
@@ -2545,7 +2606,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, {
                 "bucket": bucket,
                 "stream": stream,
-                "path": os.path.relpath(bpath, ROOT),
+                # Shown in the editor as where the brief is saved. Signed in,
+                # the folder inside the list rather than a path on the server.
+                "path": os.path.relpath(bpath, dataset_dir(current_dataset()) if AUTH else ROOT),
                 "text": text,
                 "exists": exists,
                 # What the agents themselves ask: a file still carrying the
@@ -2937,7 +3000,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             readme_note_bucket(None, name, stream, was)
             brief = scaffold_bucket(None, name, stream, payload.get("about") or "")
             return self._json(200, {"ok": True, "stream": stream,
-                                    "brief": os.path.relpath(brief, ROOT),
+                                    "brief": os.path.relpath(brief, dataset_dir(current_dataset()) if AUTH else ROOT),
                                     "renamed": bool(was)})
         if path == "/bucket-colors":
             # Same guard, same shape as /chat-viewed: the whole map is sent and

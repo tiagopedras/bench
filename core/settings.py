@@ -169,11 +169,13 @@ def planner_model(root=None, default=None):
 
 
 def for_boards(saved, boards):
-    """`saved` as one person may read it on the shared board: the projects
-    folder of the boards in `boards` only, so the settings name no board they
-    cannot see."""
+    """`saved` as one person may read it on the shared board: no board they
+    cannot see is named, and no folder is given as a path on the server. The
+    memory folder goes, and each projects folder is its folder name alone."""
     out = copy.deepcopy(saved)
-    roots = {k: v for k, v in (out.get("projects_roots") or {}).items() if k in boards}
+    out.pop("memory_root", None)
+    roots = {k: os.path.basename(os.path.normpath(v))
+             for k, v in (out.get("projects_roots") or {}).items() if k in boards}
     if roots:
         out["projects_roots"] = roots
     else:

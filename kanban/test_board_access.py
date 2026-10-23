@@ -38,6 +38,8 @@ import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SERVER = os.path.join(ROOT, "kanban", "server.py")
+sys.path.insert(0, os.path.join(ROOT, "core"))
+import board_access  # noqa: E402
 
 PASS = []
 FAIL = []
@@ -135,6 +137,9 @@ class Server:
                 return res.status, res.read().decode("utf-8"), res.headers
         except urllib.error.HTTPError as err:
             return err.code, err.read().decode("utf-8"), err.headers
+        except (urllib.error.URLError, ConnectionError) as err:
+            # The server dropped the connection rather than answer.
+            return 0, str(err), {}
 
 
 def as_json(text):
@@ -275,15 +280,21 @@ def access_checks(root):
            (as_json(body) or {}).get("current") == "tiago-own", body)
         with open(os.path.join(data, ".current")) as fh:
             ok("data/.current is left alone", fh.read() == "legacy")
-        ok("each person's board is kept in data/users/",
-           os.path.isfile(os.path.join(data, "users", "jerome@example.com.json")))
+        jerome_file = board_access.user_path(data, "jerome@example.com")
+        ok("each person's board is kept in data/users/, under a hash of the address",
+           os.path.isfile(jerome_file) and os.path.basename(jerome_file) != "jerome@example.com.json"
+           and json.load(open(jerome_file)).get("email") == "jerome@example.com")
 
         # A hand-edited pointer at a board outside his access falls back.
-        write(os.path.join(data, "users", "jerome@example.com.json"), json.dumps({"current": "tiago-own"}))
+        write(jerome_file, json.dumps({"email": "jerome@example.com", "current": "tiago-own"}))
         code, body, _ = srv.ask("GET", "/datasets.json", JEROME)
         ok("a pointer at a board outside access falls back to one he sees",
            (as_json(body) or {}).get("current") in ("jerome-own", "offdesk"), body)
-        write(os.path.join(data, "users", "jerome@example.com.json"), json.dumps({"current": "jerome-own"}))
+        # A file naming someone else is not his, whatever its name.
+        write(jerome_file, json.dumps({"email": "someone@example.com", "current": "offdesk"}))
+        ok("a pointer file for another address is ignored",
+           board_access.read_current(data, "jerome@example.com") == "")
+        write(jerome_file, json.dumps({"email": "jerome@example.com", "current": "jerome-own"}))
 
         # --- every read is Jerome's board, never Tiago's ------------------------
         leaks = []
@@ -294,13 +305,60 @@ def access_checks(root):
         ok("no read for Jerome carries Tiago's board", not leaks, ", ".join(leaks))
 
         # Paths that only become /data/<board>/ once cleaned, and data/ itself.
+        # A symlink inside Jerome's board, at Tiago's board and at a file in it.
+        os.symlink(os.path.join(data, "tiago-own"), os.path.join(data, "jerome-own", "sneak"))
+        os.symlink(os.path.join(data, "tiago-own", "todo.md"), os.path.join(data, "jerome-own", "sneak.md"))
+        users = os.path.relpath(jerome_file, data)
         for path in ("/kanban/../data/tiago-own/todo.md", "/%64ata/tiago-own/todo.md",
                      "//data/tiago-own/todo.md", "/data/../data/tiago-own/todo.md",
-                     "/kanban/%2e%2e/data/tiago-own/todo.md", "/data/../users/jerome@example.com.json",
-                     "/kanban/../data/settings.json", "/kanban/../data/users/jerome@example.com.json",
-                     "/data/tiago-own/todo.md"):
-            code, body, _ = srv.ask("GET", path, JEROME)
-            ok("path trick %s is not served" % path, code != 200 and SECRET not in body, "got %d" % code)
+                     "/kanban/%2e%2e/data/tiago-own/todo.md", "/data/../" + users,
+                     "/kanban/../data/settings.json", "/kanban/../data/" + users,
+                     "/data/tiago-own/todo.md",
+                     "/data/%252e%252e/tiago-own/todo.md", "/data/%252E%252e/tiago-own/todo.md",
+                     "/data/%2E%2e/tiago-own/todo.md", "/data/%2e%2e%2ftiago-own%2ftodo.md",
+                     "/data/%252e%252e%252ftiago-own%252ftodo.md", "/data/..%5ctiago-own%5ctodo.md",
+                     "/data/%252e%252e/" + users, "/data/%252e%252e/settings.json",
+                     "/data/todo.md%00.html", "/data/sneak/todo.md", "/data/sneak.md",
+                     "/data/sneak/", "/data/./todo.md", "/data/.board.lock"):
+            for method in ("GET", "HEAD"):
+                code, body, _ = srv.ask(method, path, JEROME)
+                ok("path trick %s %s is not served" % (method, path),
+                   code != 200 and SECRET not in body, "got %d" % code)
+
+        # What the shared board serves from outside /data/, and nothing else.
+        for path in ("/kanban/index.html", "/kanban/js/boot.js", "/kanban/board.css",
+                     "/core/todo.js", "/kanban/demo.md"):
+            code, _, _ = srv.ask("GET", path, JEROME)
+            ok("signed in: %s is served" % path, code == 200, "got %d" % code)
+        for path in ("/kanban/server.py", "/README.md", "/core/settings.py", "/.git",
+                     "/.git/HEAD", "/kanban/", "/kanban/js/", "/core/", "/kanban/ui/index.ts",
+                     "/scripts/set-board-access.py", "/kanban/js/../server.py"):
+            code, _, _ = srv.ask("GET", path, JEROME)
+            ok("signed in: %s is refused" % path, code == 404, "got %d" % code)
+        req = urllib.request.Request(srv.base + "/", headers=JEROME)
+        opener = urllib.request.build_opener(type("NoRedirect", (urllib.request.HTTPRedirectHandler,),
+                                                  {"redirect_request": lambda *a, **k: None}))
+        try:
+            code, where = opener.open(req).status, ""
+        except urllib.error.HTTPError as err:
+            code, where = err.code, err.headers.get("Location")
+        ok("signed in: / goes to the board", code == 302 and where == "/kanban/index.html", "%s %s" % (code, where))
+
+        # Names, not paths on the server.
+        code, body, _ = srv.ask("GET", "/settings.json", JEROME)
+        got = as_json(body) or {}
+        ok("settings name no server folder", "memory_root" not in got
+           and all("/" not in v for v in (got.get("projects_roots") or {}).values()), body)
+        code, body, _ = srv.ask("GET", "/bucket-brief.json?bucket=1.%20Tasks", JEROME)
+        ok("a brief's path is inside the list", (as_json(body) or {}).get("path") == "buckets/tasks/tasks.md", body)
+        code, body, _ = srv.ask("POST", "/bucket/scaffold", dict(JEROME, **BOARD), {"name": "Tasks"})
+        ok("a scaffolded brief is named inside the list",
+           (as_json(body) or {}).get("brief") == "buckets/tasks/tasks.md", body)
+        code, body, _ = srv.ask("GET", "/streams.json", JEROME)
+        paths = [st.get("path", "") for st in (as_json(body) or {}).get("streams", [])]
+        ok("streams name a folder, not a path", all("/" not in p for p in paths), str(paths))
+        code, body, _ = srv.ask("GET", "/agents-status.json", JEROME)
+        ok("signed in, no agent can run", (as_json(body) or {}).get("ready") is False, body)
 
         # --- every write lands on Jerome's board, never Tiago's -------------------
         before = snapshot(os.path.join(data, "tiago-own"))
@@ -425,6 +483,14 @@ def access_checks(root):
         ok("Mac: /dataset/access.json is 404", code == 404, "got %d" % code)
         code, _, _ = srv.ask("GET", "/kanban/../data/settings.json")
         ok("Mac: data/ is still not served outside /data/", code == 404, "got %d" % code)
+        os.symlink(os.path.join(data, "tiago-own"), os.path.join(data, "mac-list", "sneak"))
+        for path in ("/data/%252e%252e/tiago-own/todo.md", "/data/%252e%252e/settings.json",
+                     "/.git/HEAD", "/.git", "/data/sneak/todo.md"):
+            code, body, _ = srv.ask("GET", path)
+            ok("Mac: %s is refused" % path, code == 404 and SECRET not in body, "got %d" % code)
+        for path in ("/README.md", "/kanban/server.py", "/kanban/", "/data/todo.md"):
+            code, _, _ = srv.ask("GET", path)
+            ok("Mac: %s is served as before" % path, code == 200, "got %d" % code)
     finally:
         srv.stop()
 
@@ -472,7 +538,7 @@ def translate_checks(root):
            not real.startswith(os.path.realpath(os.path.join(data, "theirs"))) and not real.endswith(".current"), real)
     ok("translate_path still serves the board on screen",
        h.translate_path("/data/todo.md") == os.path.join(data, "mine", "todo.md"))
-    ok("and the page", h.translate_path("/kanban/index.html") == os.path.join(tree, "kanban", "index.html"))
+    ok("and the page", h.translate_path("/kanban/index.html") == os.path.join(server.ROOT, "kanban", "index.html"))
 
 
 def refusal_checks(root):

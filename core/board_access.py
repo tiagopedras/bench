@@ -26,11 +26,12 @@ With sign-in on, a board without the file, or with one that does not parse, is
 visible to nobody: a board is opened up on purpose, never by accident. With it
 off the file is not read at all.
 
-Which board each person has on screen is theirs alone, in
-`data/users/<email>.json`, so one person switching boards does not switch
-anybody else's.
+Which board each person has on screen is theirs alone, in `data/users/`, one
+file per person named from a hash of their address, so one person switching
+boards does not switch anybody else's.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -156,10 +157,11 @@ def can_see(access, who):
 
 
 def user_path(data_root, address):
-    """data/users/<email>.json. The address is already checked by email(), so
-    the only characters left that could matter in a file name are swapped."""
-    slug = re.sub(r"[^a-z0-9@._+-]", "_", address).lstrip(".")
-    return os.path.join(data_root, USERS, slug + ".json")
+    """data/users/<hash>.json: the first 16 hex characters of the lowercased
+    address's sha256, so no two addresses can be squeezed onto one file name.
+    The address itself is kept inside the file."""
+    digest = hashlib.sha256(address.lower().encode("utf-8")).hexdigest()[:16]
+    return os.path.join(data_root, USERS, digest + ".json")
 
 
 def read_current(data_root, address):
@@ -169,7 +171,9 @@ def read_current(data_root, address):
             got = json.load(fh)
     except (OSError, ValueError):
         return ""
-    return str(got.get("current") or "") if isinstance(got, dict) else ""
+    if not isinstance(got, dict) or got.get("email") != address.lower():
+        return ""
+    return str(got.get("current") or "")
 
 
 def write_current(data_root, address, name):
@@ -178,7 +182,7 @@ def write_current(data_root, address, name):
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(target), prefix=".user-")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump({"current": name}, fh)
+            json.dump({"email": address.lower(), "current": name}, fh)
             fh.write("\n")
         os.replace(tmp, target)
     except OSError:
