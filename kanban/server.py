@@ -57,6 +57,7 @@ except ImportError:
 # Where a project folder may be, and the one check that says so. Plain stdlib,
 # so imported unconditionally: every project route depends on it.
 import project_folders
+import platform_calls
 import settings
 import iso_countries
 # The planning agent's own two modules, imported the same way and for the same
@@ -944,6 +945,10 @@ def weekly_backup_watcher(every=1800):
 
 def _launchctl(args, timeout=3):
     import subprocess
+    # launchd is the Mac's. Anywhere else nothing is loaded in it, which is
+    # the same answer as a Mac with the job not installed.
+    if sys.platform != "darwin":
+        return ""
     try:
         p = subprocess.run(["/bin/launchctl"] + args, capture_output=True,
                            text=True, timeout=timeout)
@@ -2494,8 +2499,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if err:
                 return self._json(err[0], {"error": err[1]})
             try:
-                subprocess.Popen(["open", real], stdout=subprocess.DEVNULL,
-                                 stderr=subprocess.DEVNULL)
+                platform_calls.open_path(real)
             except OSError as exc:
                 return self._json(500, {"error": "could not open it: %s" % exc})
             return self._json(200, {"ok": True})

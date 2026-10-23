@@ -1118,19 +1118,25 @@ def test_queue_routes():
 
             # The button. Only the refusals are checked here — the success path
             # spends real money on real agents, which is not a thing a test
-            # suite gets to do.
-            _, err = server.start_planning_agent_run()
-            check("it will not start a second run on top of one going",
-                  (err or {}).get("error"), "a run is already going")
-            os.rmdir(server.planning_lock())
-
-            real_root = server.ROOT
-            server.ROOT = tmp                 # no agents/plan-agent/run.sh under here
+            # suite gets to do. Claude Code is taken as present, so the lock is
+            # what refuses, on a machine without it as much as one with it.
+            real_missing = server.agents_missing
+            server.agents_missing = lambda: None
             try:
                 _, err = server.start_planning_agent_run()
-                check("nor one with no runner to start", bool(err), True)
+                check("it will not start a second run on top of one going",
+                      (err or {}).get("error"), "a run is already going")
+                os.rmdir(server.planning_lock())
+
+                real_root = server.ROOT
+                server.ROOT = tmp                 # no agents/plan-agent/run.sh under here
+                try:
+                    _, err = server.start_planning_agent_run()
+                    check("nor one with no runner to start", bool(err), True)
+                finally:
+                    server.ROOT = real_root
             finally:
-                server.ROOT = real_root
+                server.agents_missing = real_missing
         finally:
             (server.plans_dir, server.current_dataset, server.todo_path,
              server.planning_lock) = real
@@ -1294,7 +1300,7 @@ def test_fallback_planner():
         def planner(stream, name):
             d = os.path.join(tmp, "work", "buckets", stream)
             os.makedirs(d, exist_ok=True)
-            open(os.path.join(d, "%s.md" % name), "w").close()
+            open(os.path.join(d, "%s.md" % name), "w", encoding="utf-8").close()
 
         with paths.using("work"):
             check("with no list planner, the generic one is named",
@@ -1342,7 +1348,7 @@ def fake_data_root(sched, names=("work",), current="work"):
     tmp = tempfile.mkdtemp()
     for name in names:
         os.makedirs(os.path.join(tmp, "data", name), exist_ok=True)
-        open(os.path.join(tmp, "data", name, "todo.md"), "w").close()
+        open(os.path.join(tmp, "data", name, "todo.md"), "w", encoding="utf-8").close()
     with open(os.path.join(tmp, "data", ".current"), "w", encoding="utf-8") as fh:
         fh.write(current + "\n")
     paths.ROOT = sched.ROOT = tmp
@@ -1604,7 +1610,7 @@ def test_per_dataset_schedule():
         # in it. Only the first two are things this agent could ever plan.
         for name in ("work", "personal", "_test"):
             os.makedirs(os.path.join(tmp, "data", name), exist_ok=True)
-            open(os.path.join(tmp, "data", name, "todo.md"), "w").close()
+            open(os.path.join(tmp, "data", name, "todo.md"), "w", encoding="utf-8").close()
         os.makedirs(os.path.join(tmp, "data", "no-list"), exist_ok=True)
         with open(os.path.join(tmp, "data", ".current"), "w", encoding="utf-8") as fh:
             fh.write("work\n")
@@ -1625,7 +1631,7 @@ def test_per_dataset_schedule():
         check("an old flat file is read as the pointer list's own schedule",
               sched.load("work")["budget"], 9.5)
         check("and is rewritten keyed, so a read cannot answer differently later",
-              sorted(__import__("json").load(open(spath))), ["work"])
+              sorted(__import__("json").load(open(spath, encoding="utf-8"))), ["work"])
         check("its on stays true, since it was a list he had armed",
               sched.load("work")["on"], True)
 
@@ -1665,7 +1671,7 @@ def test_per_dataset_schedule():
         check("saving one list keeps the other's budget", sched.load("work")["budget"], 9.5)
         check("and stores its own", sched.load("personal")["budget"], 2.0)
         check("the file is keyed by list once written",
-              sorted(__import__("json").load(open(spath))), ["personal", "work"])
+              sorted(__import__("json").load(open(spath, encoding="utf-8"))), ["personal", "work"])
 
         at = dt.datetime(2026, 9, 19, 3, 0, tzinfo=TZ)
         check("due() answers per list — personal at 03:00", sched.due(at, "personal"), True)

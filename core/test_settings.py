@@ -25,7 +25,7 @@ class SettingsTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def write(self, data):
-        with open(os.path.join(self.root, "settings.json"), "w") as fh:
+        with open(os.path.join(self.root, "settings.json"), "w", encoding="utf-8") as fh:
             json.dump(data, fh)
 
     def test_missing_file_gives_defaults(self):
@@ -34,7 +34,7 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(settings.model_for("brief", self.root, "x"), "x")
 
     def test_invalid_file_gives_defaults(self):
-        with open(os.path.join(self.root, "settings.json"), "w") as fh:
+        with open(os.path.join(self.root, "settings.json"), "w", encoding="utf-8") as fh:
             fh.write("{nope")
         self.assertEqual(settings.load(self.root), settings.DEFAULTS)
         self.write(["list"])
@@ -70,7 +70,7 @@ class SettingsTest(unittest.TestCase):
         self.write({"note": "mine", "machine": {"code_root": "~/A"},
                     "models": {"plan": "opus"}})
         settings.save(self.root, {"models": {"chat": "haiku"}})
-        with open(os.path.join(self.root, "settings.json")) as fh:
+        with open(os.path.join(self.root, "settings.json"), encoding="utf-8") as fh:
             got = json.load(fh)
         self.assertEqual(got["note"], "mine")
         self.assertEqual(got["machine"], {"code_root": "~/A"})
@@ -101,12 +101,12 @@ class SettingsTest(unittest.TestCase):
     def test_save_keeps_unknown_agent_keys(self):
         self.write({"agents": {"plan": {"start": "now", "note": "mine"}, "other": {"x": 1}}})
         settings.save(self.root, {"models": {"chat": "haiku"}})
-        with open(os.path.join(self.root, "settings.json")) as fh:
+        with open(os.path.join(self.root, "settings.json"), encoding="utf-8") as fh:
             got = json.load(fh)
         self.assertEqual(got["agents"]["plan"], {"start": "now", "note": "mine"})
         self.assertEqual(got["agents"]["other"], {"x": 1})
         settings.save(self.root, {"agents": {"plan": {"start": "scheduled"}}})
-        with open(os.path.join(self.root, "settings.json")) as fh:
+        with open(os.path.join(self.root, "settings.json"), encoding="utf-8") as fh:
             got = json.load(fh)
         self.assertEqual(got["agents"]["plan"], {"start": "scheduled", "note": "mine"})
 
@@ -121,12 +121,12 @@ class SettingsTest(unittest.TestCase):
         f = os.path.join(self.root, "agents", "fences.json")
         if data is not None:
             os.makedirs(os.path.dirname(f), exist_ok=True)
-            with open(f, "w") as fh:
+            with open(f, "w", encoding="utf-8") as fh:
                 json.dump(data, fh)
         return f
 
     def read_fences(self):
-        with open(self.fences()) as fh:
+        with open(self.fences(), encoding="utf-8") as fh:
             return json.load(fh)
 
     def test_budgets_missing_file_is_no_limit(self):

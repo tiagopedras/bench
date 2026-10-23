@@ -40,6 +40,9 @@ import project_folders  # noqa: E402
 PASS = []
 FAIL = []
 OPENED = []
+# What platform_calls.open_path runs here: `open` on a Mac, `xdg-open` on
+# Linux, os.startfile on Windows, which is faked below like Popen.
+OPENER = {"darwin": "open", "win32": "startfile"}.get(sys.platform, "xdg-open")
 
 
 def ok(label, cond, detail=""):
@@ -93,6 +96,7 @@ def main():
     server.dataset_dir = lambda name=None: ds
     server.current_dataset = lambda: "projects-test"
     server.subprocess.Popen = FakePopen
+    server.platform_calls.os.startfile = lambda path: OPENED.append(["startfile", path])
 
     httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
     base = "http://127.0.0.1:%d" % httpd.server_address[1]
@@ -173,9 +177,9 @@ def main():
         ok("opening a default project answers 200", code == 200, "got %d" % code)
         code, _ = open_project(base, os.path.join(mine, "client-a"))
         ok("opening an approved one answers 200", code == 200, "got %d" % code)
-        ok("and runs open on the real paths",
-           OPENED == [["open", os.path.join(ds, "projects", "alpha")],
-                      ["open", os.path.join(mine, "client-a")]], repr(OPENED))
+        ok("and opens the real paths",
+           OPENED == [[OPENER, os.path.join(ds, "projects", "alpha")],
+                      [OPENER, os.path.join(mine, "client-a")]], repr(OPENED))
         code, _ = open_project(base, "../..")
         ok("opening with a hop is refused", code == 400, "got %d" % code)
 

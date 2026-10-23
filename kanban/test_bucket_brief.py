@@ -70,7 +70,7 @@ def main():
     server.planning_agent_plan.paths.DATA_ROOT = root
     os.environ["PLANNING_DATASET"] = "brief-test"
     os.makedirs(os.path.join(tmp, "buckets", "people"))
-    open(os.path.join(tmp, "buckets", "people", "brief-test-people-agent.md"), "w").close()
+    open(os.path.join(tmp, "buckets", "people", "brief-test-people-agent.md"), "w", encoding="utf-8").close()
 
     httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
     base = "http://127.0.0.1:%d" % httpd.server_address[1]
