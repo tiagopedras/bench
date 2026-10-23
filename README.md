@@ -348,17 +348,31 @@ check while it sits running — and the last twelve are kept. The two are pruned
 separately, so a busy fortnight of saves can never delete the only copy of how the
 list looked last month.
 
-**Auto-reload** picks up edits made outside the board: Claude working through the
-list, or the file opened in an editor. With nothing unsaved in the tab, reloading
-costs nothing, so it happens quietly and says so in the status line.
+**Auto-reload** picks up edits made outside the board: somebody else on a shared
+list, Claude working through it, or the file opened in an editor. The board checks
+every three seconds while its tab is on screen and every fifteen while it is
+hidden. With nothing unsaved in the tab, reloading costs nothing, so it happens
+quietly and says so in the status line, and the task open in the panel stays
+open. It waits while a field is being typed in, so a reload never takes the field
+away mid-word.
 
-**The conflict modal** is the one time the board interrupts. If the file changed on
-disk *and* there is unsaved work in the tab, it lists both sets of changes — task
-by task, marked new, deleted, done, moved, renamed or edited — and offers three
-ways out: keep what is in the tab, download it first, or discard it and take the
-file. Nothing is overwritten until that choice is made. Renames are shown as
-renames rather than as a delete plus an add, because the second reads like lost
-work.
+**Merging on save** is what happens when the file moved and there is unsaved work
+in the tab too. Each save carries the version it was built on, and the server
+merges the two task by task (`merge_saves()` in `core/todo.py`, the port of
+`mergeSaves()` in `core/todo.js`): a field only one side changed takes that
+change, a task one side added lands after the task it followed, and the file's
+order is kept. Sub-tasks merge the same way inside their task. The merged list
+is written and the tab redraws from it. It is built this way because on a list
+two people share, the old question (which whole version wins?) came up every few
+minutes about edits that never touched each other, and either answer threw one
+person's work away.
+
+**The conflict box** is the one time the board interrupts. It appears only when
+both sides changed the same field of the same task, or one deleted a task the
+other edited, and it names each task and field. Keep mine or Use theirs settles
+all of them, and Download my copy first is there before either. Nothing is
+written until that choice is made, and no answer can lose a task nobody chose to
+delete.
 
 ### Archiving finished work
 

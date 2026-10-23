@@ -457,21 +457,27 @@ async function saveToFolder(auto){
   keepCrashCopy(text);
   try {
     const disk = await folderRead();
-    if (state.diskHash && disk.hash !== state.diskHash) {
-      state.diskStamp = disk.stamp;
-      state.diskHash = disk.hash;
-      markDirty();
-      autoStatus('not saved — todo.md changed on disk since this tab read it');
-      await reload();
-      return;
+    /* Moved under this tab: merged here, the way the server merges a save. */
+    let out = text;
+    if (disk.text !== state.originalText) {
+      const got = mergeSaves(state.originalText, text, disk.text);
+      if (got.text === null) {
+        markDirty();
+        autoStatus('not saved yet — the same thing was changed in two places');
+        offerMerge({ conflicts: got.conflicts, current: disk.text, disk: disk.stamp, hash: disk.hash },
+                   state.originalText, text);
+        return;
+      }
+      out = got.text;
     }
     let backup = '';
     if (!folderBackedUp) { backup = await folderBackup(disk.text); folderBackedUp = true; }
     const w = await (await listFolder.getFileHandle('todo.md')).createWritable();
-    await w.write(text);
+    await w.write(out);
     await w.close();
     dropCrashCopy();
-    state.originalText = text;
+    if (out !== text) reloadInPlace(out, out);
+    state.originalText = out;
     lastSaveAt = Date.now();
     markClean((auto ? 'auto-saved' : 'saved ' + new Date().toLocaleTimeString()) +
       (backup ? ' · backup: backups/' + backup : '') + ' · ' + listFolder.name + '/todo.md', auto);
@@ -609,33 +615,34 @@ async function saveFile(auto, forceBackup){
   // A folder opened on the hosted page: written by the page itself.
   if (listFolder) return saveToFolder(auto);
   const text = serializeDoc(state.doc);
+  /* The version this document was built on, sent whole. A save arriving after
+     somebody else's is merged with theirs on the server (do_PUT), and the
+     version is what it merges from. */
+  const base = state.originalText;
   try {
-    /* The stamp this tab last agreed with, so the server can refuse a write
-       built on a version of the file that has since moved. Absent on the very
-       first save of a session, before any HEAD has run — the server treats a
-       missing header as "no opinion" and writes, which is the old behaviour and
-       the right one for a tab that has not yet read the file. */
-    const headers = { 'Content-Type':'text/markdown; charset=utf-8' };
+    /* The stamp and hash this tab last agreed with still travel, for a server
+       from before merging, which refuses a write built on a version that has
+       moved. Absent on the very first save of a session, before any HEAD has
+       run. */
+    const headers = { 'Content-Type':'application/json' };
     if (state.diskStamp) headers['If-Unmodified-Since'] = state.diskStamp;
-    /* And the content this document was built on, which is the check the stamp
-       cannot make: Last-Modified carries one second, so a write landing inside
-       the same second as this tab's last read looks unchanged to it. */
     if (state.diskHash) headers['If-Match'] = state.diskHash;
     const res = await fetch(FILE_URL + (forceBackup ? '?backup=force' : ''), {
-      method: 'PUT', headers, body: text
+      method: 'PUT', headers, body: JSON.stringify({ text, base })
     });
     const info = await res.json().catch(() => ({}));
-    /* 409 is the file having moved under this tab, or a migration holding the
-       list. Handled here rather than thrown, because the catch below calls
-       markDirty() and the autosave would come straight back in four seconds and
-       get the same answer, forever.
-
-       Taking the server's stamp first is what stops the same loop through the
-       modal: reload() may leave the owner's changes in place if the owner keeps them, and
-       without this the next autosave would still be carrying the old stamp. The
-       watcher takes a changed stamp once per outside change for the same
-       reason. */
+    /* 409 is the same thing changed here and in the file, a migration holding
+       the list, or a server from before merging. Handled here rather than
+       thrown, because the catch below calls markDirty() and the autosave
+       would come straight back in four seconds and get the same answer,
+       forever. */
     if (res.status === 409) {
+      if (info.conflicts && typeof info.current === 'string') {
+        markDirty();
+        autoStatus('not saved yet — the same thing was changed in two places');
+        offerMerge(info, base, text);
+        return;
+      }
       if (info.disk) state.diskStamp = info.disk;
       if (info.hash) state.diskHash = info.hash;
       if (info.migrating) {
@@ -649,16 +656,29 @@ async function saveFile(auto, forceBackup){
       return;
     }
     if (!res.ok) throw new Error(info.error || ('the server answered ' + res.status));
-    state.originalText = text;
     lastSaveAt = Date.now();
-    // The relative stamp is the timestamp on an auto-save, so the clock time
-    // would only repeat it. A manual save keeps the clock.
-    markClean((auto ? 'auto-saved' : 'saved ' + new Date().toLocaleTimeString()) +
+    const note = (auto ? 'auto-saved' : 'saved ' + new Date().toLocaleTimeString()) +
+      (info.merged ? ' with changes made elsewhere' : '') +
       (info.backup ? ' · backup: data/backups/' + info.backup : '') +
-      (info.weekly ? ' · weekly: data/backups/' + info.weekly : '') + ' · todo.md', auto);
+      (info.weekly ? ' · weekly: data/backups/' + info.weekly : '') + ' · todo.md';
+    /* Merged with somebody else's save: the file now holds both, and this tab
+       is brought up to it. When that cannot happen yet (a field is being
+       typed in) the version is left as it was, so the watcher sees the file
+       as moved and catches up once the field is left. */
+    const caughtUp = info.merged && typeof info.text === 'string' ? settleMerged(text, info, note, auto) : true;
+    if (!info.merged) {
+      state.originalText = text;
+      // The relative stamp is the timestamp on an auto-save, so the clock time
+      // would only repeat it. A manual save keeps the clock.
+      if (serializeDoc(state.doc) === text) markClean(note, auto); else markDirty();
+    }
     // Our own write moved the file, so record it — otherwise the watcher would
-    // read the new timestamp as somebody else's edit.
-    await rememberStamp();
+    // read the new timestamp as somebody else's edit. The server says which
+    // version it wrote; a server from before that is asked.
+    if (caughtUp) {
+      if (info.hash && info.disk) { state.diskStamp = info.disk; state.diskHash = info.hash; }
+      else await rememberStamp();
+    }
     // A hand-over or an approval that asked for its agent to start now.
     flushAgentStarts();
   } catch (err) {
@@ -685,6 +705,24 @@ async function saveFile(auto, forceBackup){
             '\n\nNothing was written. Use “Download copy” if you need the changes out of the browser.');
     }
   }
+}
+
+/* After a save the server merged: `sent` is what this tab sent, info.text what
+   was written. Anything typed while the save was out is merged on top, so it
+   is not lost to the redraw. Returns false when the tab was left on `sent`,
+   because a field is being typed in or the typing since touched what the
+   other side changed; the next save or watcher tick does the rest. */
+function settleMerged(sent, info, note, auto){
+  const now = serializeDoc(state.doc);
+  const local = editingNow() ? null : mergeSaves(sent, now, info.text);
+  if (!local || local.text === null) {
+    state.originalText = sent;
+    if (now === sent) markClean(note, auto); else markDirty();
+    return false;
+  }
+  reloadInPlace(local.text, info.text);
+  if (!state.dirty) markClean(note, auto);
+  return true;
 }
 
 function downloadText(text, name){

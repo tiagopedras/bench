@@ -34,6 +34,11 @@ board's answers rather than a second opinion.
   fixtures/messages.json  the suggested-message notes, including curly quotes, a
                           colon inside the text, and a message written without
                           quotes at all.
+  fixtures/merge.json     two saves built on one version, merged: different
+                          tasks, the same task's different fields, the same
+                          field (a conflict), deleted against edited, sub-tasks,
+                          order, and a task each tab gave its own id. Generated
+                          by fixtures/generate-merge.mjs.
   fixtures/parse.json     a task line carrying every tag, and the junk-input
                           edges where the two used to disagree: `****` as a
                           title, `rank:3px`, a numbered bucket below Context.
@@ -458,6 +463,24 @@ def check_parse():
     return failures
 
 
+def check_merge():
+    """merge_saves() against the board's mergeSaves(), the whole answer:
+    the merged text, or None, and the conflicts in the order they were found."""
+    failures = 0
+    cases = fixture("merge.json")["cases"]
+    for c in cases:
+        got = todo.merge_saves(c["base"], c["mine"], c["theirs"], c["prefer"])
+        if got["text"] != c["text"]:
+            print("FAIL merge — %s: the text differs from the board's" % c["why"])
+            failures += 1
+        if got["conflicts"] != c["conflicts"]:
+            print("FAIL merge — %s\n     conflicts %r, board says %r"
+                  % (c["why"], got["conflicts"], c["conflicts"]))
+            failures += 1
+    print("%d merges — %s" % (len(cases), "all agree" if not failures else "%d failed" % failures))
+    return failures
+
+
 def check_priority():
     """Tier one, against the board's own answers.
 
@@ -748,6 +771,7 @@ def main():
     failures += check_calendar()
     failures += check_messages()
     failures += check_parse()
+    failures += check_merge()
     failures += check_priority()
     failures += check_profile()
     failures += check_process_matches()

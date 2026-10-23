@@ -19,11 +19,13 @@ the two disagree the board is right and this file is the bug. Ported functions
 carry the name they have over there — parse_doc, read_repeat, occurrence_from —
 so the pair can be read side by side.
 
-It parses and never serialises. Writing todo.md back out is a whole second
-problem — the board keeps every blank line, rule and stray note verbatim so a
-save that changed nothing gives back the same bytes — and nothing outside the
-board needs it. A reader that cannot write also cannot corrupt the file, which
-is worth more here than the symmetry.
+It parses, and serialises for one caller only. Writing todo.md back out is a
+whole second problem — the board keeps every blank line, rule and stray note
+verbatim so a save that changed nothing gives back the same bytes — and the one
+thing outside the board that needs it is the server merging two saves
+(merge_saves(), at the bottom). That serialiser is private to the merge and
+held to the board's answers by core/fixtures/merge.json; every other reader
+here still only reads.
 
 It also owns the UK working calendar — which days are weekends and which are
 bank holidays. That is not file format, so it sits here on sufferance rather than
@@ -95,7 +97,7 @@ class Task:
     the caller decides by indent. Only the fields a reader asks about are
     promoted to attributes; anything else stays in `extra` exactly as written."""
 
-    __slots__ = ("done", "title", "impact", "effort", "due", "start", "done_on",
+    __slots__ = ("done", "title", "bold", "impact", "effort", "due", "start", "done_on",
                  "to", "theme", "urgent", "week", "doing", "slug", "blocked_by", "rank",
                  "tlrank", "headline", "chat", "repeat", "stable_id",
                  "cancelled", "archived", "extra",
@@ -104,6 +106,10 @@ class Task:
     def __init__(self):
         self.done = False
         self.title = ""
+        # Whether the title was written in bold, which is how a task line is
+        # written and a sub-task line usually is not. Only the merge reads it,
+        # to write a line back the way it was.
+        self.bold = False
         self.impact = self.effort = self.due = self.start = ""
         self.done_on = self.to = self.theme = ""
         self.urgent = self.week = self.doing = False
@@ -221,6 +227,7 @@ def parse_task(raw_lines):
     # left as written. Four, not five.
     if len(title) >= 4 and title.startswith("**") and title.endswith("**"):
         title = title[2:-2].strip()
+        task.bold = True
     task.title = title
     return task
 
@@ -1040,3 +1047,558 @@ def non_working_reason(date, regions=REGIONS):
 
 def is_working_day(date, regions=REGIONS):
     return non_working_reason(date, regions) is None
+
+
+# ---- Merging two saves -------------------------------------------------------
+#
+# The port of mergeSaves() in core/todo.js, which says what it is for: a save
+# built on an old version of the list is merged with the file as it is now,
+# task by task and field by field, rather than refused. The server is what
+# calls this, so it can write the merged list without asking the tab first.
+#
+# Line for line the same as the board's, down to the order conflicts are found
+# in, because core/fixtures/merge.json compares the whole answer. The board's
+# document model is ported with it (_parse_tree, _serialize_tree): parse_doc()
+# above reads tasks and drops everything else, and a merge has to give back
+# every line it was not asked to change.
+
+HR_RE = re.compile(r"^---\s*$")
+# The board's SUB_RE, which wants a space after the box. SUB_RE above takes
+# none, and a merge has to see sub-tasks exactly where the board does.
+_STEP_RE = re.compile(r"^(\s*)-\s+\[([ xX])\]\s+(.*)$")
+_INDENTED = re.compile(r"^\s+\S")
+_HEADING2 = re.compile(r"^##\s")
+
+MERGE_FIELDS = ("title", "bold", "done", "impact", "effort", "due", "start", "doneOn", "to",
+                "theme", "urgent", "week", "doing", "slug", "blockedBy", "rank", "tlrank",
+                "headline", "chat", "repeat", "stableId", "cancelled", "archived", "extra")
+_PY_NAME = {"doneOn": "done_on", "blockedBy": "blocked_by", "stableId": "stable_id"}
+_ABSENT = object()
+
+
+def _parse_tree(text):
+    """parseDoc() in core/todo.js: the whole document, every line kept."""
+    lines = re.sub(r"\r\n?", "\n", text).split("\n")
+    n = len(lines)
+    doc = {"pre": [], "buckets": [], "post": []}
+    i = 0
+    while i < n and not BUCKET_RE.match(lines[i]):
+        doc["pre"].append(lines[i])
+        i += 1
+    while i < n:
+        bm = BUCKET_RE.match(lines[i])
+        if not bm:
+            break
+        bucket = {"num": bm.group(1), "name": bm.group(2).strip(), "raw": lines[i],
+                  "intro": [], "tiers": [], "tail": []}
+        i += 1
+        while i < n and not TIER_RE.match(lines[i]) and not _HEADING2.match(lines[i]):
+            bucket["intro"].append(lines[i])
+            i += 1
+        while i < n and TIER_RE.match(lines[i]):
+            heading = TIER_RE.match(lines[i]).group(1).strip()
+            renamed = TIER_RENAMED.get(heading)
+            tier = {"name": renamed or heading, "raw": None if renamed else lines[i],
+                    "lead": None, "tasks": [], "tail": []}
+            i += 1
+            gap = []
+            while i < n and not TIER_RE.match(lines[i]) and not _HEADING2.match(lines[i]):
+                line = lines[i]
+                if TASK_RE.match(line):
+                    if tier["tasks"]:
+                        tier["tasks"][-1]["sep"] = gap
+                    else:
+                        tier["lead"] = gap
+                    gap = []
+                    raw = [line]
+                    i += 1
+                    while i < n:
+                        l = lines[i]
+                        if l.strip() == "":
+                            j = i
+                            while j < n and lines[j].strip() == "":
+                                j += 1
+                            if j < n and _INDENTED.match(lines[j]):
+                                raw.extend(lines[i:j])
+                                i = j
+                                continue
+                            break
+                        if _INDENTED.match(l):
+                            raw.append(l)
+                            i += 1
+                            continue
+                        break
+                    tier["tasks"].append({"raw": raw[0], "body": raw[1:], "sep": None,
+                                          "done": TASK_RE.match(raw[0]).group(1).lower() == "x"})
+                else:
+                    gap.append(line)
+                    i += 1
+            if tier["tasks"]:
+                tier["tail"] = gap
+            else:
+                k = 0
+                while k < len(gap) and gap[k].strip() == "":
+                    k += 1
+                tier["lead"] = gap[:k]
+                tier["tail"] = gap[k:]
+            bucket["tiers"].append(tier)
+        if bucket["tiers"]:
+            last = bucket["tiers"][-1]
+            cut = len(last["tail"])
+            while cut > 0 and (last["tail"][cut - 1].strip() == "" or HR_RE.match(last["tail"][cut - 1])):
+                cut -= 1
+            if cut < len(last["tail"]) and last["tail"][cut].strip() == "":
+                cut += 1
+            bucket["tail"] = last["tail"][cut:]
+            last["tail"] = last["tail"][:cut]
+        doc["buckets"].append(bucket)
+    doc["post"] = lines[i:]
+    _gather_tree(doc)
+    return doc
+
+
+def _gather_tree(doc):
+    """gatherDone() in core/todo.js, on the whole document."""
+    for b in doc["buckets"]:
+        stray = []
+        for tier in b["tiers"]:
+            if tier["name"] == DONE_HEADING:
+                continue
+            keep = [t for t in tier["tasks"] if not t["done"]]
+            if len(keep) == len(tier["tasks"]):
+                continue
+            stray.extend(t for t in tier["tasks"] if t["done"])
+            tier["tasks"] = keep
+            if not keep:
+                tier["lead"] = tier["lead"] if tier["lead"] else [""]
+                tier["tail"] = tier["tail"] if any(l.strip() != "" for l in tier["tail"]) else []
+        if not stray:
+            continue
+        done = next((t for t in b["tiers"] if t["name"] == DONE_HEADING), None)
+        if done is None:
+            done = {"name": DONE_HEADING, "raw": None, "lead": [""], "tasks": [], "tail": [""]}
+            b["tiers"].insert(0, done)
+        done["tasks"].extend(stray)
+
+
+def _serialize_tree(doc):
+    """serializeDoc() in core/todo.js, for a document whose task lines are all
+    written already (`raw`), which is every document a merge makes."""
+    out = list(doc["pre"])
+    for b in doc["buckets"]:
+        out.append(b["raw"] if b["raw"] is not None else "## %s. %s" % (b["num"], b["name"]))
+        out.extend(b["intro"])
+        for tier in b["tiers"]:
+            out.append(tier["raw"] if tier["raw"] is not None else "### " + tier["name"])
+            out.extend(tier["lead"] if tier["lead"] is not None else [""])
+            for idx, t in enumerate(tier["tasks"]):
+                body = list(t["body"])
+                while body and body[-1].strip() == "":
+                    body.pop()
+                out.append(t["raw"])
+                out.extend(body)
+                last = idx == len(tier["tasks"]) - 1
+                if last:
+                    out.extend(tier["tail"] if tier["tail"] is not None else [""])
+                else:
+                    out.extend(t["sep"] if t["sep"] is not None else [""])
+            if not tier["tasks"]:
+                out.extend(tier["tail"] if tier["tail"] is not None else [])
+        out.extend(b["tail"] if b["tail"] is not None else [])
+    out.extend(doc["post"])
+    return "\n".join(out)
+
+
+def _mg_key(title):
+    return " ".join((title or "").split()).lower()
+
+
+def _mg_fields(line):
+    """A task or sub-task line as fields, named the way the board names them."""
+    task = parse_task([line.lstrip()])
+    return {f: getattr(task, _PY_NAME.get(f, f)) for f in MERGE_FIELDS}
+
+
+def _mg_line(f, indent):
+    """serializeTask() in core/todo.js, for a line it rewrites."""
+    tags = []
+    if f["slug"]:
+        tags.append("`#" + f["slug"] + "`")
+    if f["impact"]:
+        tags.append("[impact:: " + f["impact"] + "]")
+    if f["effort"]:
+        tags.append("[effort:: " + f["effort"] + "]")
+    if f["start"]:
+        tags.append("`start:" + f["start"] + "`")
+    if f["due"]:
+        tags.append("[due:: " + f["due"] + "]")
+    if f["done"] and f["doneOn"]:
+        tags.append("`done:" + f["doneOn"] + "`")
+    if f["cancelled"]:
+        tags.append("`cancelled:" + f["cancelled"] + "`")
+    if f["archived"]:
+        tags.append("`archived:" + f["archived"] + "`")
+    if f["urgent"]:
+        tags.append("`urgent`")
+    if f["week"]:
+        tags.append("`week`")
+    if f["doing"]:
+        tags.append("`doing`")
+    if f["to"] and f["to"].strip():
+        tags.append("[to:: " + f["to"].strip() + "]")
+    if f["theme"] and f["theme"].strip():
+        tags.append("[theme:: " + f["theme"].strip() + "]")
+    if f["blockedBy"]:
+        tags.append("`blocked-by:" + ",".join(f["blockedBy"]) + "`")
+    if f["rank"] is not None:
+        tags.append("`rank:%d`" % f["rank"])
+    if f["tlrank"] is not None:
+        tags.append("`tlrank:%d`" % f["tlrank"])
+    if f["headline"]:
+        tags.append("`headline:" + f["headline"] + "`")
+    if f["chat"]:
+        tags.append("`chat:" + f["chat"] + "`")
+    if f["repeat"]:
+        tags.append("`repeat:" + f["repeat"] + "`")
+    if f["stableId"]:
+        tags.append("`id:" + f["stableId"] + "`")
+    tags.extend(f["extra"])
+    name = f["title"] if f["bold"] is False else "**" + f["title"] + "**"
+    return indent + "- " + ("[x]" if f["done"] else "[ ]") + " " + " ".join([name] + tags)
+
+
+def _mg_body(body):
+    """mgBody() in core/todo.js: notes before and after the first step, and
+    each step with the lines under it."""
+    head, tail, steps = [], [], []
+    base = None
+    into = False
+    for line in body:
+        m = _STEP_RE.match(line)
+        if m and (base is None or len(m.group(1)) <= base):
+            base = len(m.group(1))
+            f = _mg_fields(line)
+            steps.append({"fields": f, "head": line, "indent": m.group(1), "more": [],
+                          "id": f["stableId"], "key": _mg_key(f["title"])})
+            into = True
+            continue
+        if line.strip() and base is not None and lead_indent(line) <= base:
+            into = False
+        if into:
+            steps[-1]["more"].append(line)
+        else:
+            (tail if steps else head).append(line)
+    for s in steps:
+        s["notes"] = [l for l in s["more"] if l.strip()]
+    return {"head": head, "tail": tail, "steps": steps,
+            "notes": [l for l in head + tail if l.strip()]}
+
+
+def _mg_side(text):
+    doc = _parse_tree(text)
+    buckets = []
+    for b in doc["buckets"]:
+        rec = {"name": b["name"], "num": b["num"],
+               "header": b["raw"] if b["raw"] is not None else "## %s. %s" % (b["num"], b["name"]),
+               "intro": b["intro"], "tail": b["tail"], "tiers": []}
+        for tier in b["tiers"]:
+            trec = {"name": tier["name"],
+                    "header": tier["raw"] if tier["raw"] is not None else "### " + tier["name"],
+                    "lead": tier["lead"] if tier["lead"] is not None else [""],
+                    "tail": tier["tail"] or [], "tasks": []}
+            for t in tier["tasks"]:
+                f = _mg_fields(t["raw"])
+                trec["tasks"].append({"fields": f, "head": t["raw"], "body": t["body"], "sep": t["sep"],
+                                      "parts": _mg_body(t["body"]), "id": f["stableId"],
+                                      "key": _mg_key(f["title"]), "tier": tier["name"], "bucket": rec})
+            rec["tiers"].append(trec)
+        buckets.append(rec)
+    return {"pre": doc["pre"], "post": doc["post"], "buckets": buckets}
+
+
+def _mg_match_tasks(base, side):
+    out, used, by_id = [-1] * len(side), set(), {}
+    for i, r in enumerate(base):
+        if r["id"] and r["id"] not in by_id:
+            by_id[r["id"]] = i
+    for j, r in enumerate(side):
+        i = by_id[r["id"]] if r["id"] and r["id"] in by_id else -1
+        if i >= 0 and i not in used:
+            out[j] = i
+            used.add(i)
+    for j, r in enumerate(side):
+        if out[j] >= 0:
+            continue
+        i = next((k for k, b in enumerate(base)
+                  if k not in used and b["key"] == r["key"] and (not b["id"] or not r["id"])), -1)
+        if i >= 0:
+            out[j] = i
+            used.add(i)
+    return out
+
+
+def _mg_match_by(fields):
+    def match(base, side):
+        out, used = [-1] * len(side), set()
+        for by in fields:
+            for j, r in enumerate(side):
+                if out[j] >= 0:
+                    continue
+                i = next((k for k, b in enumerate(base) if k not in used and b[by] == r[by]), -1)
+                if i >= 0:
+                    out[j] = i
+                    used.add(i)
+        return out
+    return match
+
+
+_mg_match_buckets = _mg_match_by(("name", "num"))
+_mg_match_tiers = _mg_match_by(("name",))
+
+
+def _mg_groups(B, M, T, match, pair):
+    groups = [{"b": b, "m": None, "t": None} for b in B]
+    mi, ti, added = match(B, M), match(B, T), []
+    for j, r in enumerate(M):
+        if mi[j] >= 0:
+            groups[mi[j]]["m"] = r
+        else:
+            g = {"b": None, "m": r, "t": None}
+            groups.append(g)
+            added.append(g)
+    for j, r in enumerate(T):
+        if ti[j] >= 0:
+            groups[ti[j]]["t"] = r
+            continue
+        g = next((a for a in added if not a["t"] and pair(a["m"], r)), None)
+        if g:
+            g["t"] = r
+        else:
+            groups.append({"b": None, "m": None, "t": r})
+    for i, g in enumerate(groups):
+        g["gid"] = i
+        for r in (g["b"], g["m"], g["t"]):
+            if r:
+                r["g"] = g
+    return groups
+
+
+def _mg_pick(b, m, t, clash):
+    if m == t:
+        return m
+    if b is not _ABSENT and m == b:
+        return t
+    if b is not _ABSENT and t == b:
+        return m
+    return clash(m, t)
+
+
+def _mg_keep(g, sig, clash):
+    if g["m"] and g["t"]:
+        return "both"
+    if not g["m"] and not g["t"]:
+        return None
+    kept = "mine" if g["m"] else "theirs"
+    if not g["b"]:
+        return kept
+    if sig(g["m"] or g["t"]) == sig(g["b"]):
+        return None
+    return clash("deleted", "mine" if g["m"] else None, "theirs" if g["t"] else None) or None
+
+
+def _mg_order(primary, secondary, keep):
+    want = set(keep)
+    out = [k for k in primary if k in want]
+    placed = set(out)
+    prev = None
+    for k in secondary:
+        if k not in want:
+            continue
+        if k not in placed:
+            out.insert(0 if prev is None else out.index(prev) + 1, k)
+            placed.add(k)
+        prev = k
+    for k in keep:
+        if k not in placed:
+            out.append(k)
+            placed.add(k)
+    return out
+
+
+def _mg_merge_fields(g, clash):
+    out = {}
+    for f in MERGE_FIELDS:
+        b = g["b"]["fields"][f] if g["b"] else _ABSENT
+        m, t = g["m"]["fields"][f], g["t"]["fields"][f]
+        if f == "stableId" and (b is _ABSENT or not b) and m and t:
+            out[f] = t
+            continue
+        out[f] = _mg_pick(b, m, t, lambda mv, tv, f=f: clash(f, mv, tv))
+    return out
+
+
+def _mg_head(f, g, indent):
+    if g["t"] and f == g["t"]["fields"]:
+        return g["t"]["head"]
+    if g["m"] and f == g["m"]["fields"]:
+        return g["m"]["head"]
+    return _mg_line(f, indent)
+
+
+def _mg_step_sig(s):
+    return {"fields": s["fields"], "notes": s["notes"]}
+
+
+def _mg_task_sig(r):
+    return {"fields": r["fields"], "where": r["where"], "notes": r["parts"]["notes"],
+            "steps": [_mg_step_sig(s) for s in r["parts"]["steps"]]}
+
+
+def _mg_merge_steps(g, clash):
+    groups = _mg_groups(g["b"]["parts"]["steps"] if g["b"] else [], g["m"]["parts"]["steps"],
+                        g["t"]["parts"]["steps"], _mg_match_tasks,
+                        lambda a, b: bool(a["id"]) and a["id"] == b["id"])
+    merged = {}
+    for sg in groups:
+        title = (sg["m"] or sg["t"] or sg["b"])["fields"]["title"]
+        keep = _mg_keep(sg, _mg_step_sig, lambda field, mv, tv, title=title: clash(title, field, mv, tv))
+        if not keep:
+            continue
+        if keep != "both":
+            r = sg["m"] if keep == "mine" else sg["t"]
+            merged[sg["gid"]] = {"fields": r["fields"], "notes": r["notes"], "lines": [r["head"]] + r["more"]}
+            continue
+        fields = _mg_merge_fields(sg, lambda f, mv, tv, title=title: clash(title, f, mv, tv))
+        notes = _mg_pick(sg["b"]["notes"] if sg["b"] else _ABSENT, sg["m"]["notes"], sg["t"]["notes"],
+                         lambda mv, tv, title=title: clash(title, "notes", mv, tv))
+        frm = sg["t"] if notes == sg["t"]["notes"] else sg["m"]
+        merged[sg["gid"]] = {"fields": fields, "notes": notes,
+                             "lines": [_mg_head(fields, sg, sg["t"]["indent"])] + frm["more"]}
+    order = _mg_order([s["g"]["gid"] for s in g["t"]["parts"]["steps"]],
+                      [s["g"]["gid"] for s in g["m"]["parts"]["steps"]], list(merged.keys()))
+    return [merged[k] for k in order]
+
+
+def merge_saves(base_text, mine_text, theirs_text, prefer=""):
+    """Three versions of the list into one: the version a save was built on,
+    the save, and the file as it is now. mergeSaves() in core/todo.js, which
+    is the authority.
+
+    Returns {"text", "conflicts"}. `prefer` ("mine" or "theirs") answers every
+    conflict; without it a merge with conflicts has text None, and each
+    conflict is {"task", "step", "field"}, step "" for the task itself and task
+    "" for the top or bottom of the file."""
+    if mine_text == theirs_text or theirs_text == base_text:
+        return {"text": mine_text, "conflicts": []}
+    if mine_text == base_text:
+        return {"text": theirs_text, "conflicts": []}
+    B, M, T = _mg_side(base_text), _mg_side(mine_text), _mg_side(theirs_text)
+    conflicts = []
+
+    def clash(task, step, field):
+        def answer(mv, tv):
+            conflicts.append({"task": task, "step": step, "field": field})
+            return tv if prefer == "theirs" else mv
+        return answer
+
+    pre = _mg_pick(B["pre"], M["pre"], T["pre"], clash("", "", "top of the file"))
+    post = _mg_pick(B["post"], M["post"], T["post"], clash("", "", "bottom of the file"))
+
+    bgroups = _mg_groups(B["buckets"], M["buckets"], T["buckets"], _mg_match_buckets,
+                         lambda a, b: a["name"] == b["name"])
+
+    def tasks_of(side):
+        return [r for b in side["buckets"] for tier in b["tiers"] for r in tier["tasks"]]
+
+    for side in (B, M, T):
+        for r in tasks_of(side):
+            r["where"] = "%d\n%s" % (r["bucket"]["g"]["gid"], r["tier"])
+
+    tgroups = _mg_groups(tasks_of(B), tasks_of(M), tasks_of(T), _mg_match_tasks,
+                         lambda a, b: bool(a["id"]) and a["id"] == b["id"])
+    placed = {}
+    for g in tgroups:
+        title = (g["m"] or g["t"] or g["b"])["fields"]["title"]
+
+        def on_task(field, mv, tv, title=title):
+            return clash(title, "", field)(mv, tv)
+
+        keep = _mg_keep(g, _mg_task_sig, on_task)
+        if not keep:
+            continue
+        if keep != "both":
+            r = g["m"] if keep == "mine" else g["t"]
+            placed[g["gid"]] = {"where": r["where"], "head": r["head"], "body": r["body"], "sep": r["sep"]}
+            continue
+        fields = _mg_merge_fields(g, on_task)
+        where = _mg_pick(g["b"]["where"] if g["b"] else _ABSENT, g["m"]["where"], g["t"]["where"],
+                         lambda mv, tv: on_task("column", mv, tv))
+        notes = _mg_pick(g["b"]["parts"]["notes"] if g["b"] else _ABSENT, g["m"]["parts"]["notes"],
+                         g["t"]["parts"]["notes"], lambda mv, tv: on_task("notes", mv, tv))
+        steps = _mg_merge_steps(g, lambda st, field, mv, tv, title=title: clash(title, st, field)(mv, tv))
+        sig = {"notes": notes, "steps": [_mg_step_sig(s) for s in steps]}
+
+        def sig_of(r):
+            return {"notes": r["parts"]["notes"], "steps": [_mg_step_sig(s) for s in r["parts"]["steps"]]}
+
+        if sig == sig_of(g["t"]):
+            body = g["t"]["body"]
+        elif sig == sig_of(g["m"]):
+            body = g["m"]["body"]
+        else:
+            frm = g["t"] if notes == g["t"]["parts"]["notes"] else g["m"]
+            body = frm["parts"]["head"] + [l for s in steps for l in s["lines"]] + frm["parts"]["tail"]
+        placed[g["gid"]] = {"where": where, "head": _mg_head(fields, g, ""), "body": body,
+                            "sep": (g["t"] or g["m"])["sep"]}
+
+    used = set(p["where"] for p in placed.values())
+
+    def holds(bgid, name=None):
+        if name is None:
+            return any(w.split("\n")[0] == str(bgid) for w in used)
+        return "%d\n%s" % (bgid, name) in used
+
+    kept_buckets = [g for g in bgroups
+                    if (g["m"] and g["t"]) or (not g["b"] and (g["m"] or g["t"]))
+                    or ((g["m"] or g["t"]) and holds(g["gid"]))]
+    border = _mg_order([b["g"]["gid"] for b in T["buckets"]], [b["g"]["gid"] for b in M["buckets"]],
+                       [g["gid"] for g in kept_buckets])
+    buckets = []
+    for gid in border:
+        g = bgroups[gid]
+        src = g["t"] or g["m"]
+        both = g["m"] and g["t"]
+        header = _mg_pick(g["b"]["header"] if g["b"] else _ABSENT, g["m"]["header"], g["t"]["header"],
+                          clash(src["name"], "", "bucket name")) if both else src["header"]
+        intro = _mg_pick(g["b"]["intro"] if g["b"] else _ABSENT, g["m"]["intro"], g["t"]["intro"],
+                         clash(src["name"], "", "bucket notes")) if both else src["intro"]
+        tgr = _mg_groups(g["b"]["tiers"] if g["b"] else [], g["m"]["tiers"] if g["m"] else [],
+                         g["t"]["tiers"] if g["t"] else [], _mg_match_tiers,
+                         lambda a, b: a["name"] == b["name"])
+        kept_tiers = [x for x in tgr
+                      if (x["m"] and x["t"]) or (not x["b"] and (x["m"] or x["t"]))
+                      or ((x["m"] or x["t"]) and holds(gid, (x["m"] or x["t"])["name"]))]
+        torder = _mg_order([x["g"]["gid"] for x in g["t"]["tiers"]] if g["t"] else [],
+                           [x["g"]["gid"] for x in g["m"]["tiers"]] if g["m"] else [],
+                           [x["gid"] for x in kept_tiers])
+        tiers = []
+        for tgid in torder:
+            x = tgr[tgid]
+            tsrc = x["t"] or x["m"]
+            here = "%d\n%s" % (gid, tsrc["name"])
+            keys = [tg["gid"] for tg in tgroups if tg["gid"] in placed and placed[tg["gid"]]["where"] == here]
+            order = _mg_order([r["g"]["gid"] for r in x["t"]["tasks"]] if x["t"] else [],
+                              [r["g"]["gid"] for r in x["m"]["tasks"]] if x["m"] else [], keys)
+            lead, tail = tsrc["lead"], tsrc["tail"]
+            if order and not tsrc["tasks"] and not tail:
+                tail = [""]
+            if not order and tsrc["tasks"]:
+                lead = lead if lead else [""]
+                tail = tail if any(l.strip() != "" for l in tail) else []
+            tiers.append({"name": tsrc["name"], "raw": tsrc["header"], "lead": lead, "tail": tail,
+                          "tasks": [{"raw": placed[k]["head"], "body": placed[k]["body"],
+                                     "sep": placed[k]["sep"]} for k in order]})
+        buckets.append({"raw": header, "intro": intro, "tiers": tiers, "tail": src["tail"]})
+
+    text = _serialize_tree({"pre": pre, "buckets": buckets, "post": post})
+    return {"text": None if conflicts and not prefer else text, "conflicts": conflicts}

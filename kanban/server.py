@@ -115,6 +115,9 @@ backup_made = set()
 # The plan agent's paths module keeps the list it is pointed at in one module
 # global (paths.using), so the routes that go through it take turns.
 _plan_paths_lock = threading.Lock()
+# Saves to todo.md take turns as well, from reading the file to writing it,
+# which is what lets do_PUT merge one save into another (see _write_list).
+_save_lock = threading.Lock()
 
 
 def requester():
@@ -3316,9 +3319,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", 0))
         except ValueError:
             return self._json(400, {"error": "bad Content-Length"})
+        # The board sends the list as JSON, {text, base}: the document, and the
+        # version of the file it was built on, so a save that arrives after
+        # someone else's can be merged with it (see below). A bare document
+        # is still taken, from a script or a tab from before this, and is
+        # refused rather than merged when the file has moved under it.
+        as_json = (self.headers.get("Content-Type") or "").startswith("application/json")
         if length <= 0:
             return self._json(400, {"error": "empty body refused"})
-        if length > MAX_BYTES:
+        if length > (2 * MAX_BYTES + 4096 if as_json else MAX_BYTES):
             return self._json(413, {"error": "file too large"})
 
         data = self.rfile.read(length)
@@ -3326,9 +3335,27 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             text = data.decode("utf-8")
         except UnicodeDecodeError:
             return self._json(400, {"error": "body was not valid UTF-8"})
+        base = None
+        if as_json:
+            try:
+                sent = json.loads(text)
+                text, base = sent["text"], sent.get("base")
+            except (ValueError, KeyError, TypeError):
+                return self._json(400, {"error": "body was not {text, base}"})
+            if not isinstance(text, str) or not (base is None or isinstance(base, str)):
+                return self._json(400, {"error": "body was not {text, base}"})
+            if len(text.encode("utf-8")) > MAX_BYTES:
+                return self._json(413, {"error": "file too large"})
         if "## " not in text:
             return self._json(400, {"error": "that does not look like the to-do file, refusing to write"})
 
+        # One save at a time, from reading the file to writing it. A merge
+        # reads the file, works, and writes, and a second save landing in
+        # between would be written over unseen.
+        with _save_lock:
+            return self._write_list(text, base, len(data))
+
+    def _write_list(self, text, base, size):
         ds = current_dataset()
         path = todo_path(ds)
 
@@ -3366,8 +3393,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             ws_writer.claim(lock, "the board")
 
         since = self.headers.get("If-Unmodified-Since")
-        if not since:
-            # Required, not optional. Every legitimate writer has read the file
+        if not since and base is None:
+            # Required, not optional, unless the save names its version by
+            # content (`base`, below). Every legitimate writer has read the file
             # first: loadFile() takes the stamp off its own GET, and a tab that
             # has not read it is in demo mode and locked, so it cannot save at
             # all. That makes a header-less PUT something no board ever sends —
@@ -3376,7 +3404,35 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(428, {"error": "a write must say which version of todo.md it is replacing "
                                              "(If-Unmodified-Since); nothing was written",
                                     "precondition": True})
-        if os.path.exists(path):
+
+        # Built on an old version, and saying which: merged rather than
+        # refused. The version is the text itself, so the check is exact and
+        # needs nothing remembered here between saves. Fields only one side
+        # changed are taken from that side; the same field changed apart on
+        # both, or a task deleted on one side and edited on the other, is a
+        # conflict, and nothing is written until the tab says which wins. The
+        # 409 carries the file as it is, so the tab can answer without
+        # reading it again. todo.merge_saves() is the board's mergeSaves().
+        merged = False
+        if base is not None and os.path.exists(path):
+            with open(path, encoding="utf-8", newline="") as fh:
+                current_text = fh.read()
+            if current_text != base:
+                if todo is None:
+                    return self._json(409, {"error": "todo.md changed on disk since this tab last read it",
+                                            "stale": True, "disk": self.date_time_string(os.stat(path).st_mtime),
+                                            "hash": file_hash(path)})
+                got = todo.merge_saves(base, text, current_text)
+                if got["text"] is None:
+                    return self._json(409, {"error": "todo.md changed on disk, and the same thing was changed here",
+                                            "stale": True, "conflicts": got["conflicts"],
+                                            "current": current_text,
+                                            "disk": self.date_time_string(os.stat(path).st_mtime),
+                                            "hash": file_hash(path)})
+                merged = got["text"] != text
+                text = got["text"]
+
+        if base is None and os.path.exists(path):
             current = self.date_time_string(os.stat(path).st_mtime)
             if since != current:
                 return self._json(409, {"error": "todo.md changed on disk since this tab last read it",
@@ -3395,7 +3451,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # both are already held by the 428 above. Making it required as well
         # would refuse the first save after an upgrade for no gain.
         match = self.headers.get("If-Match")
-        if match and os.path.exists(path):
+        if base is None and match and os.path.exists(path):
             digest = file_hash(path)
             if digest and match != digest:
                 return self._json(409, {"error": "todo.md changed on disk since this tab last read it",
@@ -3437,15 +3493,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             os.fsync(fh.fileno())
         os.replace(tmp, path)
 
-        # The hash of what was just written, reported rather than adopted. The
-        # tab takes both halves from rememberStamp()'s own HEAD instead, so the
-        # stamp and the hash it holds always describe the same read — taking
-        # one from here and one from there is how they would come to disagree
-        # if a second write landed in between. It is here for the suites, which
-        # assert on what a write produced without a second request.
-        self._json(200, {"ok": True, "bytes": len(data),
-                         "backup": backup_name, "weekly": weekly_name,
-                         "hash": file_hash(path)})
+        # The stamp and hash of what was just written, both taken inside the
+        # save lock, so they describe this write and no later one. A tab that
+        # sent `base` adopts them rather than asking with a HEAD, which could
+        # land after somebody else's save and hand it a version its document
+        # was never built on. A merged save also carries the text written, so
+        # the tab can show what the other side changed.
+        reply = {"ok": True, "bytes": size, "backup": backup_name, "weekly": weekly_name,
+                 "hash": file_hash(path), "disk": self.date_time_string(os.stat(path).st_mtime)}
+        if merged:
+            reply.update({"merged": True, "text": text})
+        self._json(200, reply)
 
 
 def main():
