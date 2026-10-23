@@ -3529,10 +3529,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # that is the email nginx vouched for; on the Mac nobody signs in, no
         # tag is written and the text goes out as sent. Either way the
         # changes go to the list's activity log once the write has landed.
+        # With no file yet it is measured against an empty one, so every task
+        # in a first save is the signer's, whatever the tab wrote on it.
         changes = []
-        if todo is not None and current_text is not None:
+        if todo is not None:
             who = requester()
-            text, changes = todo.stamp_authors(current_text, text, who["email"] if who else "")
+            text, changes = todo.stamp_authors(current_text if current_text is not None else "", text,
+                                               who["email"] if who else "")
 
         backup_name = None
 
