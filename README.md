@@ -214,6 +214,12 @@ can read them and not change them. Every POST must carry `X-Board: 1`, because o
 address a form on another site could otherwise post with the visitor's cookie. "Me" on the
 board, the person review sub-tasks go to, is whoever is signed in.
 
+Two people on one list each hold the whole of it and save all of it, so a save can find the
+file already moved by the other. The board then merges the two card by card
+(`kanban/js/22a-merging.js`): a card only one of them changed takes that change, and only a
+card both changed asks which version to keep. Signed in, each tab looks for the other's saves
+every 3 seconds rather than 15, so most edits never need merging at all.
+
 Each board says who may see it in `data/<board>/access.json`: an owner, and the people (by
 email) and teams who share it. A board is personal or shared from the moment it is made.
 The New list wizard asks as its last step, and the owner changes it later from Settings,

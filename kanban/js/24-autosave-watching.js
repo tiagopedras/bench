@@ -13,6 +13,10 @@
    behaviour now, not an option someone could switch off and forget. */
 const AUTOSAVE_MS = 4 * 1000;
 const WATCH_MS = 15 * 1000;
+/* Signed in on the shared board, someone else is likely editing the same list,
+   and the sooner one tab sees the other's save the fewer edits ever need
+   merging. The Mac keeps the slower clock. See watchClockTick(). */
+const SHARED_WATCH_MS = 3 * 1000;
 let conflictShown = false;
 
 /* One HEAD, both answers: the timestamp and the content hash the server sends
@@ -60,6 +64,12 @@ async function autosaveTick(){
    time: the pa watcher calls this the moment pa finishes, and two at once
    would both reload. */
 let watchBusy = false;
+let lastWatchAt = Date.now();                     // the first look a full interval after opening, as before
+function watchClockTick(){
+  if (Date.now() - lastWatchAt < (state.who ? SHARED_WATCH_MS : WATCH_MS)) return;
+  lastWatchAt = Date.now();
+  watchTick();
+}
 async function watchTick(){
   checkRunStartedHere();                           // no-op unless this tab started a run
   if (state.locked || !state.doc || modalEl || conflictShown || paWorking || watchBusy) return;
@@ -101,17 +111,11 @@ async function watchOnce(){
     return;
   }
 
-  // Unsaved work here and a changed file there: the owner's call, not the board's.
+  // Unsaved work here and a changed file there: merged when the two touched
+  // different cards, the owner's call when they did not. mergeOrAsk() adopts
+  // the version it read, so this is asked once per outside change.
   conflictShown = true;
-  let diskText = null;
-  try {
-    const res = await fetchList();
-    if (res.ok) diskText = await res.text();
-  } catch (err) { /* offerReload copes with null */ }
-  state.diskStamp = stamp;                         // asked once per outside change
-  state.diskHash = hash;
-  conflictShown = false;
-  offerReload(diskText);
+  try { await mergeOrAsk(false); } finally { conflictShown = false; }
 }
 
 
