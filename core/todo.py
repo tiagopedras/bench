@@ -1678,18 +1678,30 @@ def _mg_plain_step(s):
     return {"fields": f, "notes": s["notes"]}
 
 
-def stamp_authors(old_text, new_text, who):
+def stamp_authors(old_text, new_text, who, credits=None, write_tags=None):
     """`new_text` with who wrote and who last changed each task and sub-task,
     measured against `old_text`, the file it is about to replace. A task or
     sub-task that is new is created by `who`; one that changed is last edited
     by `who`, and a task counts as changed when anything on its card did; every
-    other keeps what the file says. `who` is an email, or "" for a board nobody
-    signs in to, which writes no tags at all and gives the text back as sent.
+    other keeps what the file says.
+
+    `who` is an email, an agent's name as a slug (`implement-agent`), `pa` for
+    an edit made to the file outside the server, or "" for a tab on a board
+    nobody signs in to. `credits` names a different author for some tasks,
+    {task id: {"who", "name"}}: a card an agent's request changed in this save,
+    which goes under the agent, sub-tasks and log line included. `write_tags`
+    says whether to write the tags at all, and is whether there is a `who`
+    unless given; the Mac board passes False, keeping the log and leaving the
+    file as sent.
 
     Returns (text, changes): changes is one entry per task added, edited or
-    deleted, {"task", "id", "what", "fields"}, for the activity log."""
+    deleted, {"task", "id", "what", "fields"}, for the activity log, with
+    "who" and "name" on the ones `credits` answered for."""
     if old_text is None:
         return new_text, []
+    credits = credits or {}
+    if write_tags is None:
+        write_tags = bool(who)
     old, new = _mg_side(old_text), _mg_side(new_text)
     _mg_groups(old["buckets"], [], new["buckets"], _mg_match_buckets, lambda a, b: a["name"] == b["name"])
 
@@ -1705,18 +1717,22 @@ def stamp_authors(old_text, new_text, who):
     changes, touched = [], False
     for g in groups:
         b, t = g["b"], g["t"]
+        credit = credits.get((t or b)["id"]) if (t or b)["id"] else None
+        author = credit["who"] if credit else who
+        say = {"who": credit["who"], "name": credit["name"]} if credit else {}
         if not t:
-            changes.append({"task": b["fields"]["title"], "id": b["id"], "what": "deleted", "fields": []})
+            changes.append(dict({"task": b["fields"]["title"], "id": b["id"], "what": "deleted", "fields": []}, **say))
             continue
         if not b:
-            changes.append({"task": t["fields"]["title"], "id": t["id"], "what": "added", "fields": []})
-            authors = (who, "")
+            changes.append(dict({"task": t["fields"]["title"], "id": t["id"], "what": "added", "fields": []}, **say))
+            authors = (author, "")
         else:
             fields = _changed_fields(b, t)
             if fields:
-                changes.append({"task": t["fields"]["title"], "id": t["id"], "what": "edited", "fields": fields})
-            authors = (b["fields"]["createdBy"], who if fields else b["fields"]["editedBy"])
-        if not who:
+                changes.append(dict({"task": t["fields"]["title"], "id": t["id"], "what": "edited",
+                                     "fields": fields}, **say))
+            authors = (b["fields"]["createdBy"], author if fields else b["fields"]["editedBy"])
+        if not write_tags or not author:
             continue
         node = t["node"]
         if authors != (t["fields"]["createdBy"], t["fields"]["editedBy"]):
@@ -1731,9 +1747,9 @@ def stamp_authors(old_text, new_text, who):
                 continue
             if sg["b"]:
                 same = _mg_plain_step(sg["b"]) == _mg_plain_step(s)
-                want = (sg["b"]["fields"]["createdBy"], sg["b"]["fields"]["editedBy"] if same else who)
+                want = (sg["b"]["fields"]["createdBy"], sg["b"]["fields"]["editedBy"] if same else author)
             else:
-                want = (who, "")
+                want = (author, "")
             if want != (s["fields"]["createdBy"], s["fields"]["editedBy"]):
                 body[s["at"]] = _with_authors(body[s["at"]], *want)
         if body != node["body"]:

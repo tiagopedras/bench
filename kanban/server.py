@@ -115,9 +115,13 @@ backup_made = set()
 # The plan agent's paths module keeps the list it is pointed at in one module
 # global (paths.using), so the routes that go through it take turns.
 _plan_paths_lock = threading.Lock()
-# Saves to todo.md take turns as well, from reading the file to writing it,
-# which is what lets do_PUT merge one save into another (see _write_list).
-_save_lock = threading.Lock()
+# Everything that writes todo.md takes turns, from reading the file to writing
+# it: a tab's save (do_PUT, which merges one save into another), a new list,
+# and the server stamping an edit made outside it (notice_outside_edit). The
+# board's drain of agent requests takes it too, so the cards it credits to an
+# agent are read from the same version the next save is measured against.
+# Re-entrant, because a save first checks for an outside edit under it.
+_save_lock = threading.RLock()
 
 
 def requester():
@@ -313,20 +317,153 @@ def activity_path(name=None):
     return os.path.join(dataset_dir(name or current_dataset()), "activity.jsonl")
 
 
-def append_activity(ds, changes):
+def append_activity(ds, changes, who=None, name=None):
     """Adds one save's changes to the log, under the person who made it: the
     signed-in email and name, or on the Mac nobody's email and the owner's
-    name from the profile."""
+    name from the profile. `who` and `name` say otherwise for the whole save
+    (`pa` for an outside edit), and a change carrying its own (an agent's
+    card, see take_credits) says otherwise for itself."""
     if not changes:
         return
     import owner_profile
-    who = requester()
+    person = requester()
     at = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
-    email = who["email"] if who else ""
-    name = who["name"] if who else owner_profile.owner_name(DATA_ROOT)
+    email = who if who is not None else (person["email"] if person else "")
+    if name is None:
+        name = person["name"] if person else owner_profile.owner_name(DATA_ROOT)
     with open(activity_path(ds), "a", encoding="utf-8") as fh:
         for c in changes:
-            fh.write(json.dumps(dict(at=at, who=email, name=name, **c), ensure_ascii=False) + "\n")
+            fh.write(json.dumps(dict({"at": at, "who": email, "name": name}, **c), ensure_ascii=False) + "\n")
+
+
+# ---- Changes nobody saved from a tab ------------------------------------------
+#
+# Two kinds of change reach todo.md without a person behind the save. An agent
+# never writes the file: it queues a request (core/tick_queue.py), the board
+# applies it and saves, so the save is the tab's but the change is the agent's.
+# And the pa skill, or anything else, writes the file directly, so the server
+# only finds out by seeing the file differ from what it last wrote.
+
+# Cards a drained agent request is about to change, per list, waiting for the
+# save that writes them: {task id: {"who", "name", "at"}}. Spent by the save
+# that changes the card, and forgotten after AGENT_CREDIT_S, so a request the
+# board refused cannot claim an edit somebody makes later. In memory: a
+# restart between the drain and the save credits the person who saved.
+_agent_credits = {}
+AGENT_CREDIT_S = 120
+
+
+def agent_slug(name):
+    """An agent's name as it goes in a tag and the log: `Implement agent` is
+    `implement-agent`, the same as its folder and id."""
+    return "-".join(str(name).lower().split())
+
+
+def credit_agents(ds, entries, text):
+    """Notes the cards these queued requests change: a handover's or a move's
+    card by its id, and a tick's by the task its sub-task sits under, only
+    when the sub-task is the requesting agent's (the board refuses it
+    otherwise)."""
+    if todo is None:
+        return
+    parent = {}
+    for t in todo.parse_doc(text or ""):
+        for st in todo.split_body(t)[1]:
+            step = st["task"]
+            if step.stable_id and t.stable_id:
+                parent[step.stable_id] = (t.stable_id, step.to)
+    now = time.time()
+    got = _agent_credits.setdefault(ds, {})
+    for e in entries:
+        by = str(e.get("by") or "").strip()
+        if not by:
+            continue
+        if e.get("handover") or e.get("move"):
+            tid = str(e.get("handover") or e.get("move")).strip().lower()
+        else:
+            tid, to = parent.get(str(e.get("sub") or "").strip().lower(), ("", ""))
+            if tid and todo.agent_of(to).lower() != by.lower():
+                tid = ""
+        if tid:
+            got[tid] = {"who": agent_slug(by), "name": by, "at": now}
+
+
+def take_credits(ds):
+    """The agents' cards still waiting for their save, without the stale ones."""
+    now = time.time()
+    got = {k: v for k, v in _agent_credits.get(ds, {}).items() if now - v["at"] < AGENT_CREDIT_S}
+    _agent_credits[ds] = got
+    return {k: {"who": v["who"], "name": v["name"]} for k, v in got.items()}
+
+
+def spend_credits(ds, changes):
+    for c in changes:
+        if "who" in c:
+            _agent_credits.get(ds, {}).pop(c.get("id"), None)
+
+
+def known_path(ds):
+    """The version of todo.md the server last wrote or last accounted for.
+    A dotfile, so no route serves it."""
+    return os.path.join(dataset_dir(ds), ".known-todo.md")
+
+
+def remember(ds, text):
+    tmp = known_path(ds) + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="") as fh:
+        fh.write(text)
+    os.replace(tmp, known_path(ds))
+
+
+def pa_busy(ds):
+    """pa says it is editing the list right now (pa-working.json, less than
+    ten minutes old, the same rule the board uses)."""
+    try:
+        return time.time() - os.path.getmtime(pa_working_path(ds)) < 600
+    except OSError:
+        return False
+
+
+def notice_outside_edit(ds):
+    """Accounts for an edit written straight to todo.md since the server last
+    wrote it: the pa skill, or anything else. The difference from the last
+    version the server knows goes in the activity log under `pa`, and, signed
+    in, the cards it changed are stamped as edited by `pa`. On the Mac only
+    the log is written.
+
+    Called before the server reads the list for a tab (GET and HEAD of
+    todo.md, which the watcher sends every few seconds) and before a save.
+    Held while pa says it is mid-edit, so its edit is accounted for once, as a
+    whole, when it finishes, and never stamped under its feet; and while a
+    migration holds the list. The first time a list is seen there is nothing
+    to compare with, and the version is only remembered."""
+    if todo is None or not ds:
+        return
+    with _save_lock:
+        path = todo_path(ds)
+        try:
+            with open(path, encoding="utf-8", newline="") as fh:
+                text = fh.read()
+        except OSError:
+            return
+        try:
+            with open(known_path(ds), encoding="utf-8", newline="") as fh:
+                known = fh.read()
+        except OSError:
+            remember(ds, text)
+            return
+        if known == text or pa_busy(ds) or os.path.exists(migrating_path(ds)):
+            return
+        stamped, changes = todo.stamp_authors(known, text, "pa", write_tags=bool(AUTH))
+        if stamped != text:
+            tmp = path + ".tmp"
+            with open(tmp, "w", encoding="utf-8", newline="") as fh:
+                fh.write(stamped)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp, path)
+        append_activity(ds, changes, who="pa", name="pa")
+        remember(ds, stamped)
 
 
 def read_activity(ds, limit=50):
@@ -1033,8 +1170,10 @@ def create_dataset(name, buckets=None):
         lines.append("")
         for col in NEW_DATASET_COLUMNS:
             lines += ["### %s" % col, ""]
-    with open(os.path.join(path, "todo.md"), "w", encoding="utf-8", newline="") as fh:
-        fh.write("\n".join(lines))
+    with _save_lock:
+        with open(os.path.join(path, "todo.md"), "w", encoding="utf-8", newline="") as fh:
+            fh.write("\n".join(lines))
+        remember(name, "\n".join(lines))
     os.makedirs(buckets_dir(name), exist_ok=True)
     with open(os.path.join(buckets_dir(name), "README.md"), "w",
               encoding="utf-8", newline="") as fh:
@@ -2476,8 +2615,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return None
         return super().list_directory(path)
 
+    def do_HEAD(self):
+        if self.path.split("?")[0].lstrip("/") == TARGET:
+            notice_outside_edit(current_dataset())
+        return super().do_HEAD()
+
     def do_GET(self):
         path = self.path.split("?")[0]
+        # Before the list is read, an edit made to it outside the server is
+        # logged and, signed in, stamped. See notice_outside_edit().
+        if path.lstrip("/") == TARGET:
+            notice_outside_edit(current_dataset())
         if path.startswith(AGENTS_PREFIX + "/"):
             return self._agents_get(path[len(AGENTS_PREFIX):])
         # Who is signed in. The Mac board has nobody, and answers the way a
@@ -3202,7 +3350,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if not isinstance(ids, list):
                 return self._json(400, {"error": "expected {\"done\": [ids]}"})
             import tick_queue
-            return self._json(200, {"removed": tick_queue.remove([str(i) for i in ids], tick_queue_path())})
+            # What the board dealt with is about to be saved as the board's
+            # change, so the cards it touches are credited to the agents that
+            # asked first, against the list as it stands now.
+            with _save_lock:
+                ds = current_dataset()
+                wanted = set(str(i) for i in ids)
+                dealt = [e for e in tick_queue.read(tick_queue_path()) if str(e.get("id")) in wanted]
+                try:
+                    with open(todo_path(ds), encoding="utf-8") as fh:
+                        credit_agents(ds, dealt, fh.read())
+                except OSError:
+                    pass
+                return self._json(200, {"removed": tick_queue.remove(sorted(wanted), tick_queue_path())})
         if ai_chat and path == "/claude/assign":
             if not ai_chat.guard_ok(self):
                 return self._json(403, {"error": "not from the board"})
@@ -3474,6 +3634,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # conflict, and nothing is written until the tab says which wins. The
         # 409 carries the file as it is, so the tab can answer without
         # reading it again. todo.merge_saves() is the board's mergeSaves().
+        # Anything written straight to the file since the server last did is
+        # accounted for first, so it is credited to `pa` rather than to this
+        # save, and the merge below sees the file as it now stands.
+        notice_outside_edit(ds)
+
         merged = False
         sent = text
         current_text = None
@@ -3531,11 +3696,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # changes go to the list's activity log once the write has landed.
         # With no file yet it is measured against an empty one, so every task
         # in a first save is the signer's, whatever the tab wrote on it.
+        # A card an agent's request changed goes under the agent (take_credits).
         changes = []
         if todo is not None:
             who = requester()
             text, changes = todo.stamp_authors(current_text if current_text is not None else "", text,
-                                               who["email"] if who else "")
+                                               who["email"] if who else "", credits=take_credits(ds),
+                                               write_tags=bool(AUTH))
+            spend_credits(ds, changes)
 
         backup_name = None
 
@@ -3570,6 +3738,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             fh.flush()
             os.fsync(fh.fileno())
         os.replace(tmp, path)
+        remember(ds, text)
 
         # The stamp and hash of what was just written, both taken inside the
         # save lock, so they describe this write and no later one. A tab that

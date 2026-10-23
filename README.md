@@ -1525,7 +1525,16 @@ to never carries them, so the Mac board's file is unchanged by any of this.
 
 Every save also appends what changed to `data/<list>/activity.jsonl`, one JSON
 line per task added, edited or deleted, with who, their name, when, and which
-fields. It is append-only and nothing reads it back into the list. The status
+fields. It is append-only and nothing reads it back into the list. Two kinds
+of change have nobody's tab behind them. A card an agent's queued request
+changed (a tick, a handover, a move) is credited to the agent, as
+`implement-agent` in the tags and "Implement agent" in the log, even though the
+save that wrote it came from whoever's tab drained the queue. An edit written
+straight to `todo.md`, the way the pa skill writes, is found the next time the
+server reads the list, by comparing it with the last version the server wrote
+(`data/<list>/.known-todo.md`), and is logged under `pa` and, signed in,
+stamped on the cards it changed. That waits while `pa-working.json` says pa is
+mid-edit, so the edit is counted once, whole. The status
 line uses it to say whose the latest change by somebody else was ("Jerome edited
 2 min ago"), and a **Mine** chip beside the other filters narrows the board to
 tasks whose `[to:: ]`, or a sub-task's, names whoever is signed in.

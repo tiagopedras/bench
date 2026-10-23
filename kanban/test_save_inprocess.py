@@ -11,7 +11,10 @@ a lock is only visible from inside. The real data/ is never read or written.
 What it holds to:
 
   * the first save to a list with no todo.md yet cannot carry forged authors:
-    every task is created by whoever signed in.
+    every task is created by whoever signed in;
+  * the board's drain of agent requests holds the save lock while it reads
+    the queue, credits the agents and takes the requests out, so no save can
+    land between the version it credits from and the removal.
 """
 
 import http.server
@@ -43,9 +46,12 @@ def ok(label, cond, detail=""):
 JEROME = {"email": "jerome@example.com", "name": "Jérôme", "teams": []}
 
 
+SIGNED = {"X-Offdesk-Email": JEROME["email"], "X-Offdesk-Name": "J%C3%A9r%C3%B4me"}
+
+
 def put(base, body):
     req = urllib.request.Request(base + "/data/todo.md", method="PUT", data=json.dumps(body).encode(),
-                                 headers={"Content-Type": "application/json"})
+                                 headers=dict(SIGNED, **{"Content-Type": "application/json"}))
     try:
         with urllib.request.urlopen(req) as res:
             return res.status, json.loads(res.read())
@@ -69,17 +75,51 @@ def first_save(base, folder):
     ok("and so is its sub-task", "A step `created-by:jerome@example.com` `id:s00001`" in text, text)
 
 
+def tick_lock(base, folder):
+    """The drain's POST, with tick_queue watched from inside: every queue
+    operation must run with the save lock held by the thread doing it."""
+    import tick_queue
+    seen = []
+    real_read, real_remove = tick_queue.read, tick_queue.remove
+
+    def read(path=None):
+        seen.append(("read", server._save_lock._is_owned()))
+        return real_read(path)
+
+    def remove(ids, path=None):
+        seen.append(("remove", server._save_lock._is_owned()))
+        return real_remove(ids, path)
+
+    server.tick_queue_path = lambda name=None: os.path.join(folder, "tick-queue.json")
+    entry = tick_queue.append("s00001", "Implement agent", path=server.tick_queue_path())
+    tick_queue.read, tick_queue.remove = read, remove
+    try:
+        req = urllib.request.Request(base + "/tick-queue.json", method="POST",
+                                     data=json.dumps({"done": [entry["id"]]}).encode(),
+                                     headers=dict(SIGNED, **{"Content-Type": "application/json", "X-Board": "1"}))
+        with urllib.request.urlopen(req) as res:
+            got = json.loads(res.read())
+    finally:
+        tick_queue.read, tick_queue.remove = real_read, real_remove
+    ok("the drain removed the request", got.get("removed") == 1, repr(got))
+    ok("it read the queue and removed from it", seen[:1] == [("read", True)] and ("remove", True) in seen,
+       repr(seen))
+    ok("both under the save lock", seen and all(held for _, held in seen), repr(seen))
+
+
 def main():
     folder = os.path.join(os.environ["TODOS_DATA_ROOT"], "fresh")
     os.makedirs(folder)
     server.dataset_dir = lambda name=None: folder
     server.current_dataset = lambda: "fresh"
     server.requester = lambda: JEROME
+    server.AUTH = "header"
     httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
     base = "http://127.0.0.1:%d" % httpd.server_address[1]
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     try:
         first_save(base, folder)
+        tick_lock(base, folder)
     finally:
         httpd.shutdown()
         shutil.rmtree(SCRATCH, ignore_errors=True)

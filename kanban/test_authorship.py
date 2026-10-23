@@ -18,7 +18,16 @@ What it holds to:
     task, with who, their name and what changed, and /activity.json reads them
     back newest first with a name for each email;
   * on the Mac nobody signs in: no tag is written, a file without them comes
-    back byte for byte, and the log names the owner from the profile.
+    back byte for byte, and the log names the owner from the profile;
+  * a sub-task an agent asked to tick (core/tick_queue.py), applied by the
+    board and saved by whoever's tab drained it, goes under the agent: the
+    card is edited by `implement-agent` and the log says Implement agent,
+    while anything else in the same save stays the saver's; a request the
+    board refuses credits nobody;
+  * an edit written straight to todo.md, the way the pa skill writes, is
+    logged under `pa` the next time the server reads the list and, signed in,
+    stamped on the cards it changed; held while pa-working.json says pa is
+    mid-edit; and on the Mac logged with no tag written.
 """
 
 import json
@@ -29,7 +38,9 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.join(os.path.dirname(HERE), "core"))
 from test_board_access import Server, seed, access, as_json, write, TIAGO, JEROME  # noqa: E402
+import tick_queue  # noqa: E402
 
 PASS = []
 FAIL = []
@@ -161,6 +172,118 @@ def signed_in(root):
         srv.stop()
 
 
+AGENTS = """# To-do
+
+## 1. Tasks
+
+### Doing
+
+- [ ] **Ship the page** [to:: Implement agent] `id:aaaaaa`
+  - [ ] Implement [to:: Implement agent] `id:s00001`
+  - [ ] Review the work [to:: Tiago] `id:s00002`
+- [ ] **Plan the launch** [to:: Plan agent] `id:bbbbbb`
+  - [ ] Plan [to:: Plan agent] `id:s00003`
+- [ ] **Order badges** `id:cccccc`
+
+### Done
+
+"""
+
+
+def log_of(folder):
+    try:
+        with open(os.path.join(folder, "activity.jsonl"), encoding="utf-8") as fh:
+            return [json.loads(l) for l in fh if l.strip()]
+    except OSError:
+        return []
+
+
+def agents_and_outside(root):
+    data = os.path.join(root, "agents")
+    seed(data, "offdesk", AGENTS)
+    access(data, "offdesk", TIAGO["X-Offdesk-Email"], people=[JEROME["X-Offdesk-Email"]])
+    folder = os.path.join(data, "offdesk")
+    path = os.path.join(folder, "todo.md")
+    queue = os.path.join(folder, "tick-queue.json")
+    srv = Server(data, "header")
+    ok("agents server starts", srv.wait())
+    try:
+        def disk():
+            with open(path, encoding="utf-8") as fh:
+                return fh.read()
+
+        def save(text, base):
+            code, body, _ = srv.ask("PUT", "/data/todo.md", dict(JEROME, **{"Content-Type": "application/json"}),
+                                    {"text": text, "base": base})
+            return code, as_json(body) or {}
+
+        # --- the agent's tick ------------------------------------------------------
+        good = tick_queue.append("s00001", "Implement agent", path=queue)
+        bad = tick_queue.append("s00003", "Implement agent", path=queue)   # not its sub-task
+        code, body, _ = srv.ask("POST", "/tick-queue.json", dict(JEROME, **{"X-Board": "1",
+                                "Content-Type": "application/json"}), {"done": [good["id"], bad["id"]]})
+        ok("the board's drain answers", code == 200 and (as_json(body) or {}).get("removed") == 2, body)
+        # What Jerome's tab saves: the tick it applied, the card moved on, and
+        # an edit of his own on another card, all in one save.
+        base = disk()
+        mine = (base.replace("- [ ] Implement [to:: Implement agent]", "- [x] Implement [to:: Implement agent] `done:2026-10-23`")
+                    .replace("**Order badges**", "**Order name badges**")
+                    .replace("**Plan the launch**", "**Plan the launch now**"))
+        code, got = save(mine, base)
+        now = disk()
+        ok("the save with the tick writes", code == 200, "%d %r" % (code, got))
+        step = line_of(now, "Implement [to::")
+        ok("the ticked sub-task is edited by the agent", "`edited-by:implement-agent`" in step, step)
+        card = line_of(now, "Ship the page")
+        ok("and so is its card", "`edited-by:implement-agent`" in card, card)
+        own = line_of(now, "Order name badges")
+        ok("the saver's own edit in the same save stays theirs", "`edited-by:jerome@example.com`" in own, own)
+        refused = line_of(now, "Plan the launch now")
+        ok("a request the board refused credits nobody", "`edited-by:jerome@example.com`" in refused, refused)
+        log = log_of(folder)
+        ship = [e for e in log if e["task"] == "Ship the page"]
+        ok("the log has the tick under the agent",
+           ship and ship[-1]["who"] == "implement-agent" and ship[-1]["name"] == "Implement agent", json.dumps(log))
+        ok("and the saver's edit under the saver",
+           any(e["task"] == "Order name badges" and e["who"] == "jerome@example.com" for e in log))
+        code, body, _ = srv.ask("GET", "/activity.json", JEROME)
+        ok("/activity.json names the agent",
+           (as_json(body) or {}).get("names", {}).get("implement-agent") == "Implement agent", body[:300])
+
+        # --- an edit written straight to the file ---------------------------------
+        srv.ask("HEAD", "/data/todo.md", JEROME)          # the server has seen this version
+        write(os.path.join(folder, "pa-working.json"), json.dumps({"tasks": ["Order name badges"]}))
+        write(path, disk().replace("**Order name badges**", "**Order name badges for the launch**"))
+        srv.ask("HEAD", "/data/todo.md", JEROME)
+        ok("held while pa says it is mid-edit",
+           not any(e["who"] == "pa" for e in log_of(folder)) and "edited-by:pa" not in disk())
+        os.remove(os.path.join(folder, "pa-working.json"))
+        code, body, _ = srv.ask("GET", "/data/todo.md", JEROME)
+        out = [e for e in log_of(folder) if e["who"] == "pa"]
+        ok("once it is done, the next read logs the edit under pa",
+           out and out[-1]["task"] == "Order name badges for the launch" and out[-1]["fields"] == ["title"],
+           json.dumps(out))
+        line = line_of(disk(), "Order name badges for the launch")
+        ok("signed in, the card it changed is stamped as pa's", "`edited-by:pa`" in line, line)
+        ok("and the read serves the stamped list", "`edited-by:pa`" in line_of(body, "for the launch"))
+        before = len(log_of(folder))
+        srv.ask("HEAD", "/data/todo.md", JEROME)
+        ok("an edit is logged once", len(log_of(folder)) == before)
+        # A tab's save on top of it merges, and its own change is still its own.
+        base = disk()
+        code, _ = save(base.replace("**Ship the page**", "**Ship the landing page**"), base)
+        ok("a save after an outside edit is the saver's",
+           "`edited-by:jerome@example.com`" in line_of(disk(), "Ship the landing page"))
+        write(path, disk().replace("**Ship the landing page**", "**Ship it**"))
+        code, got = save(base.replace("**Plan the launch now**", "**Plan it**"), base)
+        log = log_of(folder)
+        ok("an outside edit found by a save is logged under pa, before the save",
+           [e["who"] for e in log[-2:]] == ["pa", "jerome@example.com"]
+           and log[-2]["task"] == "Ship it", json.dumps(log[-2:]))
+    finally:
+        srv.stop()
+
+
 def mac(root):
     data = os.path.join(root, "mac")
     plain = LIST.replace(" `created-by:tiagopedras+claude@gmail.com`", "")
@@ -185,6 +308,17 @@ def mac(root):
         code, body, _ = srv.ask("GET", "/activity.json")
         ok("/activity.json answers on the Mac with nobody asking",
            code == 200 and (as_json(body) or {}).get("me") == "", body[:200])
+
+        # An edit written straight to the file, on the Mac: logged, no tag.
+        outside = mine.replace("**Book the venue**", "**Book a venue**")
+        write(path, outside)
+        srv.ask("HEAD", "/data/todo.md")
+        with open(path, encoding="utf-8") as fh:
+            ok("on the Mac an outside edit writes no tag", fh.read() == outside)
+        with open(os.path.join(data, "tasks", "activity.jsonl"), encoding="utf-8") as fh:
+            log = [json.loads(l) for l in fh if l.strip()]
+        ok("and is logged under pa",
+           log[-1]["who"] == "pa" and log[-1]["task"] == "Book a venue", json.dumps(log[-1]))
     finally:
         srv.stop()
 
@@ -193,6 +327,7 @@ def main():
     root = tempfile.mkdtemp(prefix="authorship-test-")
     try:
         signed_in(root)
+        agents_and_outside(root)
         mac(root)
     finally:
         shutil.rmtree(root, ignore_errors=True)

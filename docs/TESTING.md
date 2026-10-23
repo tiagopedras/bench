@@ -179,7 +179,11 @@ sent at once one at a time. The merge itself is pinned by
 **`test_authorship.py`** starts its own server the same way and holds the
 server to who wrote and changed each task: the sign-in header decides the name,
 `created-by:` or `edited-by:` sent by a tab is put back, every change reaches
-`activity.jsonl`, and the Mac board writes no tag at all.
+`activity.jsonl`, and the Mac board writes no tag at all. It also queues
+agent ticks with `core/tick_queue.py` and writes `todo.md` behind the server's
+back, to hold the agent and `pa` attribution. **`test_save_inprocess.py`** runs
+the server in its own thread for the two cases no route reaches from outside:
+a first save to a list with no file, and the drain holding the save lock.
 **`test_authorship.mjs`** is the on-screen half, locked: the names on cards and
 in the task and sub-task panels, the status line, and the Mine chip.
 
