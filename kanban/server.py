@@ -112,7 +112,7 @@ def list_datasets():
     if not os.path.isdir(base):
         return []
     out = [name for name in os.listdir(base)
-           if not name.startswith(".")
+           if not name.startswith((".", "_"))
            and os.path.isfile(os.path.join(base, name, "todo.md"))]
     return sorted(out)
 
