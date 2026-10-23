@@ -129,6 +129,7 @@ node kanban/ui/test_primitives.mjs # the React primitives against colHTML/cardSh
 python3 agents/plan-agent/test_planning_agent.py    # the schedule, the picker, the runner
 python3 companion/test_companion.py
 python3 kanban/test_bucket_brief.py # the brief routes — no board, no browser
+python3 kanban/test_board_access.py # signed-in mode and board access — starts its own servers
 # the ones below need the board: scripts/test-board.sh --all runs every one
 node kanban/test_schedule.mjs
 node kanban/test_one_board.mjs     # handing a task over, the two reviews, whose move it is

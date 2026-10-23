@@ -74,6 +74,28 @@ async function switchDataset(name){
   }
 }
 
+/* ---- Who is signed in ----------------------------------------------------
+   Only on the shared board, behind nginx's sign-in (BENCH_AUTH=header in
+   kanban/server.py). The Mac board answers /whoami with a 404, state.who stays
+   null and nothing here changes the page.
+
+   Signed in, the header says who you are and offers Sign out, which nginx's
+   /auth/ route answers rather than this server. The parts that only work on
+   the owner's Mac go: the server refuses them, and body.signed-in hides their
+   buttons (board.css) so nothing on the page offers what will fail. The
+   Agents tab goes through viewDefs(), which is why the view is drawn again. */
+async function loadWhoami(){
+  let who;
+  try { who = await getJSON('/whoami'); } catch (err) { return; }
+  if (!who || !who.email) return;
+  state.who = who;
+  document.body.classList.add('signed-in');
+  $('#whoName').textContent = who.name || who.email;
+  $('#whoName').title = who.email;
+  $('#whoami').classList.remove('hidden');
+  if (state.doc) renderView();
+}
+
 /* ---- Making a list ------------------------------------------------------
    A list needs more than a todo.md: a brief per bucket, and the README saying
    which buckets the list has, or every task in it plans against the fallback

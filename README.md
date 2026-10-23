@@ -180,6 +180,29 @@ symlink or a `..` cannot lead out of an approved folder.
 The board reads the pointer and nothing else. It never opens the folder, so what is in there
 can be in any shape the work needs.
 
+### On a shared server
+
+The same board can run on a server for more than one person, behind nginx and the Offdesk
+sign-in. `BENCH_AUTH=header` in the server's environment turns that on. Unset, nothing in
+this section applies and the board on your Mac behaves as it always has.
+
+nginx asks the sign-in service who each visitor is and passes the answer on in three
+headers: `X-Offdesk-Email`, `X-Offdesk-Name` (percent-encoded UTF-8) and `X-Offdesk-Teams`
+(a comma list of team ids). Bench can trust them because it only ever listens on
+127.0.0.1, so nothing but nginx on the same machine reaches it, and it refuses to start
+signed-in mode on any other address. A request with no email gets a 401 before any route
+runs. Any value of `BENCH_AUTH` other than `header` stops the server at start-up, so a typo
+cannot leave a public board open. `/whoami` returns the three, and the header shows the name
+with a Sign out button, which posts to nginx's own `/auth/logout`.
+
+What only works on the owner's Mac is refused, and its buttons are hidden: revealing a
+folder in Finder or approving one on disk, the Agents tab and its launchd schedules, Spend
+and schedules, starting the Plan agent, and the Claude chat, which would run on the server
+owner's own Claude login. The settings and the profile belong to the server, so a visitor
+can read them and not change them. Every POST must carry `X-Board: 1`, because on a public
+address a form on another site could otherwise post with the visitor's cookie. "Me" on the
+board, the person review sub-tasks go to, is whoever is signed in.
+
 ## The board
 
 `kanban/index.html` is one page, still. No build step, no dependencies, and

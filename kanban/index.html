@@ -50,6 +50,13 @@
   <span class="spacer"></span>
   <span class="status" id="status">read only</span>
   <button class="btn hidden" id="archiveBtn"></button>
+  <!-- Who is signed in, on the shared board only. Sign out is nginx's own
+       /auth/ route, so it is a plain form rather than a call to this server.
+       See loadWhoami() in 21-datasets.js. -->
+  <span class="menugroup whoami hidden" id="whoami">
+    <span class="menulabel" id="whoName"></span>
+    <form method="post" action="/auth/logout"><button class="btn outline small" type="submit">Sign out</button></form>
+  </span>
   <span class="menugroup dropdown" id="dataMenu">
     <span class="menulabel" id="dataMenuLabel">Data</span>
     <button class="btn" id="dataMenuBtn" aria-haspopup="true" aria-expanded="false">Lists ▾</button>

@@ -59,6 +59,7 @@ except ImportError:
 import project_folders
 import settings
 import iso_countries
+import board_access
 # The planning agent's own two modules, imported the same way and for the same
 # reason. `pick` is what decides which tasks tonight would plan, and the board's
 # queue column is that decision rendered rather than a second guess at it —
@@ -89,12 +90,34 @@ CURRENT_FILE = os.path.join(DATA_ROOT, ".current")
 TARGET = DATA + "/todo.md"
 PAGE = "kanban/index.html"
 PORT = int(os.environ.get("TODOS_PORT") or 8765)
+# Loopback only, always. Behind nginx this is also what makes the sign-in
+# headers trustworthy: nothing but nginx on the same machine can send them, so
+# main() refuses to start signed-in mode on any other address.
+HOST = "127.0.0.1"
+# Who is asking, when Bench is shared (core/board_access.py). None is the Mac
+# board as it always was. An unknown BENCH_AUTH is held as signed-in mode, so
+# every request is refused until main() refuses to start at all.
+try:
+    AUTH = board_access.mode()
+    AUTH_ERROR = None
+except ValueError as err:
+    AUTH, AUTH_ERROR = "header", str(err)
+# The person behind the request this thread is answering, set by
+# Handler.parse_request before any route runs. ThreadingHTTPServer answers
+# each connection on its own thread, so a thread-local is per request.
+_request = threading.local()
 # A test server must never open a window: it would steal focus mid-run.
 OPEN_BROWSER = not os.environ.get("TODOS_NO_BROWSER")
 MAX_BYTES = 5 * 1024 * 1024
 # One-backup-per-run applies per dataset, not to the server as a whole — the
 # rare session that visits two lists gets one grace save on each.
 backup_made = set()
+
+
+def requester():
+    """{email, name, teams} for the signed-in person this request is from, or
+    None on the Mac board and outside any request (the weekly backup thread)."""
+    return getattr(_request, "who", None)
 
 
 # ---- Data sets --------------------------------------------------------------
@@ -1900,7 +1923,9 @@ CHAT_WRITE_DENIES = ["**/data/*/todo.md"]
 
 
 def ai_chat_for(name):
-    if not Engine or not name:
+    # Signed in, there is no chat: it runs Claude Code as whoever started this
+    # server, and that login is the server owner's own.
+    if not Engine or not name or AUTH:
         return None
     inst = _ai_chat_cache.get(name)
     if inst is None:
@@ -2005,6 +2030,31 @@ def _all_countries():
     return [{"code": c, "name": n, "holidays": c in have} for c, n in iso_countries.ISO_COUNTRIES]
 
 
+def shared_refusal(method, path):
+    """(status, body) for a route the shared board does not offer, else None.
+
+    What only makes sense on the owner's Mac: revealing a folder in Finder,
+    approving a folder on its disk, the agents and their launchd schedules, the
+    companion and the usage windows read from local Claude Code transcripts,
+    and starting the Plan agent on the owner's own subscription. A 404, which
+    is what the board already copes with from a host that has none of them.
+    The chat routes need no entry here: ai_chat_for() answers None.
+
+    The settings and the profile are the server's, not any one visitor's, and
+    a folder named in them is a path on the server, so they are read-only.
+    """
+    gone = (404, {"error": "not on the shared board"})
+    if path.startswith(AGENTS_PREFIX + "/"):
+        return gone
+    if method == "POST" and path in ("/project/open", "/project-folders", "/planning_agent/run"):
+        return gone
+    if method in ("GET", "HEAD") and path in ("/schedule.json", "/usage.json"):
+        return gone
+    if method == "PUT" and path in ("/settings.json", "/profile-basics.json"):
+        return (403, {"error": "the shared board's settings are changed on the server"})
+    return None
+
+
 def _holiday_place_json():
     """The profile's holiday country and region, "" for neither."""
     import owner_profile
@@ -2028,6 +2078,49 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=ROOT, **kw)
+
+    def parse_request(self):
+        """Who is asking, worked out once per request before any route runs.
+
+        Off, nobody is, and the board is exactly what it was. Signed in, a
+        request with no email from nginx is refused here, so no route below has
+        to remember to check. So is a route the shared board does not offer,
+        and a POST without X-Board: from a public address the board's cookie
+        travels with a form on any site, and that header is what a form cannot
+        send.
+        """
+        if not super().parse_request():
+            return False
+        _request.who = None
+        if not AUTH:
+            return True
+        who = self._signed_in()
+        refusal = None
+        if not who:
+            refusal = (401, {"error": "sign in first"})
+        else:
+            _request.who = who
+            refusal = shared_refusal(self.command, self.path.split("?")[0])
+            if not refusal and self.command == "POST" and self.headers.get("X-Board") != "1":
+                refusal = (403, {"error": "not from the board"})
+        if refusal:
+            # The body, if any, is never read, so the connection cannot be
+            # reused for a next request.
+            self.close_connection = True
+            self._json(*refusal)
+            return False
+        return True
+
+    def _signed_in(self):
+        """{email, name, teams} out of nginx's three headers, or None."""
+        from urllib.parse import unquote
+        addr = board_access.email(self.headers.get("X-Offdesk-Email"))
+        if not addr:
+            return None
+        name = unquote(self.headers.get("X-Offdesk-Name") or "", errors="replace")
+        name = " ".join(name.split())[:200]
+        return {"email": addr, "name": name or addr.split("@")[0],
+                "teams": board_access.teams(self.headers.get("X-Offdesk-Teams") or "")}
 
     def log_message(self, fmt, *args):
         # Only saves are worth a line. Everything else is noise.
@@ -2155,10 +2248,21 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path.startswith(AGENTS_PREFIX + "/"):
             return self._agents_get(path[len(AGENTS_PREFIX):])
+        # Who is signed in. The Mac board has nobody, and answers the way a
+        # server from before sign-in would, so the board shows no name.
+        if path == "/whoami":
+            if not AUTH:
+                return self._json(404, {"error": "nobody signs in to this board"})
+            return self._json(200, requester())
         if path == "/settings.json":
             return self._json(200, settings_reply(settings.load(DATA_ROOT)))
         if path == "/profile-basics.json":
             import owner_profile
+            if AUTH:
+                # The profile is the server's. The name is the visitor's own,
+                # and there is nothing for them to set up.
+                return self._json(200, {"name": requester()["name"], "country": "", "region": "",
+                                        "legacy_holidays": [], "needs_setup": False})
             return self._json(200, {
                 "name": owner_profile.owner_name(DATA_ROOT) if not owner_profile.needs_setup(DATA_ROOT) else "",
                 **_holiday_place_json(),
@@ -2192,7 +2296,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             # The owner's first name, ahead of the board's scripts so a const
             # in 02-state.js can read it. A page with no server falls back to "Me".
             import owner_profile
-            body = ("window.OWNER_NAME = %s;\n" % json.dumps(owner_profile.owner_name(DATA_ROOT))).encode("utf-8")
+            # Signed in, "me" is whoever is signed in, by first name.
+            owner = (requester()["name"].split() or [""])[0] if AUTH else owner_profile.owner_name(DATA_ROOT)
+            body = ("window.OWNER_NAME = %s;\n" % json.dumps(owner)).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/javascript; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -3105,6 +3211,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 def main():
     os.chdir(ROOT)
+    if AUTH_ERROR:
+        print(AUTH_ERROR)
+        return 2
+    if AUTH and HOST not in ("127.0.0.1", "::1"):
+        # The sign-in headers are only true when nginx is the only thing that
+        # can reach this port.
+        print("BENCH_AUTH=header listens on 127.0.0.1 only, not %s." % HOST)
+        return 2
     ds = current_dataset()
     if not ds:
         # A fresh checkout. The board opens on its welcome screen, which makes
@@ -3126,7 +3240,7 @@ def main():
         print("")
 
     try:
-        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+        httpd = http.server.ThreadingHTTPServer((HOST, PORT), Handler)
     except OSError as err:
         if err.errno in (48, 98):
             # Attaching to whatever already holds the port is usually right, but
@@ -3156,6 +3270,8 @@ def main():
 
     url = "http://127.0.0.1:%d/%s" % (PORT, PAGE)
     print("To-do board running at %s" % url)
+    if AUTH:
+        print("Signed-in mode: every request needs nginx's X-Offdesk-Email header.")
     print("Leave this window open while you use the board. Press Ctrl-C to stop.")
     # If this window is ever closed without stopping first, the helper keeps
     # running with nothing attached to it — no window left to press Ctrl-C in,
