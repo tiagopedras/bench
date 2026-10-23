@@ -2557,6 +2557,8 @@
   .grid2{display:grid; grid-template-columns:1fr 1fr; gap:10px}
   /* The drawer's Details section holds whole fields, so it spaces them the way .dcol does rather than with .field's label gap. */
   details.field.dgroup{gap:14px}
+  /* Chrome wraps a details' children in ::details-content, a plain block, so the flex column and gap above never reach them; the wrapper is given them too. */
+  details.field.dgroup::details-content{display:flex; flex-direction:column; gap:14px}
 
   /* The Impact, Effort and Column sliders are Tenon's StepSlider since
      1 Oct 2026 (kanban/ui/DrawerFields.tsx), so their rules live there. */
