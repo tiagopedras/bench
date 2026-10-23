@@ -94,6 +94,7 @@ async function loadWhoami(){
   $('#whoName').title = who.email;
   $('#whoami').classList.remove('hidden');
   if (state.doc) renderView();
+  loadBoardPeople();
 }
 
 /* ---- Who did what ----------------------------------------------------------
@@ -106,7 +107,31 @@ async function loadWhoami(){
 function personName(email){
   if (!email) return '';
   if (state.who && state.who.email === email) return state.who.name || email;
-  return state.authorNames[email] || email.split('@')[0];
+  const known = (state.boardPeople || []).find(p => p.email === email);
+  return (known && known.name) || state.authorNames[email] || email.split('@')[0];
+}
+/* What `[to:: ]` shows as: an agent or a people.md name as written, a person
+   given a task on a shared board (their email) as their name. */
+function assigneeLabel(to){
+  const v = String(to || '').trim();
+  return isPersonEmail(v) ? personName(v.toLowerCase()) : v;
+}
+/* The face beside `[to:: ]`, wherever one is drawn: an agent's, a person's
+   for an email, and none for a people.md name, which has no face to give. */
+function assigneeAvatarHTML(to, size){
+  const v = String(to || '').trim();
+  return agentAvatarHTML(v, size) ||
+    (isPersonEmail(v) ? personAvatarHTML(v.toLowerCase(), personName(v.toLowerCase()), size) : '');
+}
+/* The board's people, for Delegate to. Signed in only, and asked again when
+   the list on screen changes, since each board has its own. */
+async function loadBoardPeople(){
+  if (!state.who) { state.boardPeople = []; return; }
+  try {
+    const got = await getJSON('/board-people.json');
+    state.boardPeople = got && Array.isArray(got.people) ? got.people : [];
+  } catch (err) { state.boardPeople = []; }
+  if (state.doc) refreshView();
 }
 /* The card's short form, "by Jerome" or "edited by Ana", and the long one
    for the task panel and the card's tooltip. '' with neither tag. */

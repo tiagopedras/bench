@@ -124,6 +124,27 @@ _plan_paths_lock = threading.Lock()
 _save_lock = threading.RLock()
 
 
+# Who has signed in, as last written to their data/users/ file, so the file is
+# touched once per change rather than once per request.
+_people_seen = {}
+
+
+def seen_person(who):
+    """Remembers a signed-in person's first name and current teams for the
+    board's list of people (board_access.board_people())."""
+    # _signed_in() stands the part of the address before the @ in for a name
+    # nginx did not send, which is no name to remember.
+    name = "" if who["name"] == who["email"].split("@")[0] else who["name"]
+    key = (name, tuple(who["teams"]))
+    if _people_seen.get(who["email"]) == key:
+        return
+    try:
+        board_access.remember_person(DATA_ROOT, who["email"], name, who["teams"])
+        _people_seen[who["email"]] = key
+    except OSError:
+        pass
+
+
 def requester():
     """{email, name, teams} for the signed-in person this request is from, or
     None on the Mac board and outside any request (the weekly backup thread)."""
@@ -2536,6 +2557,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             refusal = (401, {"error": "sign in first"})
         else:
             _request.who = who
+            seen_person(who)
             refusal = shared_refusal(self.command, self.path.split("?")[0])
             if not refusal and self.command == "POST" and self.headers.get("X-Board") != "1":
                 refusal = (403, {"error": "not from the board"})
@@ -2719,6 +2741,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, requester())
         # Who did what on this list, newest first, for the status line and for
         # the names on the cards. `me` is the signed-in email, "" on the Mac.
+        # Who on this board a task can be given to, for Delegate to: its
+        # owner, named people and signed-in team members. Signed in only; the
+        # Mac board offers its agents and people.md's names, as it always has.
+        # A board outside the asker's access never gets this far.
+        if path == "/board-people.json":
+            if not AUTH:
+                return self._json(404, {"error": "nobody signs in to this board"})
+            access = board_access.read(dataset_dir(current_dataset()))
+            return self._json(200, {"people": board_access.board_people(DATA_ROOT, access)})
         if path == "/activity.json":
             entries, names = read_activity(current_dataset())
             who = requester()

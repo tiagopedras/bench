@@ -124,9 +124,12 @@ try {
   check('so does the sub-task panel', sub.includes('Created by Ana Silva'), sub)
   await evalJS(`closeDrawer()`)
 
+  // The chip's words, without the initials in the face drawn before them.
+  await evalJS(`window.chipWords = () => { const c = $('#mineChip').cloneNode(true);
+    c.querySelectorAll('.chipface').forEach(f => f.remove()); return c.textContent.trim(); }`)
   check('Mine counts the tasks naming whoever is signed in, sub-tasks included',
-    await until(() => evalJS(`!!$('#mineChip') && /^2 mine$/.test($('#mineChip').textContent.trim())`)),
-    await evalJS(`$('#mineChip') ? $('#mineChip').textContent : 'no chip'`))
+    await until(() => evalJS(`!!$('#mineChip') && chipWords() === '2 mine'`)),
+    await evalJS(`$('#mineChip') ? chipWords() : 'no chip'`))
   await evalJS(`$('#mineChip').click()`)
   await new Promise(r => setTimeout(r, 300))
   const shown = await evalJS(`Array.from(document.querySelectorAll('#board .tenon-card')).map(c => c.textContent)`)

@@ -131,6 +131,7 @@ async function loadFile(){
     drainAttachQueue();
     drainTickQueue();
     loadActivity();
+    loadBoardPeople();
   } catch (err) {
     /* A folder opened on the hosted page that can no longer be read — moved,
        renamed, or its permission withdrawn. Forgotten, so the demo below does

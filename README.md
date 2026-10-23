@@ -1507,6 +1507,17 @@ comes down from the task to its steps. When it is set on a person, the name
 appears on the card as an arrowed chip in the accent colour, so scanning a column
 tells you what is with somebody else without opening anything.
 
+On a shared board, Delegate to also offers the board's own people: its owner,
+the people it is shared with, and everyone who has signed in as a member of a
+team it is shared with (`/board-people.json`, from `core/board_access.py`). A
+person is stored by email, `[to:: ana@example.com]`, because a name is not
+unique and an email is what sign-in vouches for, and is shown by the name they
+first signed in with. Each has a round face with their initials in a colour
+seeded from the email, so it never reads as one of the agents' square ones. An
+email is always a person: nothing that checks for an agent (`agentOf()`, the
+board's refusal of a tick, the server's credit for one) can read one as an
+agent. The Mac board offers what it always has, agents and `people.md` names.
+
 A sub-step carries every tag a task does. Two are its own: `id:` (six characters,
 so something outside the file can point at it) and a bare `doing`, for an agent
 working on it now. What it does not carry it takes from its task: the due date, the

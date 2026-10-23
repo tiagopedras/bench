@@ -28,7 +28,12 @@ off the file is not read at all.
 
 Which board each person has on screen is theirs alone, in `data/users/`, one
 file per person named from a hash of their address, so one person switching
-boards does not switch anybody else's.
+boards does not switch anybody else's. The same file remembers the name they
+first signed in with and the teams they last signed in with, which is how a
+board's people are known: its owner and named people from access.json, and
+everyone who has signed in as a member of one of its teams (board_people()).
+Somebody in a board's team who has never signed in is not offered, because
+Bench has never been told they exist.
 """
 
 import hashlib
@@ -164,25 +169,25 @@ def user_path(data_root, address):
     return os.path.join(data_root, USERS, digest + ".json")
 
 
-def read_current(data_root, address):
-    """The board this person last had on screen, or "" for none recorded."""
+def read_user(data_root, address):
+    """Everything kept for this person, or {} for nobody yet."""
     try:
         with open(user_path(data_root, address), encoding="utf-8") as fh:
             got = json.load(fh)
     except (OSError, ValueError):
-        return ""
+        return {}
     if not isinstance(got, dict) or got.get("email") != address.lower():
-        return ""
-    return str(got.get("current") or "")
+        return {}
+    return got
 
 
-def write_current(data_root, address, name):
+def _write_user(data_root, address, record):
     target = user_path(data_root, address)
     os.makedirs(os.path.dirname(target), exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(target), prefix=".user-")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump({"email": address.lower(), "current": name}, fh)
+            json.dump(dict(record, email=address.lower()), fh, ensure_ascii=False)
             fh.write("\n")
         os.replace(tmp, target)
     except OSError:
@@ -191,3 +196,66 @@ def write_current(data_root, address, name):
         except OSError:
             pass
         raise
+
+
+def remember_person(data_root, address, name, team_ids):
+    """Keeps the name this person first signed in with, and the teams they
+    signed in with this time. Writes only when something changed."""
+    got = read_user(data_root, address)
+    want = dict(got)
+    name = " ".join(str(name or "").split())[:200]
+    if name and not got.get("name"):
+        want["name"] = name
+    want["teams"] = teams(team_ids)
+    if want != got:
+        _write_user(data_root, address, want)
+
+
+def board_people(data_root, access):
+    """Everyone a board can be assigned to: its owner, its named people, and
+    everyone who has signed in as a member of one of its teams. Each is
+    {email, name}, name "" when they have never signed in. Owner first, then
+    named people as access.json lists them, then team members by email."""
+    if not access:
+        return []
+    out, seen = [], set()
+
+    def add(address, rec=None):
+        if address and address not in seen:
+            seen.add(address)
+            rec = rec if rec is not None else read_user(data_root, address)
+            out.append({"email": address, "name": str(rec.get("name") or "")})
+
+    add(access["owner"])
+    for p in access["people"]:
+        add(p)
+    if access["teams"]:
+        folder = os.path.join(data_root, USERS)
+        try:
+            names = sorted(os.listdir(folder))
+        except OSError:
+            names = []
+        members = []
+        for f in names:
+            if not f.endswith(".json"):
+                continue
+            try:
+                with open(os.path.join(folder, f), encoding="utf-8") as fh:
+                    rec = json.load(fh)
+            except (OSError, ValueError):
+                continue
+            address = email(rec.get("email")) if isinstance(rec, dict) else None
+            if address and set(teams(rec.get("teams") or [])) & set(access["teams"]):
+                members.append((address, rec))
+        for address, rec in sorted(members, key=lambda m: m[0]):
+            add(address, rec)
+    return out
+
+
+def read_current(data_root, address):
+    """The board this person last had on screen, or "" for none recorded."""
+    return str(read_user(data_root, address).get("current") or "")
+
+
+def write_current(data_root, address, name):
+    _write_user(data_root, address, dict(read_user(data_root, address), current=name))

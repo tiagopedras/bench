@@ -60,6 +60,22 @@
     {
       "to": "Claude",
       "agent": ""
+    },
+    {
+      "to": "jerome@example.com",
+      "agent": ""
+    },
+    {
+      "to": "plan-agent@example.com",
+      "agent": ""
+    },
+    {
+      "to": "Plan agent@example.com",
+      "agent": ""
+    },
+    {
+      "to": "implement.agent@offdesk.io",
+      "agent": ""
     }
   ],
   "cases": [
@@ -1586,6 +1602,38 @@
         "editedBy": ""
       },
       "roundTrip": "- [ ] **An unknown tag still rides along after the authors** `created-by:a@b.c` `id:au0003` `mystery:7`"
+    },
+    {
+      "line": "- [ ] **Given to a person by email** [impact:: med] [to:: jerome@example.com] `id:pe0001`",
+      "expect": {
+        "done": false,
+        "title": "Given to a person by email",
+        "bold": true,
+        "impact": "med",
+        "effort": "",
+        "due": "",
+        "start": "",
+        "doneOn": "",
+        "to": "jerome@example.com",
+        "theme": "",
+        "urgent": false,
+        "week": false,
+        "slug": "",
+        "blockedBy": [],
+        "rank": null,
+        "tlrank": null,
+        "headline": "",
+        "chat": "",
+        "repeat": "",
+        "stableId": "pe0001",
+        "cancelled": "",
+        "archived": "",
+        "extra": [],
+        "doing": false,
+        "createdBy": "",
+        "editedBy": ""
+      },
+      "roundTrip": "- [ ] **Given to a person by email** [impact:: med] [to:: jerome@example.com] `id:pe0001`"
     }
   ],
   "docs": [

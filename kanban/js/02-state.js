@@ -34,6 +34,10 @@ const state = {
      /activity.json (loadActivity() in 21-datasets.js), so `created-by:` and
      `edited-by:` show as people rather than addresses. */
   authorNames: {},
+  /* Who on this board a task can be given to, [{email, name}], from
+     /board-people.json (loadBoardPeople() in 21-datasets.js). Signed in only;
+     empty on the Mac, where Delegate to offers what it always has. */
+  boardPeople: [],
   /* Everything about the Claude chat engine — the CLI's status, which
      sessions sit under which task, any run in flight, the modal itself —
      lives inside the `chat` object from ai_chat_engine's window rather
