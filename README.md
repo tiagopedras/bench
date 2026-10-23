@@ -42,6 +42,17 @@ The agents (`agents/plan-agent`, `agents/implement-agent`) need the `claude` com
 
 **Claude Code is optional.** Without it, the board works in full: lists, buckets, columns, editing, backups, reports, the archive and Settings. What needs it: the chat window and the PA, the Plan and Implement agents, and bucket briefs. With no `claude` on the path, the board hides all of those. The Agents tab says what to install, and the run buttons refuse rather than start something that cannot run. Install Claude Code and log in, then reload the board to turn them on.
 
+## Deploying to the agency server
+
+The agency server runs its own copy of Bench in `/opt/agency/bench`, with the three libraries beside it in `/opt/agency/PACKAGES`. All four are git checkouts of the public GitHub repos, so a change reaches the server by being pushed to GitHub first and then deployed by hand from the Mac with one script. It stays manual on purpose until it has proved itself, and it never touches the server's `data/`, which holds that server's own lists.
+
+```
+scripts/deploy-server.sh main                                     # dry run
+scripts/deploy-server.sh main --packages agents-engine=main --apply
+```
+
+Without `--apply` it only reads: it prints each repo's current commit on the server and the commit the ref points to on GitHub. With `--apply` it records the current commits, fetches, checks out the refs, runs `npm ci` (which installs exactly `package-lock.json` and rewrites nothing) and `npm run build` for the board's front end, restarts `bench.service` and waits up to 20 seconds for the board to answer 200 on `127.0.0.1:8765`. If it does not, the recorded commits go back and the service restarts again. A ref is a branch, tag or commit, and a short commit id only resolves once fetched. Refs may only use letters, digits and `. _ / -`, and the script refuses anything else before it connects. Afterwards each checkout on the server sits on a detached HEAD at the commit the script prints, not on a branch, which is expected. It stops if a checkout on the server has uncommitted changes to tracked files. `DEPLOY_HOST` changes the server.
+
 ## What it is for
 
 The point of all of it is delegation. The loop is plan, accept, execute, and it
