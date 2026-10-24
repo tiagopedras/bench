@@ -13,7 +13,8 @@ What it holds to:
     its named people, and everyone who has signed in as a member of one of its
     teams, but not someone signed in only to another team;
   * each comes with the name they first signed in with, kept when a later
-    sign-in sends another, and "" for someone who has never signed in;
+    sign-in sends another, and "" for someone who has never signed in; a
+    name is kept and served without bidi or control characters;
   * someone outside the board cannot list them, and the Mac board has no
     such list;
   * an agent's request on behalf of a person is never credited as an agent's.
@@ -40,7 +41,10 @@ def ok(label, cond, detail=""):
                                     (label + (" — " + detail if detail else "")))
 
 
-ANA = {"X-Offdesk-Email": "ana@example.com", "X-Offdesk-Name": "Ana%20Silva", "X-Offdesk-Teams": "offdesk"}
+# Ana's name arrives with a right-to-left override, a mark, an isolate and a
+# bell in it, percent-encoded the way nginx passes it on.
+ANA = {"X-Offdesk-Email": "ana@example.com",
+       "X-Offdesk-Name": "%E2%80%AEAna%E2%80%8F%20%E2%81%A6Silva%07", "X-Offdesk-Teams": "offdesk"}
 BOB = {"X-Offdesk-Email": "bob@example.com", "X-Offdesk-Name": "Bob", "X-Offdesk-Teams": "elsewhere"}
 NOBODY = {"X-Offdesk-Email": "nobody@example.com", "X-Offdesk-Name": "Nobody"}
 LIST = """# To-do
@@ -85,6 +89,14 @@ def signed_in(root):
         ok("each with the name they first signed in with",
            names.get("jerome@example.com") == "Jérôme" and names.get("ana@example.com") == "Ana Silva", repr(names))
         ok("and no name for someone who never signed in", names.get("carla@example.com") == "", repr(names))
+        ok("a name is stored without bidi or control characters",
+           names.get("ana@example.com") == "Ana Silva", repr(names.get("ana@example.com")))
+        code, body, _ = srv.ask("GET", "/whoami", ANA)
+        ok("and /whoami says it the same", (as_json(body) or {}).get("name") == "Ana Silva", body)
+        import board_access
+        ok("clean_name drops every override, isolate and mark, and reads controls as spaces",
+           board_access.clean_name("\u202aA\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069\u200e\u200fna\tSilva\u0000")
+           == "Ana Silva")
 
         code, body, _ = srv.ask("GET", "/board-people.json", BOB)
         bobs = [p["email"] for p in (as_json(body) or {}).get("people") or []]

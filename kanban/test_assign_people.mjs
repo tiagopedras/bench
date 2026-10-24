@@ -76,6 +76,9 @@ const LIST = [
   '- [ ] **For the Plan agent** [to:: Plan agent] `id:ap0004`',
   '- [ ] **For a people.md name** [to:: Mia] `id:ap0005`',
   '- [ ] **For Carla, who never signed in** [to:: carla@example.com] `id:ap0006`',
+  '- [ ] **For Jerome by name, which is not him** [to:: Jérôme] `id:ap0007`',
+  '- [ ] **For jerome, also not him** [to:: jerome] `id:ap0008`',
+  '  - [ ] Waiting on him by name [to:: Jérôme D.] `id:ap0009`',
   ''
 ].join('\n')
 
@@ -92,7 +95,8 @@ try {
       if (m !== 'GET') { if (m !== 'HEAD') window.__blocked.push(m + ' ' + u); return Promise.resolve(new Response('{}', { status: 200 })) }
       if (String(u).startsWith('/board-people.json')) return Promise.resolve(new Response(JSON.stringify({ people: [
         { email: 'tiagopedras+claude@gmail.com', name: 'Tiago Pedras' },
-        { email: 'jerome@example.com', name: 'Jérôme' },
+        // Signed in with an override, an isolate, a mark and a bell in it.
+        { email: 'jerome@example.com', name: '\\u202EJérôme\\u2066 Dupont\\u200F\\u0007' },
         { email: 'ana@example.com', name: 'Ana Silva' },
         { email: 'carla@example.com', name: '' }
       ] }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
@@ -117,7 +121,7 @@ try {
 
   // --- signed in -------------------------------------------------------------------
   await evalJS(`(async () => {
-    state.who = { email: 'jerome@example.com', name: 'Jérôme', teams: ['offdesk'] };
+    state.who = { email: 'jerome@example.com', name: '\u202EJérôme\u2066 Dupont\u200F\u0007', teams: ['offdesk'] };
     await loadBoardPeople();
     renderView();
   })()`)
@@ -127,7 +131,13 @@ try {
     return o.map(x => ({ v: x.value, l: x.label, g: x.group || '', i: x.iconHtml || '' })); })()`)
   const ana = pick.find(o => o.v === 'ana@example.com')
   check('Delegate to offers the board\'s people, stored by email and shown by name',
-    !!ana && ana.l === 'Ana Silva' && ana.g === 'People', JSON.stringify(pick).slice(0, 300))
+    !!ana && ana.l === 'Ana S.' && ana.g === 'People', JSON.stringify(pick).slice(0, 300))
+  const jer = pick.find(o => o.v === 'jerome@example.com')
+  check('a name is shown as first name and last initial, with bidi and control characters gone',
+    !!jer && jer.l === 'Jérôme D.' && !/[\u202A-\u202E\u2066-\u2069\u200E\u200F\u0000-\u001F]/.test(jer.l), JSON.stringify(jer && jer.l))
+  check('and the face carries both initials, cleaned too', !!jer && />JD<\/text>/.test(jer.i), jer && jer.i)
+  check('the header shows the cleaned short name',
+    await evalJS(`(() => { $('#whoName').textContent = personName(state.who.email); return $('#whoName').textContent === 'Jérôme D.'; })()`))
   check('each with a round face carrying their initials',
     !!ana && /class="avatar person"/.test(ana.i) && /<circle/.test(ana.i) && />AS<\/text>/.test(ana.i), ana && ana.i)
   const carla = pick.find(o => o.v === 'carla@example.com')
@@ -140,7 +150,7 @@ try {
 
   const card = title => evalJS(`(() => { const el = Array.from(document.querySelectorAll('#board .tenon-card')).find(c => c.textContent.includes(${JSON.stringify(title)})); return el ? el.innerHTML : ''; })()`)
   const anaCard = await card('For Ana')
-  check('the card shows the person by name', anaCard.includes('→ Ana Silva') && !anaCard.includes('→ ana@example.com'))
+  check('the card shows the person by name', anaCard.includes('→ Ana S.') && !anaCard.includes('→ ana@example.com'))
   check('with their face', /svg class="person"/.test(anaCard) && />AS<\/text>/.test(anaCard))
   check('the same colour every time',
     await evalJS(`personAvatarSvg('ana@example.com', 'Ana Silva', 16) === personAvatarSvg('ANA@example.com ', 'Ana Silva', 16)`))
@@ -176,6 +186,26 @@ try {
   await evalJS(`state.who = { email: 'ana@example.com', name: 'Ana Silva', teams: [] }; renderFilterChips()`)
   check('for Ana, a sub-task given to her counts too',
     await until(() => evalJS(`chipText() === '2 mine'`)), await evalJS(`chipText()`))
+  await evalJS(`state.who = { email: 'jerome@example.com', name: 'Jérôme Dupont', teams: ['offdesk'] }; renderFilterChips()`)
+  check('a task given to his name or the first part of his email is not his',
+    await evalJS(`!forMe(findTaskByKey('ap0007')) && !forMe(findTaskByKey('ap0008')) && forMe(findTaskByKey('ap0002'))`))
+  check('nor is a sub-task waiting on his name his move', await evalJS(`!yourMove(findTaskByKey('ap0008'))`))
+  check('while one waiting on his email is',
+    await evalJS(`yourMove(parseTask(['- [ ] **x**', '  - [ ] step [to:: jerome@example.com]']))`))
+  check('on the Mac, your move is still the owner\'s name',
+    await evalJS(`(() => { const was = state.who; state.who = null;
+      const got = yourMove(parseTask(['- [ ] **x**', '  - [ ] step [to:: ' + OWNER_NAME + ']']));
+      state.who = was; return got; })()`))
+
+  // --- two people with one short name ----------------------------------------------------
+  await evalJS(`state.boardPeople = state.boardPeople.concat([{ email: 'ana.sousa@example.com', name: 'Ana Sousa' }])`)
+  check('two people with one short name are told apart by their email',
+    await evalJS(`personName('ana@example.com') === 'Ana S. (ana)' && personName('ana.sousa@example.com') === 'Ana S. (ana.sousa)'`),
+    await evalJS(`personName('ana@example.com') + ' / ' + personName('ana.sousa@example.com')`))
+  check('in the picker too',
+    await evalJS(`(() => { openDrawer(findTaskByKey('ap0001').id); const l = PICK_SPECS['f-to'].options.map(o => o.label);
+      closeDrawer(); return l.includes('Ana S. (ana)') && l.includes('Ana S. (ana.sousa)') && l.includes('Tiago P.'); })()`))
+  check('and nobody else changes', await evalJS(`personName('tiagopedras+claude@gmail.com') === 'Tiago P.'`))
 
   check('nothing tried to write', await evalJS(`window.__blocked.length === 0`), await evalJS(`window.__blocked.join(' | ')`))
 } catch (err) {

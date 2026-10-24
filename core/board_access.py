@@ -41,6 +41,7 @@ import json
 import os
 import re
 import tempfile
+import unicodedata
 
 FILE = "access.json"
 USERS = "users"
@@ -72,6 +73,23 @@ def email(raw):
     if len(s) > 254 or not EMAIL_RE.match(s):
         return None
     return s
+
+
+def clean_name(raw):
+    """A person's name as it may be stored or shown: control characters
+    (category Cc, tabs and newlines among them) read as spaces, format
+    characters (Cf, which holds every bidirectional override and isolate,
+    U+202A to U+202E and U+2066 to U+2069, and the marks U+200E and U+200F)
+    dropped, so a name cannot reorder or hide the text around it. Then
+    whitespace collapsed and the whole cut to 200 characters."""
+    out = []
+    for c in str(raw or ""):
+        cat = unicodedata.category(c)
+        if cat == "Cc":
+            out.append(" ")
+        elif cat != "Cf":
+            out.append(c)
+    return " ".join("".join(out).split())[:200]
 
 
 def teams(raw):
@@ -203,7 +221,7 @@ def remember_person(data_root, address, name, team_ids):
     signed in with this time. Writes only when something changed."""
     got = read_user(data_root, address)
     want = dict(got)
-    name = " ".join(str(name or "").split())[:200]
+    name = clean_name(name)
     if name and not got.get("name"):
         want["name"] = name
     want["teams"] = teams(team_ids)
@@ -224,7 +242,7 @@ def board_people(data_root, access):
         if address and address not in seen:
             seen.add(address)
             rec = rec if rec is not None else read_user(data_root, address)
-            out.append({"email": address, "name": str(rec.get("name") or "")})
+            out.append({"email": address, "name": clean_name(rec.get("name"))})
 
     add(access["owner"])
     for p in access["people"]:

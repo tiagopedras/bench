@@ -598,7 +598,10 @@ function sendBack(t, line, why){
    looked up among the task's own sub-tasks, which is where a handover puts them. */
 function yourMove(t){
   const steps = subSteps(t);
-  return steps.some(s => !s.done && (s.to === OWNER_NAME || namesMe(s.to)) &&
+  /* Signed in, yours is your email and nothing else (namesMe()); on the Mac
+     it is the owner's name, as it always was. */
+  const mine = s => state.who ? namesMe(s.to) : s.to === OWNER_NAME;
+  return steps.some(s => !s.done && mine(s) &&
     (s.blockedBy || []).every(sl => { const b = steps.find(x => x.slug === sl); return b && b.done; }));
 }
 

@@ -393,7 +393,7 @@ function cardModel(t, opts){
        a round face rather than an agent's square one. */
     chips.push({ tone: 'accent', text: '→ ' + who, title: 'Delegated to ' + who,
       avatarHTML: agent ? avatarSvg(agent, 16)
-        : isPersonEmail(to) ? personAvatarSvg(to.toLowerCase(), personName(to.toLowerCase()), 16) : undefined });
+        : isPersonEmail(to) ? personAvatarSvg(to.toLowerCase(), personFullName(to.toLowerCase()), 16) : undefined });
   }
   /* A ticket waiting to be raised is a fact about the task worth seeing in the
      column, but the button belongs where there is room for it — the task panel

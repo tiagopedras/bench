@@ -50,15 +50,15 @@ function delegateSelectHTML(value, dis, id){
     value: cur, ro: !!dis, label: 'Delegate to',
     options: [{ value: '', label: 'Nobody' }]
       .concat(agents.map((v, i) => ({ value: v, label: offered[i], group: 'Agents', iconHtml: agentAvatarHTML(v, 18) })))
-      .concat(board.map(p => ({ value: p.email, label: p.name || p.email, group: 'People',
-                                iconHtml: personAvatarHTML(p.email, p.name, 18) })))
+      .concat(board.map(p => ({ value: p.email, label: personName(p.email), group: 'People',
+                                iconHtml: personAvatarHTML(p.email, personFullName(p.email), 18) })))
       .concat(people.map(p => ({ value: p, label: label(p), group: 'People', iconHtml: assigneeAvatarHTML(p, 18) || undefined })))
   };
   return '<div class="delegatefield">' +
     '<select id="' + id + '" class="hidden" tabindex="-1" aria-hidden="true"' + dis + '>' + opt('', 'Nobody') +
       (agents.length ? '<optgroup label="Agents">' + agents.map((v, i) => opt(v, offered[i])).join('') + '</optgroup>' : '') +
       (board.length || people.length ? '<optgroup label="People">' +
-        board.map(p => opt(p.email, p.name || p.email)).join('') + people.map(p => opt(p, label(p))).join('') +
+        board.map(p => opt(p.email, personName(p.email))).join('') + people.map(p => opt(p, label(p))).join('') +
         '</optgroup>' : '') +
     '</select>' +
     '<div data-pick-host="' + id + '"></div>' +

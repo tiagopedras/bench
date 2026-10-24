@@ -587,7 +587,7 @@ def read_activity(ds, limit=50):
         if isinstance(e, dict):
             entries.append(e)
             if e.get("who") and e.get("name"):
-                names[e["who"]] = e["name"]
+                names[e["who"]] = board_access.clean_name(e["name"])
     return entries[::-1][:limit], names
 
 
@@ -2577,8 +2577,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         addr = board_access.email(self.headers.get("X-Offdesk-Email"))
         if not addr:
             return None
-        name = unquote(self.headers.get("X-Offdesk-Name") or "", errors="replace")
-        name = " ".join(name.split())[:200]
+        name = board_access.clean_name(unquote(self.headers.get("X-Offdesk-Name") or "", errors="replace"))
         return {"email": addr, "name": name or addr.split("@")[0],
                 "teams": board_access.teams(self.headers.get("X-Offdesk-Teams") or "")}
 

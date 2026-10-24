@@ -93,9 +93,11 @@ try {
     load([
       '# To-do', '', '## 1. Tasks', '', '### To do', '',
       '- [ ] **Shared** \`created-by:jerome@example.com\` \`edited-by:ana@example.com\` \`id:au0001\`',
-      '  - [ ] A step [to:: Jérôme] \`created-by:ana@example.com\` \`id:au0002\`',
+      '  - [ ] A step [to:: jerome@example.com] \`created-by:ana@example.com\` \`id:au0002\`',
       '- [ ] **Written by Ana** [to:: Ana] \`created-by:ana@example.com\` \`id:au0003\`',
-      '- [ ] **For Jerome** [to:: jerome] \`id:au0004\`',
+      '- [ ] **For Jerome** [to:: Jerome@Example.com] \`id:au0004\`',
+      '- [ ] **Named, not addressed** [to:: Jérôme] \`id:au0006\`',
+      '- [ ] **Named by first part** [to:: jerome] \`id:au0007\`',
       '- [ ] **From before sign-in** \`id:au0005\`',
       ''
     ].join('\\n'), 'todo.md', {});
@@ -107,27 +109,27 @@ try {
   check('names come from /activity.json',
     await until(async () => { await evalJS(`loadActivity()`); return evalJS(`state.authorNames['ana@example.com'] === 'Ana Silva'`) }))
   const cardText = title => evalJS(`(() => { const el = Array.from(document.querySelectorAll('.tenon-card')).find(c => c.textContent.includes(${JSON.stringify(title)})); return el ? el.textContent : ''; })()`)
-  check('a card edited by somebody else says who', (await cardText('Shared')).includes('edited by Ana Silva'), await cardText('Shared'))
-  check('a card only its writer touched says who wrote it', (await cardText('Written by Ana')).includes('by Ana Silva'))
+  check('a card edited by somebody else says who', (await cardText('Shared')).includes('edited by Ana S.'), await cardText('Shared'))
+  check('a card only its writer touched says who wrote it', (await cardText('Written by Ana')).includes('by Ana S.'))
   check('a card from before sign-in says nobody', !/\bby\b/.test(await cardText('From before sign-in')), await cardText('From before sign-in'))
 
   check('the status line names the latest change by somebody else',
-    await until(() => evalJS(`/^Ana Silva edited 2 min ago$/.test($('#status').textContent)`)),
+    await until(() => evalJS(`/^Ana S\\. edited 2 min ago$/.test($('#status').textContent)`)),
     await evalJS(`$('#status').textContent`))
 
   const help = await evalJS(`(() => { try { openDrawer(findTaskByKey('au0001').id); } catch (e) { return 'threw ' + e.message; }
                                      return document.getElementById('drawer').textContent.replace(/\\s+/g, ' '); })()`)
   check('the task panel says who wrote it and who last changed it',
-    help.includes('Created by Jérôme · last edited by Ana Silva'), help.slice(0, 200))
+    help.includes('Created by Jérôme · last edited by Ana S.'), help.slice(0, 200))
   await evalJS(`closeDrawer()`)
   const sub = await evalJS(`(() => { openDrawer('au0002'); return $('#subHelp').textContent; })()`)
-  check('so does the sub-task panel', sub.includes('Created by Ana Silva'), sub)
+  check('so does the sub-task panel', sub.includes('Created by Ana S.'), sub)
   await evalJS(`closeDrawer()`)
 
   // The chip's words, without the initials in the face drawn before them.
   await evalJS(`window.chipWords = () => { const c = $('#mineChip').cloneNode(true);
     c.querySelectorAll('.chipface').forEach(f => f.remove()); return c.textContent.trim(); }`)
-  check('Mine counts the tasks naming whoever is signed in, sub-tasks included',
+  check('Mine counts the tasks given to my email, sub-tasks included, and no task given to my name',
     await until(() => evalJS(`!!$('#mineChip') && chipWords() === '2 mine'`)),
     await evalJS(`$('#mineChip') ? chipWords() : 'no chip'`))
   await evalJS(`$('#mineChip').click()`)

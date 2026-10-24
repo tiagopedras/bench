@@ -1511,8 +1511,13 @@ On a shared board, Delegate to also offers the board's own people: its owner,
 the people it is shared with, and everyone who has signed in as a member of a
 team it is shared with (`/board-people.json`, from `core/board_access.py`). A
 person is stored by email, `[to:: ana@example.com]`, because a name is not
-unique and an email is what sign-in vouches for, and is shown by the name they
-first signed in with. Each has a round face with their initials in a colour
+unique and an email is what sign-in vouches for, and is shown the way the
+owner's notes write a person: first name and last initial, "Jérôme D.", from the
+name they first signed in with, with the email's local part in brackets when two
+people on the board would otherwise read the same. A name is stored and shown
+without bidirectional or control characters, so it cannot reorder the text
+around it. Signed in, Mine and "your move" match the stored email and never a
+name. Each has a round face with their initials in a colour
 seeded from the email, so it never reads as one of the agents' square ones. An
 email is always a person: nothing that checks for an agent (`agentOf()`, the
 board's refusal of a tick, the server's credit for one) can read one as an

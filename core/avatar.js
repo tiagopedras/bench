@@ -107,9 +107,18 @@ function agentAvatarHTML(to, size){
    they first signed in with: the first and last words' first letters, or the
    one letter of a one-word name; with no name, the email's first letter. */
 const PERSON_EMAIL_RE = /^[^@\s,]+@[^@\s,]+\.[^@\s,]+$/;
+/* A name as it may be shown, the same rule as clean_name() in
+   core/board_access.py, applied again here because a name reaches the page
+   from more than one place: control characters (Cc) read as spaces, format
+   characters (Cf, every bidirectional override and isolate and the LRM and
+   RLM marks among them) dropped, whitespace collapsed, 200 characters. */
+function cleanPersonName(raw){
+  return String(raw || '').replace(/\p{Cc}/gu, ' ').replace(/\p{Cf}/gu, '')
+    .replace(/\s+/g, ' ').trim().slice(0, 200);
+}
 function isPersonEmail(to){ return PERSON_EMAIL_RE.test(String(to || '').trim()); }
 function personInitials(name, email){
-  const words = String(name || '').trim().split(/\s+/).filter(Boolean);
+  const words = cleanPersonName(name).split(' ').filter(Boolean);
   if (words.length) return (words[0].charAt(0) + (words.length > 1 ? words[words.length - 1].charAt(0) : '')).toUpperCase();
   return String(email || '').trim().charAt(0).toUpperCase() || '?';
 }
