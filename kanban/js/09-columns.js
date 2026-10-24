@@ -388,9 +388,12 @@ function cardModel(t, opts){
      the one place that decides "agent or not" (core/avatar.js), and it's
      undefined rather than '' for a person, since Chip.avatarHTML is optional. */
   if (t.to && t.to.trim()) {
-    const to = t.to.trim(), agent = agentOf(to);
-    chips.push({ tone: 'accent', text: '→ ' + to, title: 'Delegated to ' + to,
-      avatarHTML: agent ? avatarSvg(agent, 16) : undefined });
+    const to = t.to.trim(), agent = agentOf(to), who = assigneeLabel(to);
+    /* A person on a shared board is stored by email and shown by name, with
+       a round face rather than an agent's square one. */
+    chips.push({ tone: 'accent', text: '→ ' + who, title: 'Delegated to ' + who,
+      avatarHTML: agent ? avatarSvg(agent, 16)
+        : isPersonEmail(to) ? personAvatarSvg(to.toLowerCase(), personFullName(to.toLowerCase()), 16) : undefined });
   }
   /* A ticket waiting to be raised is a fact about the task worth seeing in the
      column, but the button belongs where there is room for it — the task panel

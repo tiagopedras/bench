@@ -29,9 +29,15 @@ function delegateSelectHTML(value, dis, id){
   const opt = (v, label) => '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(label || v) + '</option>';
   /* A name already on the task that people.md does not list, "Mia" where the
      file says "Mia R.", stays offered as written rather than silently lost. */
-  const known = new Set(AGENT_NAMES.concat(peopleNames));
-  const people = peopleNames.slice();
+  /* Signed in, the board's own people come first, stored by email and shown
+     by name with their face (/board-people.json). The Mac board has none, and
+     offers people.md's names alone, as it always has. */
+  const board = state.who ? (state.boardPeople || []) : [];
+  const emails = board.map(p => p.email);
+  const known = new Set(AGENT_NAMES.concat(peopleNames, emails));
+  const people = peopleNames.filter(n => emails.indexOf(String(n).toLowerCase()) < 0);
   if (cur && !agentOf(cur) && !known.has(cur)) people.unshift(cur);
+  const label = v => isPersonEmail(v) ? assigneeLabel(v) : v;
   /* No agents offered on a list that has none set up yet (agentsSetUp(),
      27-agents.js), unless this field already names one, which stays as
      written. */
@@ -44,12 +50,16 @@ function delegateSelectHTML(value, dis, id){
     value: cur, ro: !!dis, label: 'Delegate to',
     options: [{ value: '', label: 'Nobody' }]
       .concat(agents.map((v, i) => ({ value: v, label: offered[i], group: 'Agents', iconHtml: agentAvatarHTML(v, 18) })))
-      .concat(people.map(p => ({ value: p, label: p, group: 'People' })))
+      .concat(board.map(p => ({ value: p.email, label: personName(p.email), group: 'People',
+                                iconHtml: personAvatarHTML(p.email, personFullName(p.email), 18) })))
+      .concat(people.map(p => ({ value: p, label: label(p), group: 'People', iconHtml: assigneeAvatarHTML(p, 18) || undefined })))
   };
   return '<div class="delegatefield">' +
     '<select id="' + id + '" class="hidden" tabindex="-1" aria-hidden="true"' + dis + '>' + opt('', 'Nobody') +
       (agents.length ? '<optgroup label="Agents">' + agents.map((v, i) => opt(v, offered[i])).join('') + '</optgroup>' : '') +
-      (people.length ? '<optgroup label="People">' + people.map(p => opt(p)).join('') + '</optgroup>' : '') +
+      (board.length || people.length ? '<optgroup label="People">' +
+        board.map(p => opt(p.email, personName(p.email))).join('') + people.map(p => opt(p, label(p))).join('') +
+        '</optgroup>' : '') +
     '</select>' +
     '<div data-pick-host="' + id + '"></div>' +
   '</div>';
@@ -1038,7 +1048,7 @@ function mountSubRows(t, id, subs, ro){
       const sd = dueInfo(s.due);
       return {
         line: s.line, done: !!s.done, stableId: s.stableId || '', opens: !!s.stableId || !ro,
-        avatarHtml: agentAvatarHTML(s.to, 16), title: s.clean,
+        avatarHtml: assigneeAvatarHTML(s.to, 16), title: s.clean,
         due: sd ? { label: sd.label, cls: sd.cls } : undefined,
         hasNote: !!stepNoteText(t, s.line),
         status: subRowStatus(s)

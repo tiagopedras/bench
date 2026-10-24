@@ -124,6 +124,27 @@ _plan_paths_lock = threading.Lock()
 _save_lock = threading.RLock()
 
 
+# Who has signed in, as last written to their data/users/ file, so the file is
+# touched once per change rather than once per request.
+_people_seen = {}
+
+
+def seen_person(who):
+    """Remembers a signed-in person's first name and current teams for the
+    board's list of people (board_access.board_people())."""
+    # _signed_in() stands the part of the address before the @ in for a name
+    # nginx did not send, which is no name to remember.
+    name = "" if who["name"] == who["email"].split("@")[0] else who["name"]
+    key = (name, tuple(who["teams"]))
+    if _people_seen.get(who["email"]) == key:
+        return
+    try:
+        board_access.remember_person(DATA_ROOT, who["email"], name, who["teams"])
+        _people_seen[who["email"]] = key
+    except OSError:
+        pass
+
+
 def requester():
     """{email, name, teams} for the signed-in person this request is from, or
     None on the Mac board and outside any request (the weekly backup thread)."""
@@ -359,15 +380,27 @@ def agent_slug(name):
     return "-".join(str(name).lower().split())
 
 
+# The one list and the one agent a move request is honoured from, the same as
+# MOVE_DATASET and MOVE_AGENT in kanban/js/10-reference-sections.js.
+MOVE_DATASET = "content"
+MOVE_AGENT = "Content strategist agent"
+
+
 def credit_agents(ds, entries, text):
-    """Notes the cards these queued requests change: a handover's or a move's
-    card by its id, and a tick's by the task its sub-task sits under, only
-    when the sub-task is the requesting agent's (the board refuses it
-    otherwise)."""
+    """Notes the cards these queued requests change, only where the board
+    applies the request rather than refusing it, since a refused one changes
+    nothing and must not claim the next person's edit. A tick credits the task
+    its sub-task sits under when the sub-task is the requesting agent's; a
+    handover credits its card when the card is open and its `[to::]` still
+    names that agent (drainHandover()); a move only on the content list, from
+    the content agent, into Reviewing, on an open card (drainMove())."""
     if todo is None:
         return
     parent = {}
+    cards = {}
     for t in todo.parse_doc(text or ""):
+        if t.stable_id:
+            cards[t.stable_id] = t
         for st in todo.split_body(t)[1]:
             step = st["task"]
             if step.stable_id and t.stable_id:
@@ -378,8 +411,18 @@ def credit_agents(ds, entries, text):
         by = str(e.get("by") or "").strip()
         if not by:
             continue
-        if e.get("handover") or e.get("move"):
-            tid = str(e.get("handover") or e.get("move")).strip().lower()
+        if e.get("handover"):
+            tid = str(e["handover"]).strip().lower()
+            card = cards.get(tid)
+            want = todo.agent_of(e.get("to")).lower()
+            if not card or card.done or not want or want != by.lower() or todo.agent_of(card.to).lower() != want:
+                tid = ""
+        elif e.get("move"):
+            tid = str(e["move"]).strip().lower()
+            card = cards.get(tid)
+            if (ds != MOVE_DATASET or by != MOVE_AGENT or str(e.get("column") or "").strip() != "Reviewing"
+                    or not card or card.done):
+                tid = ""
         else:
             tid, to = parent.get(str(e.get("sub") or "").strip().lower(), ("", ""))
             if tid and todo.agent_of(to).lower() != by.lower():
@@ -424,7 +467,34 @@ def pa_busy(ds):
         return False
 
 
-def notice_outside_edit(ds):
+# How long the file must have been left alone before the server takes what it
+# reads for a finished outside edit. pa and an editor write outside the save
+# lock, and a write that is not atomic shows a partial file for as long as it
+# takes; a version younger than this is left for the next read.
+OUTSIDE_QUIET_S = 1.0
+
+
+def _steady_read(path):
+    """(text, stat) for todo.md, or (None, stat) when the read cannot be
+    trusted: the size or modification time moved while it was read, the bytes
+    read are not the size the file says, or they are not whole UTF-8 (a write
+    cut mid-character). (None, None) when there is no file."""
+    try:
+        before = os.stat(path)
+        with open(path, "rb") as fh:
+            raw = fh.read()
+        after = os.stat(path)
+    except OSError:
+        return None, None
+    if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns) or len(raw) != after.st_size:
+        return None, after
+    try:
+        return raw.decode("utf-8"), after
+    except UnicodeDecodeError:
+        return None, after
+
+
+def notice_outside_edit(ds, wait=False):
     """Accounts for an edit written straight to todo.md since the server last
     wrote it: the pa skill, or anything else. The difference from the last
     version the server knows goes in the activity log under `pa`, and, signed
@@ -436,23 +506,41 @@ def notice_outside_edit(ds):
     Held while pa says it is mid-edit, so its edit is accounted for once, as a
     whole, when it finishes, and never stamped under its feet; and while a
     migration holds the list. The first time a list is seen there is nothing
-    to compare with, and the version is only remembered."""
+    to compare with, and the version is only remembered.
+
+    The writer is not under the save lock, so nothing here trusts a read the
+    writer might still be in the middle of: a changed file is only taken once
+    a read of it is steady (_steady_read) and it has been left alone for
+    OUTSIDE_QUIET_S, and the stamped version replaces it only if the file is
+    still exactly what was read. Otherwise it waits for the next read; a save
+    (`wait`) waits here instead, briefly, so it merges with the whole edit."""
     if todo is None or not ds:
         return
     with _save_lock:
         path = todo_path(ds)
         try:
-            with open(path, encoding="utf-8", newline="") as fh:
-                text = fh.read()
-        except OSError:
-            return
-        try:
             with open(known_path(ds), encoding="utf-8", newline="") as fh:
                 known = fh.read()
         except OSError:
+            known = None
+        for _ in range(4 if wait else 1):
+            text, st = _steady_read(path)
+            if st is None:
+                return
+            if text is not None and text == known:
+                return
+            age = time.time() - st.st_mtime
+            if text is not None and age >= OUTSIDE_QUIET_S:
+                break
+            if not wait:
+                return
+            time.sleep(max(0.05, OUTSIDE_QUIET_S - age))
+        else:
+            return
+        if known is None:
             remember(ds, text)
             return
-        if known == text or pa_busy(ds) or os.path.exists(migrating_path(ds)):
+        if pa_busy(ds) or os.path.exists(migrating_path(ds)):
             return
         stamped, changes = todo.stamp_authors(known, text, "pa", write_tags=bool(AUTH))
         if stamped != text:
@@ -461,6 +549,15 @@ def notice_outside_edit(ds):
                 fh.write(stamped)
                 fh.flush()
                 os.fsync(fh.fileno())
+            # Compare before replace: a write that landed since the read is
+            # not stamped over. It is accounted for on the next read instead.
+            try:
+                now = os.stat(path)
+            except OSError:
+                now = None
+            if now is None or (now.st_size, now.st_mtime_ns) != (st.st_size, st.st_mtime_ns):
+                os.remove(tmp)
+                return
             os.replace(tmp, path)
         append_activity(ds, changes, who="pa", name="pa")
         remember(ds, stamped)
@@ -490,7 +587,7 @@ def read_activity(ds, limit=50):
         if isinstance(e, dict):
             entries.append(e)
             if e.get("who") and e.get("name"):
-                names[e["who"]] = e["name"]
+                names[e["who"]] = board_access.clean_name(e["name"])
     return entries[::-1][:limit], names
 
 
@@ -2460,6 +2557,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             refusal = (401, {"error": "sign in first"})
         else:
             _request.who = who
+            seen_person(who)
             refusal = shared_refusal(self.command, self.path.split("?")[0])
             if not refusal and self.command == "POST" and self.headers.get("X-Board") != "1":
                 refusal = (403, {"error": "not from the board"})
@@ -2479,8 +2577,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         addr = board_access.email(self.headers.get("X-Offdesk-Email"))
         if not addr:
             return None
-        name = unquote(self.headers.get("X-Offdesk-Name") or "", errors="replace")
-        name = " ".join(name.split())[:200]
+        name = board_access.clean_name(unquote(self.headers.get("X-Offdesk-Name") or "", errors="replace"))
         return {"email": addr, "name": name or addr.split("@")[0],
                 "teams": board_access.teams(self.headers.get("X-Offdesk-Teams") or "")}
 
@@ -2643,6 +2740,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, requester())
         # Who did what on this list, newest first, for the status line and for
         # the names on the cards. `me` is the signed-in email, "" on the Mac.
+        # Who on this board a task can be given to, for Delegate to: its
+        # owner, named people and signed-in team members. Signed in only; the
+        # Mac board offers its agents and people.md's names, as it always has.
+        # A board outside the asker's access never gets this far.
+        if path == "/board-people.json":
+            if not AUTH:
+                return self._json(404, {"error": "nobody signs in to this board"})
+            access = board_access.read(dataset_dir(current_dataset()))
+            return self._json(200, {"people": board_access.board_people(DATA_ROOT, access)})
         if path == "/activity.json":
             entries, names = read_activity(current_dataset())
             who = requester()
@@ -3637,7 +3743,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # Anything written straight to the file since the server last did is
         # accounted for first, so it is credited to `pa` rather than to this
         # save, and the merge below sees the file as it now stands.
-        notice_outside_edit(ds)
+        notice_outside_edit(ds, wait=True)
 
         merged = False
         sent = text

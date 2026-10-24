@@ -99,6 +99,42 @@ function agentAvatarHTML(to, size){
   if (!agent) return '';
   return '<span class="avatar" aria-hidden="true">' + avatarSvg(agent, size) + '</span>';
 }
+/* A person's face, for a person given a task on a shared board, where
+   `[to:: ]` holds their email. A circle with their initials on it, where an
+   agent's is a rounded square of shapes, so the two never read as one kind.
+   The colour is one of the same Tenon chart set, seeded from the email, so a
+   person keeps their colour wherever they appear. Initials come from the name
+   they first signed in with: the first and last words' first letters, or the
+   one letter of a one-word name; with no name, the email's first letter. */
+const PERSON_EMAIL_RE = /^[^@\s,]+@[^@\s,]+\.[^@\s,]+$/;
+/* A name as it may be shown, the same rule as clean_name() in
+   core/board_access.py, applied again here because a name reaches the page
+   from more than one place: control characters (Cc) read as spaces, format
+   characters (Cf, every bidirectional override and isolate and the LRM and
+   RLM marks among them) dropped, whitespace collapsed, 200 characters. */
+function cleanPersonName(raw){
+  return String(raw || '').replace(/\p{Cc}/gu, ' ').replace(/\p{Cf}/gu, '')
+    .replace(/\s+/g, ' ').trim().slice(0, 200);
+}
+function isPersonEmail(to){ return PERSON_EMAIL_RE.test(String(to || '').trim()); }
+function personInitials(name, email){
+  const words = cleanPersonName(name).split(' ').filter(Boolean);
+  if (words.length) return (words[0].charAt(0) + (words.length > 1 ? words[words.length - 1].charAt(0) : '')).toUpperCase();
+  return String(email || '').trim().charAt(0).toUpperCase() || '?';
+}
+function personAvatarSvg(email, name, size){
+  const px = size || 20;
+  const ini = personInitials(name, email);
+  const fill = AVATAR_PALETTE[avatarHash(String(email || '').trim().toLowerCase()) % AVATAR_PALETTE.length];
+  const text = ini.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return '<svg class="person" viewBox="0 0 40 40" width="' + px + '" height="' + px + '" aria-hidden="true" focusable="false">' +
+    '<circle cx="20" cy="20" r="20" fill="' + fill + '"/>' +
+    '<text x="20" y="20" dy="0.35em" text-anchor="middle" font-size="' + (ini.length > 1 ? 16 : 19) +
+    '" font-weight="600" font-family="inherit" fill="white">' + text + '</text></svg>';
+}
+function personAvatarHTML(email, name, size){
+  return '<span class="avatar person" aria-hidden="true">' + personAvatarSvg(email, name, size) + '</span>';
+}
 /* A bucket planner's avatar, in its bucket's colour (`color` from bucketColor()). */
 function plannerAvatarHTML(color, size){
   return '<span class="avatar" aria-hidden="true">' + avatarSvg('Bucket planners', size, color) + '</span>';

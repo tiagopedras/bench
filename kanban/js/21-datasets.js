@@ -90,10 +90,11 @@ async function loadWhoami(){
   if (!who || !who.email) return;
   state.who = who;
   document.body.classList.add('signed-in');
-  $('#whoName').textContent = who.name || who.email;
+  $('#whoName').textContent = personName(who.email);
   $('#whoName').title = who.email;
   $('#whoami').classList.remove('hidden');
   if (state.doc) renderView();
+  loadBoardPeople();
 }
 
 /* ---- Who did what ----------------------------------------------------------
@@ -103,10 +104,61 @@ async function loadWhoami(){
    emails become names, from /activity.json, and the latest change by somebody
    else goes in the status line. A Mac list carries neither tag and its log
    only ever names its owner, so none of this shows there. */
+/* The name a person signed in with, cleaned, or '' when nobody has said
+   one. For the avatar's initials; what is shown in words is personName(). */
+function personFullName(email){
+  if (!email) return '';
+  const who = state.who;
+  const own = who && who.email === email && who.name !== email.split('@')[0] ? who.name : '';
+  const known = (state.boardPeople || []).find(p => p.email === email);
+  return cleanPersonName(own || (known && known.name) || state.authorNames[email] || '');
+}
+/* First name and last initial, "Jérôme D.", the way the owner's own notes
+   write a person; a one-word name as it is. */
+function shortName(full){
+  const words = cleanPersonName(full).split(' ').filter(Boolean);
+  if (words.length < 2) return words[0] || '';
+  return words[0] + ' ' + words[words.length - 1].charAt(0).toUpperCase() + '.';
+}
+/* How a person shows in words, anywhere: their short name, or the part of
+   their email before the @ when they have none. Two people the board knows
+   who come out the same get that part of the email in brackets as well, so
+   "Ana S. (ana)" and "Ana S. (ana.sousa)" stay two people. Something that is
+   not an email (an agent, pa, the Mac owner in the log) is its own name. */
 function personName(email){
   if (!email) return '';
-  if (state.who && state.who.email === email) return state.who.name || email;
-  return state.authorNames[email] || email.split('@')[0];
+  if (!isPersonEmail(email)) return cleanPersonName(state.authorNames[email]) || email;
+  const local = email.split('@')[0];
+  const short = shortName(personFullName(email)) || local;
+  const others = new Set((state.boardPeople || []).map(p => p.email)
+    .concat(Object.keys(state.authorNames || {}), state.who ? [state.who.email] : []));
+  others.delete(email);
+  for (const e of others)
+    if (isPersonEmail(e) && (shortName(personFullName(e)) || e.split('@')[0]) === short) return short + ' (' + local + ')';
+  return short;
+}
+/* What `[to:: ]` shows as: an agent or a people.md name as written, a person
+   given a task on a shared board (their email) as their name. */
+function assigneeLabel(to){
+  const v = String(to || '').trim();
+  return isPersonEmail(v) ? personName(v.toLowerCase()) : v;
+}
+/* The face beside `[to:: ]`, wherever one is drawn: an agent's, a person's
+   for an email, and none for a people.md name, which has no face to give. */
+function assigneeAvatarHTML(to, size){
+  const v = String(to || '').trim();
+  return agentAvatarHTML(v, size) ||
+    (isPersonEmail(v) ? personAvatarHTML(v.toLowerCase(), personFullName(v.toLowerCase()), size) : '');
+}
+/* The board's people, for Delegate to. Signed in only, and asked again when
+   the list on screen changes, since each board has its own. */
+async function loadBoardPeople(){
+  if (!state.who) { state.boardPeople = []; return; }
+  try {
+    const got = await getJSON('/board-people.json');
+    state.boardPeople = got && Array.isArray(got.people) ? got.people : [];
+  } catch (err) { state.boardPeople = []; }
+  if (state.doc) refreshView();
 }
 /* The card's short form, "by Jerome" or "edited by Ana", and the long one
    for the task panel and the card's tooltip. '' with neither tag. */
@@ -120,14 +172,14 @@ function authorLong(t){
   if (t.editedBy) parts.push((parts.length ? 'last edited by ' : 'Last edited by ') + personName(t.editedBy));
   return parts.join(' · ');
 }
-/* Whether `[to:: ]` names whoever is signed in: their email, the part of it
-   before the @, their name or their first name, which is how people.md and
-   `[to::]` usually spell a person. */
+/* Whether `[to:: ]` names whoever is signed in, by their email and nothing
+   else: a name or first name is not unique on a shared board, and matching
+   one would hand someone else's task to whoever shares it. The Mac board has
+   nobody signed in, so this is never true there, and "your move" keeps
+   matching the owner's name (yourMove()). */
 function namesMe(to){
   const who = state.who, v = String(to || '').trim().toLowerCase();
-  if (!who || !v) return false;
-  const name = String(who.name || '').trim().toLowerCase();
-  return [who.email, who.email.split('@')[0], name, name.split(/\s+/)[0]].some(n => n && n === v);
+  return !!(who && v && v === String(who.email).toLowerCase());
 }
 function forMe(t){ return namesMe(t.to) || subSteps(t).some(s => namesMe(s.to)); }
 
@@ -146,7 +198,8 @@ async function loadActivity(){
   const other = got.me ? got.entries.find(e => e.who && e.who !== got.me) : null;
   if (!other || state.dirty) return;
   const at = Date.parse(other.at);
-  if (!isNaN(at)) autoStatusAt((other.name || personName(other.who)) + ' edited', at);
+  const name = isPersonEmail(other.who) ? personName(other.who) : (cleanPersonName(other.name) || other.who);
+  if (!isNaN(at)) autoStatusAt(name + ' edited', at);
 }
 
 /* ---- Who sees a list -----------------------------------------------------

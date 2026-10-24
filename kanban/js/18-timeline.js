@@ -1181,6 +1181,7 @@ function renderFilterChips(){
       id: 'mineChip',
       hidden: noDoc || !state.who || (mineN === 0 && !state.mineFilter),
       on: state.mineFilter,
+      avatarHTML: state.who ? personAvatarHTML(state.who.email, personFullName(state.who.email), 14) : undefined,
       text: state.mineFilter ? 'Showing ' + mineN + ' mine · show all' : mineN + ' mine',
       title: state.mineFilter
         ? 'Back to the whole list'

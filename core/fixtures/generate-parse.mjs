@@ -72,7 +72,9 @@ const NEW_LINES = [
   '- [ ] **Written and changed by two people** [due:: 2026-11-01] `created-by:jerome@example.com` `edited-by:ana@example.com` `id:au0001`',
   '- [ ] **Only ever touched by its writer** `created-by:Jerome@Example.com` `id:au0002`',
   '- [ ] **The other syntax reads too** [edited-by:: ana@example.com]',
-  '- [ ] **An unknown tag still rides along after the authors** `created-by:a@b.c` `id:au0003` `mystery:7`'
+  '- [ ] **An unknown tag still rides along after the authors** `created-by:a@b.c` `id:au0003` `mystery:7`',
+  /* 23 Oct 2026: a person on a shared board, by email. */
+  '- [ ] **Given to a person by email** [impact:: med] [to:: jerome@example.com] `id:pe0001`'
 ]
 
 /* Sub-tasks, read out of a task's body. Each entry is a task line and the
@@ -128,7 +130,10 @@ const stepsFor = d => {
    spelling, or '' for a person or nobody. Both suites check todo.py's agent_of
    against it. */
 const AGENT_INPUTS = ['Plan agent', 'Implement agent', 'plan AGENT', '  Implement agent ',
-  'Jordan', '', 'Planning Agent', 'Claude']
+  'Jordan', '', 'Planning Agent', 'Claude',
+  /* 23 Oct 2026: a person given a task on a shared board is stored by email,
+     and an email is a person, however it is spelt. */
+  'jerome@example.com', 'plan-agent@example.com', 'Plan agent@example.com', 'implement.agent@offdesk.io']
 
 const caseFor = line => {
   const t = board.parseTask([line])

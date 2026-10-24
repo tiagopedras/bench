@@ -187,6 +187,13 @@ a first save to a list with no file, and the drain holding the save lock.
 **`test_authorship.mjs`** is the on-screen half, locked: the names on cards and
 in the task and sub-task panels, the status line, and the Mine chip.
 
+**`test_board_people.py`** holds `/board-people.json` to a board's own people
+(owner, shared-with, signed-in team members), refuses an outsider and the Mac
+board, and checks a request in a person's name is never credited as an agent's.
+**`test_assign_people.mjs`** is the on-screen half, locked: Delegate to on a
+shared board and on the Mac, the round faces with initials, an email never read
+as an agent, Mine on the stored email, and a Mac list round-tripping unchanged.
+
 The watcher polls with `HEAD` every three seconds, so a suite that tears every
 non-`GET` out of `fetch` sees one within a few seconds. It is a read: answer it
 from the stub and leave it out of what counts as a write.

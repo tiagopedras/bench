@@ -2604,6 +2604,8 @@
      rather than markup, so this never draws a blank box. */
   .avatar{display:inline-flex; flex:none; line-height:0; vertical-align:middle}
   .avatar svg{display:block; border-radius:5px}
+  .avatar svg.person{border-radius:50%}
+  .chipface{display:inline-flex; margin-right:5px; vertical-align:middle}
   .tenon-tag .avatar{margin-right:4px}
   .sub .avatar{margin-top:2px}
   /* Delegate to is Tenon's Dropdown since 1 Oct 2026. */

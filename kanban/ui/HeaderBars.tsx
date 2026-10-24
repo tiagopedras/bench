@@ -93,7 +93,11 @@ export function FilterTabs({ tabs, label, onToggle }: {
   )
 }
 
-export interface FilterChip { id: string, hidden: boolean, on: boolean, text: string, title: string, onClick: () => void }
+export interface FilterChip {
+  id: string, hidden: boolean, on: boolean, text: string, title: string, onClick: () => void
+  /** A face before the text: the signed-in person's, on Mine. Markup from core/avatar.js. */
+  avatarHTML?: string
+}
 
 /** The two chips beside the bucket strip: how many need scoring, how many are
  *  with an agent. */
@@ -108,7 +112,7 @@ export function FilterChips({ chips }: { chips: FilterChip[] }) {
           hidden={c.hidden}
           title={c.title}
           onClick={c.onClick}
-        >{c.text}</ToggleChip>
+        >{c.avatarHTML ? <span className="chipface" dangerouslySetInnerHTML={{ __html: c.avatarHTML }} /> : null}{c.text}</ToggleChip>
       ))}
     </>
   )
