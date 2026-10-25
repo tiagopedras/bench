@@ -14,7 +14,7 @@ Any other value refuses to start, so a typo cannot leave a public board open.
 
 Team membership comes from that header and from nowhere else. The list of
 who is in which team is the sign-in service's (teams.json in
-ai-agency-server), so Bench keeps no copy that could disagree with it.
+offdesk-server), so Bench keeps no copy that could disagree with it.
 
 Each board says who may see it in `data/<board>/access.json`:
 
