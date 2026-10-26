@@ -53,6 +53,7 @@ async function loadDatasets(){
         '<span class="dstick" aria-hidden="true"></span>+ New list…</button>';
     state.datasets = true;
     state.dataset = data.current || '';
+    state.datasetNames = data.datasets || [];
     setDataMenuLabel(data.current);
     if (!state.locked) $('#datasetMenu').classList.remove('hidden');
   } catch (err) {
@@ -62,11 +63,47 @@ async function loadDatasets(){
     setDataMenuLabel(listFolder ? listFolder.name : '');
     $('#datasetMenu').classList.add('hidden');
   }
+  resolvePendingBoard();
 }
 
-async function switchDataset(name){
+/* A banner's link names its board: #!board=<name>!task=<key>. That segment is
+   used once. It comes off the address first, so a reload does not switch again,
+   and then either the board is switched through switchDataset (the dropdown's
+   own path, which reloads onto the same hash minus the board) or, when the name
+   is the current board, unknown or hidden from this person, the link carries on
+   as if it had never named one. Returns true when it is switching. */
+function followBoardLink(board, task){
+  const hash = location.hash.replace(/!board=[^!]*/, '') || '#';
+  history.replaceState(null, '', hash);
+  if (board && board !== state.dataset && state.datasetNames.indexOf(board) > -1) {
+    if (state.dirty) {
+      alert('You have unsaved changes on this list.\n\nSave or discard them first, then open that link again.');
+      return false;
+    }
+    switchDataset(board, hash);
+    return true;
+  }
+  return false;
+}
+/* Boot: the board list is in, so the held-back card can be opened or the
+   board switched. */
+function resolvePendingBoard(){
+  const board = state.pendingBoard, task = state.pendingBoardTask;
+  if (!board) return;
+  state.pendingBoard = state.pendingBoardTask = '';
+  if (followBoardLink(board, task)) return;
+  if (task) {
+    state.pendingTask = task;
+    if (state.doc) applyPendingTask();
+  }
+}
+
+async function switchDataset(name, hashAfter){
   try {
     await postJSON('/dataset/select', { name });
+    /* A render while the request was out will have rewritten the address to
+       match the list being left, which has no such card. */
+    if (hashAfter) history.replaceState(null, '', hashAfter);
     location.reload();
   } catch (err) {
     alert('Could not switch lists.\n\n' + (err.message || err));

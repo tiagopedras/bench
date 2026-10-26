@@ -64,12 +64,16 @@ def task_key(task):
     return task.slug or task.title
 
 
-def board_url(base, task=None, view=None):
-    """The board's address with a view and a card in the fragment, the way
-    companion/src/main/boardUrl.ts builds it."""
-    if not task and not view:
+def board_url(base, task=None, view=None, board=None):
+    """The board's address with a view, a board and a card in the fragment:
+    #<view>!board=<name>!task=<key>. The companion's links carry no board; this
+    one does, so a click lands on the right list. It stays a fragment so the tab
+    already open is the one that moves."""
+    if not task and not view and not board:
         return base
     frag = view or ""
+    if board:
+        frag += "!board=" + urllib.parse.quote(board, safe="")
     if task:
         frag += "!task=" + urllib.parse.quote(task, safe="")
     return base + "#" + frag
@@ -255,7 +259,7 @@ def read_plain(path):
 
 def run_tick(data_root, boards, now, is_working, post, read_text=read_plain, retries=None, log=print):
     """Post everything owed across `boards`. `post(title, body, task, view,
-    group)` returns (ok, detail). A banner that fails is tried again after
+    group, board)` returns (ok, detail). A banner that fails is tried again after
     RETRY_AFTER, and only its first failure of the day is logged; `retries` is
     that memory and the caller keeps it between ticks. `read_text(path)` returns
     the file's text, or None when it cannot be trusted this tick (the server
@@ -287,7 +291,7 @@ def run_tick(data_root, boards, now, is_working, post, read_text=read_plain, ret
         fired = read_state(board_dir)
         changed = False
         for b in due_banners(tasks, now, is_working, fired, board_label(board)):
-            if attempt(b["key"], (b["title"], b["body"], b["task"], None, b["group"])):
+            if attempt(b["key"], (b["title"], b["body"], b["task"], None, b["group"], board)):
                 fired.add(b["key"])
                 changed = True
         if changed:
@@ -298,7 +302,7 @@ def run_tick(data_root, boards, now, is_working, post, read_text=read_plain, ret
         for entry, msg in batch:
             if msg is None:
                 done.append(entry)
-            elif attempt("%s|q|%s" % (now.date().isoformat(), json.dumps(entry, sort_keys=True)), msg + (None,)):
+            elif attempt("%s|q|%s" % (now.date().isoformat(), json.dumps(entry, sort_keys=True)), msg + (None, board)):
                 done.append(entry)
         queue_remove(board_dir, done)
     return sent
@@ -317,8 +321,8 @@ def enabled():
     return sys.platform == "darwin" and os.environ.get("BENCH_NOTIFY") != "0" and bool(find_notifier())
 
 
-def post(notifier, base_url, title, body, task=None, view=None, group=None, log=print):
-    args = [notifier, "-title", title, "-message", body, "-open", board_url(base_url, task, view)]
+def post(notifier, base_url, title, body, task=None, view=None, group=None, log=print, board=None):
+    args = [notifier, "-title", title, "-message", body, "-open", board_url(base_url, task, view, board)]
     if group:
         args += ["-group", group]
     try:
@@ -338,8 +342,8 @@ def start(data_root, list_boards, regions_for, base_url, log=print, read_text=re
         return None
     notifier = find_notifier()
 
-    def poster(title, body, task, view, group):
-        return post(notifier, base_url, title, body, task, view, group, log)
+    def poster(title, body, task, view, group, board):
+        return post(notifier, base_url, title, body, task, view, group, log, board)
 
     def loop():
         stop = threading.Event()

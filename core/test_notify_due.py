@@ -135,8 +135,8 @@ with tempfile.TemporaryDirectory() as root:
     posted = []
     logs = []
 
-    def post(title, body, task, view, group):
-        posted.append((title, body, task, view, group))
+    def post(title, body, task, view, group, board):
+        posted.append((title, body, task, view, group, board))
         return True, "exit 0"
 
     def tick(now, poster=post, retries=None):
@@ -189,7 +189,7 @@ with tempfile.TemporaryDirectory() as root:
 
     # A line comes off only once it has posted.
     json.dump([{"title": "K", "body": "keep"}, {"title": "G", "body": "go"}], open(q, "w"))
-    only_g = lambda title, body, task, view, group: (title == "G", "exit 1")
+    only_g = lambda title, body, task, view, group, board: (title == "G", "exit 1")
     retries = {}
     tick(at(MON, "11:00"), only_g, retries)
     check("queue: a line that failed to post stays, the one that posted goes",
@@ -203,7 +203,7 @@ with tempfile.TemporaryDirectory() as root:
     # A line appended while one is being posted survives the removal.
     json.dump([{"title": "First", "body": "1"}], open(q, "w"))
 
-    def appends_meanwhile(title, body, task, view, group):
+    def appends_meanwhile(title, body, task, view, group, board):
         cur = json.load(open(q))
         cur.append({"title": "Arrived", "body": "mid-post"})
         json.dump(cur, open(q, "w"))
@@ -217,6 +217,11 @@ with tempfile.TemporaryDirectory() as root:
 
 check("url: card", notify_due.board_url("http://h/k", "My task!"), "http://h/k#!task=My%20task%21")
 check("url: view and card", notify_due.board_url("http://h/k", "s", "plans"), "http://h/k#plans!task=s")
+check("url: board and card", notify_due.board_url("http://h/k", "My task", None, "work-and-career"),
+      "http://h/k#!board=work-and-career!task=My%20task")
+check("url: view, board and card", notify_due.board_url("http://h/k", "s", "plans", "a b"), "http://h/k#plans!board=a%20b!task=s")
+check("url: a board alone", notify_due.board_url("http://h/k", None, None, "content"), "http://h/k#!board=content")
+check("tick: the post names its board", {p[5] for p in posted}, {"work-and-career"})
 check("url: neither", notify_due.board_url("http://h/k"), "http://h/k")
 
 os.environ["BENCH_NOTIFY"] = "0"

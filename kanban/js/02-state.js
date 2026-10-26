@@ -180,6 +180,11 @@ const state = {
      wasn't loaded when the link arrived. Cleared the moment it is acted on;
      see parseHash. */
   pendingTask: '',
+  /* The board a link named, and the card it named there, until the board list
+     has answered. */
+  pendingBoard: '',
+  pendingBoardTask: '',
+  datasetNames: [],
   /* Same idea, for the bucket slug riding along beside the view (see
      syncHash in 07-render-board.js). Can't be resolved against a real bucket
      until state.doc exists, so it waits here for load() to match it. */
@@ -201,6 +206,9 @@ const state = {
      #timeline/design-system       …and which bucket tab is showing, durable too
      #timeline!task=ds-audit       …or a card to open, held open
      #!task=ds-audit               a card to open, whatever view is up
+     #!board=work!task=ds-audit    …on that board: a banner's link. The board
+                                   segment is used once and then removed (see
+                                   followBoardLink in 21-datasets.js)
 
    None of them compete. The view segment sets the view exactly as it always
    did; the bucket segment (a slug — see slugifyBucket in 07-render-board.js)
@@ -228,16 +236,21 @@ function parseHash(){
   const slash = viewPart.indexOf('/');
   const view = slash < 0 ? viewPart : viewPart.slice(0, slash);
   const bucketSlug = slash < 0 ? '' : viewPart.slice(slash + 1);
-  const m = /^task=(.*)$/.exec(rest);
-  let task = '';
-  if (m) { try { task = decodeURIComponent(m[1]); } catch (e) { task = m[1]; } }
+  /* What follows the first `!` is a run of `key=value` segments. Cut only
+     before a known key, so a title with a raw `!` in an older link stays whole. */
+  const seg = {};
+  rest.split(/!(?=(?:task|chat|board)=)/).forEach(part => {
+    const eq = part.indexOf('=');
+    if (eq < 0) return;
+    let v = part.slice(eq + 1);
+    try { v = decodeURIComponent(v); } catch (e) { /* keep it as written */ }
+    if (!(part.slice(0, eq) in seg)) seg[part.slice(0, eq)] = v;
+  });
   // `!chat=<session>` opens one conversation, the same way `!task=` opens one
   // card. A session id is Claude Code's own and stable, so unlike a task it
   // needs no slug-or-title guessing.
-  const c = /^chat=(.*)$/.exec(rest);
-  let chatId = '';
-  if (c) { try { chatId = decodeURIComponent(c[1]); } catch (e) { chatId = c[1]; } }
-  return { view, bucketSlug, task: task.trim(), chat: chatId.trim() };
+  const task = seg.task || '', chatId = seg.chat || '', board = seg.board || '';
+  return { view, bucketSlug, task: task.trim(), chat: chatId.trim(), board: board.trim() };
 }
 
 /* A task's `id` is minted fresh on every parse (see uid), so nothing outside
@@ -333,7 +346,12 @@ function openChatByKey(id){
 function initViewFromHash(){
   const h = parseHash();
   if (isKnownView(h.view)) state.view = h.view;
-  state.pendingTask = h.task;
+  /* A link naming another board holds its card back until /datasets.json has
+     said whether that board is there: opening it on this list first would find
+     the wrong card or none. See resolvePendingBoard() in 21-datasets.js. */
+  state.pendingBoard = h.board;
+  state.pendingBoardTask = h.board ? h.task : '';
+  state.pendingTask = h.board ? '' : h.task;
   state.pendingChat = h.chat;
   state.pendingBucketSlug = h.bucketSlug || null;
 }

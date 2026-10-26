@@ -501,6 +501,10 @@ window.addEventListener('beforeunload', e => { if (state.dirty) { e.preventDefau
    click, for instance) carry no opinion about the bucket at all. */
 window.addEventListener('hashchange', () => {
   const h = parseHash();
+  /* A link that names a board is acted on before anything else, because the
+     rest of this is about the board that is up. Switching reloads the page onto
+     the same hash; any other answer drops the segment and carries on below. */
+  if (h.board && followBoardLink(h.board, h.task)) return;
   let changed = false;
   /* Everything below is putting the board back where Back asked for it, and
      opening a card or switching a view pushes an entry of its own — so the one
