@@ -257,6 +257,14 @@ check("url: board and card", notify_due.board_url("http://h/k", "My task", None,
 check("url: view, board and card", notify_due.board_url("http://h/k", "s", "plans", "a b"), "http://h/k#plans!board=a%20b!task=s")
 check("url: a board alone", notify_due.board_url("http://h/k", None, None, "content"), "http://h/k#!board=content")
 check("tick: the post names its board", {p[5] for p in posted}, {"work-and-career"})
+# The link a tick really builds, for a task carrying an id: the base is the
+# board's page, not the server's root (which is a directory listing).
+BASE = "http://127.0.0.1:8765/kanban/index.html"
+idt = todo.parse_task(["- [ ] **Build a hallway bench to cover the robot vacuum** [due:: 2026-10-25] `id:b7k2qw`"])
+check("key: the id first", notify_due.task_key(idt), "b7k2qw")
+check("key: then the slug", notify_due.task_key(todo.parse_task(["- [ ] **T** `#the-slug`"])), "the-slug")
+check("url: what a tick builds for a task with an id", notify_due.board_url(BASE, notify_due.task_key(idt), None, "personal"),
+      "http://127.0.0.1:8765/kanban/index.html#!board=personal!task=b7k2qw")
 check("url: neither", notify_due.board_url("http://h/k"), "http://h/k")
 
 os.environ["BENCH_NOTIFY"] = "0"

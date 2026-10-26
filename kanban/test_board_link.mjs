@@ -42,7 +42,7 @@ const until = async (fn, ms = 8000) => {
 /* A second list with one card the first does not have, then back to _test. */
 await post('/datasets', { name: 'elsewhere' })
 const base = await (await fetch(`${BASE}/data/todo.md`, { cache: 'no-store' })).text()
-const doc = ['# To-do', '', '## 1. Work', '', '### Doing', '', '- [ ] **Only on the other list** `#only-there`', ''].join('\n')
+const doc = ['# To-do', '', '## 1. Work', '', '### Doing', '', '- [ ] **Only on the other list** `#only-there` `id:zz9y8x`', ''].join('\n')
 const saved = await fetch(`${BASE}/data/todo.md`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: doc, base }) })
 await post('/dataset/select', { name: '_test' })
 
@@ -104,6 +104,15 @@ try {
   await new Promise(r => setTimeout(r, 800))
   await until(() => evalJS(`!!window.state && !!state.doc`))
   check('a reload stays on that list rather than switching again', await evalJS(`state.dataset`) === 'elsewhere')
+
+  /* The same card by its id and by its title with spaces, as a banner's link
+     carries them, loaded fresh the way `open <url>` lands in a new tab. */
+  await post('/dataset/select', { name: '_test' })
+  await go(link('#!board=elsewhere!task=zz9y8x'))
+  check('a fresh load by the task id switches and opens the card', await until(async () => (await evalJS(OPEN)) === 'Only on the other list'))
+  await post('/dataset/select', { name: '_test' })
+  await go(link('#!board=elsewhere!task=Only%20on%20the%20other%20list'))
+  check('and by its title, %20 and all', await until(async () => (await evalJS(OPEN)) === 'Only on the other list') && await evalJS(`state.dataset`) === 'elsewhere')
 
   await post('/dataset/select', { name: '_test' })
   const known = 'Chase the 360 responses'

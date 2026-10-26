@@ -67,8 +67,10 @@ def board_label(name):
 
 
 def task_key(task):
-    """How a card is named in a link: its `#slug`, or its title without one."""
-    return task.slug or task.title
+    """How a card is named in a link, in the order the board's own taskKey()
+    and findTaskByKey() read it: the id on its line, else its `#slug`, else its
+    title. The id is the only one that is unique and survives a retitle."""
+    return task.stable_id or task.slug or task.title
 
 
 def board_url(base, task=None, view=None, board=None):
