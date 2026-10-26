@@ -2521,7 +2521,7 @@
      Complete all sits on Subtasks'. Pushed there rather than placed, so the
      note beside the label can be as long or short as it wants to be. */
   .notegrow{margin-left:auto}
-  .field input[type="text"], .field input[type="date"], .field select, .field textarea{
+  .field input[type="text"], .field input[type="date"], .field input[type="time"], .field select, .field textarea{
     border:1px solid var(--tenon-stroke-default); background:var(--tenon-background-default); border-radius:var(--tenon-radius-default); padding:5px 9px; width:100%;
     min-height:33px;
   }

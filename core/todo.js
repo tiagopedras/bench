@@ -118,7 +118,7 @@ function readTags(rest){
     const k = bk != null ? bk : sk, v = bk != null ? bv : sv;
     const key = k.toLowerCase();
     if (key === 'impact' || key === 'effort' || key === 'due' ||
-        key === 'start' || key === 'done' || key === 'to' || key === 'theme') tags[key] = v.trim();
+        key === 'start' || key === 'done' || key === 'to' || key === 'theme' || key === 'time') tags[key] = v.trim();
     /* Retired. `[to::]` says who does the work, an agent included,
        and a backup still carrying `ai:` loses it on the next save. */
     else if (key === 'ai') {}
@@ -181,6 +181,9 @@ function readTags(rest){
     impact: tags.impact || '',
     effort: tags.effort || '',
     due: tags.due || '',
+    /* The hour the due date falls at, HH:MM in 24h, for the desktop banner. It
+       means nothing without a due date, so serializeTask() drops it then. */
+    time: tags.time || '',
     /* The deadline and the earliest possible start are two different facts. One
        date was doing both jobs, which meant nothing could tell "finish by the
        7th" apart from "cannot begin until the 1st". */
@@ -267,6 +270,7 @@ function serializeTask(t){
     if (t.effort) tags.push('[effort:: ' + t.effort + ']');
     if (t.start)  tags.push('`start:' + t.start + '`');
     if (t.due)    tags.push('[due:: ' + t.due + ']');
+    if (t.due && t.time) tags.push('[time:: ' + t.time + ']');
     if (t.done && t.doneOn) tags.push('`done:' + t.doneOn + '`');
     /* Beside `done:`, and written whether or not the task is ticked. An
        unticked one carrying either is what check_todo.py reports as a FIX —
@@ -475,6 +479,7 @@ function splitBody(t){
         stableId: r.stableId, doing: r.doing, cancelled: r.cancelled, archived: r.archived,
         createdBy: r.createdBy, editedBy: r.editedBy, extra: r.extra,
         due:   readField(text, 'due'),
+        time:  r.time,
         start: readField(text, 'start'),
         to:    readField(text, 'to'),
         /* Half the blockers in the file are steps, not whole tasks. Without the
@@ -799,7 +804,7 @@ function priorityScore(t){
    core/todo.py's merge_saves() is the same function, line for line, and
    core/fixtures/merge.json holds the cases both are held to. */
 
-const MERGE_FIELDS = ['title', 'bold', 'done', 'impact', 'effort', 'due', 'start', 'doneOn', 'to',
+const MERGE_FIELDS = ['title', 'bold', 'done', 'impact', 'effort', 'due', 'time', 'start', 'doneOn', 'to',
   'theme', 'urgent', 'week', 'doing', 'slug', 'blockedBy', 'rank', 'tlrank', 'headline', 'chat',
   'repeat', 'stableId', 'cancelled', 'archived', 'createdBy', 'editedBy', 'extra'];
 

@@ -398,7 +398,7 @@ PRIORITY = fixture("priority.json")
 PY_FIELD = {"doneOn": "done_on", "blockedBy": "blocked_by", "stableId": "stable_id",
             "createdBy": "created_by", "editedBy": "edited_by"}
 SKIP_FIELD = set()
-STEP_FIELDS = ["done", "due", "start", "to", "slug", "blockedBy", "rank", "week", "impact", "effort",
+STEP_FIELDS = ["done", "due", "time", "start", "to", "slug", "blockedBy", "rank", "week", "impact", "effort",
                "urgent", "doneOn", "headline", "chat", "tlrank", "repeat", "stableId", "doing",
                "cancelled", "archived", "createdBy", "editedBy", "extra"]
 
@@ -479,6 +479,53 @@ def check_merge():
                   % (c["why"], got["conflicts"], c["conflicts"]))
             failures += 1
     print("%d merges — %s" % (len(cases), "all agree" if not failures else "%d failed" % failures))
+    return failures
+
+
+def check_time():
+    """`[time:: HH:MM]` on a task and a sub-task: read, kept through a merge's
+    rewrite of the line, dropped when the due date is gone, and the fallback to a
+    repeat rule's own time."""
+    failures = 0
+
+    def expect(name, got, want):
+        nonlocal failures
+        if got != want:
+            print("FAIL time — %s\n     got  %r\n     want %r" % (name, got, want))
+            failures += 1
+
+    task = todo.parse_task(["- [ ] **Call** [due:: 2026-11-02] [time:: 15:00] `id:tm0001`"])
+    expect("a task's time", (task.due, task.time, todo.effective_time(task)), ("2026-11-02", "15:00", "15:00"))
+    step = todo.parse_task(["- [ ] Ring back [due:: 2026-11-02] [time:: 9:05]"])
+    expect("a sub-task's time, padded", todo.effective_time(step), "09:05")
+    bare = todo.parse_task(["- [ ] **No time** [due:: 2026-11-02]"])
+    expect("no time key", todo.effective_time(bare), "")
+    expect("a time with no due date means nothing",
+           todo.effective_time(todo.parse_task(["- [ ] **Loose** [time:: 15:00]"])), "")
+    expect("a time that is not a time of day",
+           todo.effective_time(todo.parse_task(["- [ ] **Bad** [due:: 2026-11-02] [time:: 25:99]"])), "")
+    rep = todo.parse_task(["- [ ] **Weekly** [due:: 2026-11-04] `repeat:wed-9:15`"])
+    expect("a repeat rule's time stands in", todo.effective_time(rep), "09:15")
+    own = todo.parse_task(["- [ ] **Weekly** [due:: 2026-11-04] [time:: 11:00] `repeat:wed-9:15`"])
+    expect("the task's own time beats the rule's", todo.effective_time(own), "11:00")
+    expect("a rule with no time", todo.effective_time(
+        todo.parse_task(["- [ ] **Weekly** [due:: 2026-11-04] `repeat:wed`"])), "")
+
+    base = "\n".join(["# To-do", "", "## 1. Work", "", "### Doing", "",
+                      "- [ ] **Call** [due:: 2026-11-02] [time:: 15:00] `id:tm0001`",
+                      "  - [ ] Ring back [due:: 2026-11-02] [time:: 10:15] `id:tm0002`", ""])
+    mine = base.replace("**Call**", "**Call Ana**").replace("Ring back", "Ring Ana back")
+    theirs = base.replace("`id:tm0001`", "[impact:: high] `id:tm0001`").replace("`id:tm0002`", "[impact:: low] `id:tm0002`")
+    got = todo.merge_saves(base, mine, theirs, "mine")["text"]
+    expect("a rewritten task and sub-task keep their times", got.splitlines()[6:8], [
+        "- [ ] **Call Ana** [impact:: high] [due:: 2026-11-02] [time:: 15:00] `id:tm0001`",
+        "  - [ ] Ring Ana back [impact:: low] [due:: 2026-11-02] [time:: 10:15] `id:tm0002`"])
+    dropped = base.replace("[due:: 2026-11-02] [time:: 15:00]", "[time:: 15:00]").replace("**Call**", "**Call Ana**")
+    theirs = base.replace("`id:tm0001`", "[impact:: high] `id:tm0001`")
+    got = todo.merge_saves(base, dropped, theirs, "mine")["text"]
+    expect("a time left without a date is not written back",
+           got.splitlines()[6], "- [ ] **Call Ana** [impact:: high] `id:tm0001`")
+    print("time — %s" % ("all agree" if not failures else "%d failed" % failures))
     return failures
 
 
@@ -773,6 +820,7 @@ def main():
     failures += check_messages()
     failures += check_parse()
     failures += check_merge()
+    failures += check_time()
     failures += check_priority()
     failures += check_profile()
     failures += check_process_matches()

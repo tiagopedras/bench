@@ -30,13 +30,15 @@ const old = JSON.parse(fs.readFileSync(path.join(HERE, 'parse.json'), 'utf8'))
 /* Every field on the model, so a field added in one language and forgotten in
    the other shows up as a missing key rather than as nothing at all. `id` is
    not here: it is uid(), fresh every parse, and means nothing outside one tab. */
-const FIELDS = ['done', 'title', 'bold', 'impact', 'effort', 'due', 'start', 'doneOn',
+const FIELDS = ['done', 'title', 'bold', 'impact', 'effort', 'due', 'time', 'start', 'doneOn',
   'to', 'theme', 'urgent', 'week', 'slug', 'blockedBy', 'rank', 'tlrank', 'headline',
   'chat', 'repeat', 'stableId', 'cancelled', 'archived', 'extra', 'doing', 'createdBy', 'editedBy']
 
 /* New cases, appended as the grammar grows. The existing lines are untouched
    and the list is de-duplicated below, so re-running this is idempotent. */
 const NEW_LINES = [
+  '- [ ] **A due time beside the date** [due:: 2026-11-02] [time:: 15:00] `id:tm0001`',
+  '- [ ] **A time with no date is read, and dropped on the next save** [time:: 09:30] `id:tm0002`',
   '- [x] **A cancelled task is ticked and says so** `done:2026-09-15` `cancelled:2026-09-15`',
   '- [x] **An archived task is the other half of the same rule** `done:2026-09-15` `archived:2026-09-14`',
   '- [x] **Both at once, which is odd but has to round-trip** `done:2026-09-15` `cancelled:2026-09-15` `archived:2026-09-15`',
@@ -82,6 +84,12 @@ const NEW_LINES = [
    steps and what inheritedFields() says each takes from the task. Python's
    split_body() and inherited_fields() are held to the same answers. */
 const STEP_TASKS = [
+  { why: 'a step has its own due time and does not take its task\'s',
+    lines: [
+      '- [ ] **Timed task** [due:: 2026-11-02] [time:: 15:00]',
+      '  - [ ] Timed step [due:: 2026-11-02] [time:: 10:15]',
+      '  - [ ] Untimed step [due:: 2026-11-02]'
+    ] },
   { why: 'a step carries every tag a task does, and Doing on top',
     lines: [
       '- [ ] **Parent** [impact:: high] [effort:: L] [due:: 2026-09-30] `week`',
@@ -111,7 +119,7 @@ const STEP_TASKS = [
     ] }
 ]
 
-const STEP_FIELDS = ['done', 'due', 'start', 'to', 'slug', 'blockedBy', 'rank', 'week', 'impact', 'effort',
+const STEP_FIELDS = ['done', 'due', 'time', 'start', 'to', 'slug', 'blockedBy', 'rank', 'week', 'impact', 'effort',
   'urgent', 'doneOn', 'headline', 'chat', 'tlrank', 'repeat', 'stableId', 'doing', 'cancelled', 'archived',
   'createdBy', 'editedBy', 'extra']
 const stepsFor = d => {

@@ -204,6 +204,37 @@ try {
   await wait(300)
   check('Clear takes it off again', await evalJS(`!__t().due && document.querySelector('#f-due').textContent === 'No date'`))
 
+  /* ---- due time ---- */
+
+  const setTime = (sel, v) => evalJS(`(() => {
+    const i = document.querySelector('${sel}');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, '${v}');
+    i.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`)
+  check('the Due time input is empty and switched off while there is no date', await evalJS(`(() => {
+    const i = document.querySelector('#f-time');
+    return !!i && i.type === 'time' && i.value === '' && i.disabled;
+  })()`))
+  await evalJS(`document.querySelector('#f-due').click()`)
+  await wait(100)
+  await evalJS(`document.querySelectorAll('#f-cal-due [data-day]:not([data-day=""])')[14].click()`)
+  await wait(300)
+  check('picking a date switches it on', await evalJS(`!document.querySelector('#f-time').disabled`))
+  await setTime('#f-time', '15:00')
+  await wait(200)
+  check('setting a time writes it to the task', await evalJS(`__t().time`) === '15:00')
+  check('and the task line carries [time:: 15:00] right after its due date', await evalJS(`serializeTask(__t())[0].includes('[due:: ' + __t().due + '] [time:: 15:00]')`))
+  check('a board save and reload keeps it', await evalJS(`(() => {
+    const text = serializeDoc(state.doc);
+    const t = parseDoc(text).buckets.flatMap(b => b.tiers).flatMap(x => x.tasks).find(t => t.title === 'Alpha');
+    return t.time === '15:00' && t.due === __t().due;
+  })()`))
+  await evalJS(`document.querySelector('#f-due').click()`)
+  await wait(100)
+  await evalJS(`document.querySelector('#f-cal-due [data-day=""]').click()`)
+  await wait(300)
+  check('clearing Due clears the time with it', await evalJS(`__t().time === '' && document.querySelector('#f-time').value === '' && !serializeTask(__t())[0].includes('time::')`))
+
   /* ---- sub-task rows ---- */
 
   await evalJS(`state.locked = false; window.confirm = () => true; openDrawer(__t().id)`)
@@ -236,6 +267,18 @@ try {
   await evalJS(`document.querySelectorAll('#f-subs .sub')[1].click()`)
   await wait(300)
   check('clicking a row opens that sub-task in its own panel', await evalJS(`document.querySelector('#subpanel').classList.contains('open')`))
+  check('a sub-task on its task\'s date has the Due time input switched off', await evalJS(`document.querySelector('#s-time')?.disabled === true`))
+  await evalJS(`document.querySelector('#s-due').click()`)
+  await wait(100)
+  await evalJS(`document.querySelectorAll('#s-cal-due [data-day]:not([data-day=""])')[10].click()`)
+  await wait(400)
+  await setTime('#s-time', '10:15')
+  await wait(200)
+  check('a sub-task with its own date takes a time and writes it to its line', await evalJS(`(() => {
+    const t = __t(), s = subSteps(t)[1];
+    return readSub(t, s.line).time === '10:15' && t.body[s.line].includes('[time:: 10:15]') && t.body[s.line].indexOf('[due::') < t.body[s.line].indexOf('[time::');
+  })()`), await evalJS(`__t().body.join(' / ')`))
+  check('the task has no time of its own from that', await evalJS(`!__t().time`))
   /* a sub-task with no start of its own says it takes the task's */
   await evalJS(`closeDrawer(); __t().start = '2026-11-03'; openDrawer(__t().id)`)
   await wait(300)

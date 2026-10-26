@@ -77,7 +77,7 @@ ANY_TAG_RE = re.compile(r"\[([A-Za-z][\w-]*)::\s*([^\]]*)\]|`([A-Za-z][\w-]*):([
 SLUG_RE = re.compile(r"`#([a-z0-9][a-z0-9-]*)`", re.I)
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
-INLINE_KEYS = {"impact", "effort", "due", "start", "done", "to", "theme"}
+INLINE_KEYS = {"impact", "effort", "due", "time", "start", "done", "to", "theme"}
 
 # The two agents a task can be handed to, spelt the way `[to::]` writes them.
 # Anything else in `[to::]` is a person. `ai:` is retired and is
@@ -97,7 +97,7 @@ class Task:
     the caller decides by indent. Only the fields a reader asks about are
     promoted to attributes; anything else stays in `extra` exactly as written."""
 
-    __slots__ = ("done", "title", "bold", "impact", "effort", "due", "start", "done_on",
+    __slots__ = ("done", "title", "bold", "impact", "effort", "due", "time", "start", "done_on",
                  "to", "theme", "urgent", "week", "doing", "slug", "blocked_by", "rank",
                  "tlrank", "headline", "chat", "repeat", "stable_id",
                  "cancelled", "archived", "created_by", "edited_by", "extra",
@@ -110,7 +110,7 @@ class Task:
         # written and a sub-task line usually is not. Only the merge reads it,
         # to write a line back the way it was.
         self.bold = False
-        self.impact = self.effort = self.due = self.start = ""
+        self.impact = self.effort = self.due = self.time = self.start = ""
         self.done_on = self.to = self.theme = ""
         self.urgent = self.week = self.doing = False
         self.slug = self.headline = self.chat = self.repeat = ""
@@ -583,6 +583,31 @@ def effective_due(task, today):
     while nxt < today:
         nxt = occurrence_after(rep, nxt)
     return nxt
+
+
+TIME_RE = re.compile(r"^(\d{1,2}):(\d{2})$")
+
+
+def _hhmm(val):
+    """`val` as zero-padded 24h HH:MM, or "" when it is not a time of day."""
+    m = TIME_RE.match(str(val or "").strip())
+    if not m or int(m.group(1)) > 23 or int(m.group(2)) > 59:
+        return ""
+    return "%02d:%s" % (int(m.group(1)), m.group(2))
+
+
+def effective_time(task):
+    """The time of day this task falls due at, as HH:MM, or "".
+
+    The task's own `[time:: ]` wins, and only counts beside a due date, the way
+    the board writes it. Failing that, the time inside a `repeat:` rule such as
+    `repeat:wed-9:15` stands in. A sub-task is asked on its own and does not
+    take its task's time."""
+    own = _hhmm(task.time)
+    if own and task.due:
+        return own
+    rep = read_repeat(task.repeat) if task.repeat else None
+    return _hhmm(rep["time"]) if rep else ""
 
 
 # ---- notes, and the suggested messages inside them --------------------------
@@ -1076,7 +1101,7 @@ _STEP_RE = re.compile(r"^(\s*)-\s+\[([ xX])\]\s+(.*)$")
 _INDENTED = re.compile(r"^\s+\S")
 _HEADING2 = re.compile(r"^##\s")
 
-MERGE_FIELDS = ("title", "bold", "done", "impact", "effort", "due", "start", "doneOn", "to",
+MERGE_FIELDS = ("title", "bold", "done", "impact", "effort", "due", "time", "start", "doneOn", "to",
                 "theme", "urgent", "week", "doing", "slug", "blockedBy", "rank", "tlrank",
                 "headline", "chat", "repeat", "stableId", "cancelled", "archived", "createdBy",
                 "editedBy", "extra")
@@ -1241,6 +1266,8 @@ def _mg_line(f, indent):
         tags.append("`start:" + f["start"] + "`")
     if f["due"]:
         tags.append("[due:: " + f["due"] + "]")
+    if f["due"] and f["time"]:
+        tags.append("[time:: " + f["time"] + "]")
     if f["done"] and f["doneOn"]:
         tags.append("`done:" + f["doneOn"] + "`")
     if f["cancelled"]:

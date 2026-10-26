@@ -274,10 +274,11 @@ function mountStepFields(root){
 }
 /* Can start and Due, drawn by Tenon's DateButton and Calendar (DateFields in
    kanban/ui/DrawerFields.tsx). `item` is whatever holds the two dates, read
-   when the calendar is picked from; `after` runs once one is chosen. */
-function mountDateFields(hostId, prefix, ro, fields, onPick){
+   when the calendar is picked from; `after` runs once one is chosen. `time`,
+   when given, adds the Due time input: { value, disabled, onChange }. */
+function mountDateFields(hostId, prefix, ro, fields, onPick, time){
   BoardUI.mountFlushed($('#' + hostId), BoardUI.h(BoardUI.DateFields, {
-    idPrefix: prefix, fields, disabled: ro, today: ymd(today()), onPick
+    idPrefix: prefix, fields, disabled: ro, today: ymd(today()), onPick, time
   }));
 }
 function dateFieldModels(start, due, inheritedDue, inheritedStart){
@@ -847,7 +848,7 @@ const KNOWN_TAG_FIELDS = [
    is refused on one of these, since writing it into t.extra anyway would put
    a second, unread copy beside the field the board actually uses. */
 const RESERVED_TAG_KEYS = [
-  'impact', 'effort', 'due', 'start', 'done', 'to', 'theme', 'blocked-by', 'rank',
+  'impact', 'effort', 'due', 'time', 'start', 'done', 'to', 'theme', 'blocked-by', 'rank',
   'tlrank', 'headline', 'chat', 'repeat', 'id', 'cancelled', 'archived',
   'urgent', 'week', 'doing'
 ];
@@ -1322,7 +1323,8 @@ function openDrawer(id, focusTitle){
   mountStepFields($('#dbody'));
   mountPickers($('#dbody'));
   let pickDate = () => {};
-  mountDateFields('f-dates', 'f', ro, dateFieldModels(t.start, t.due), (k, v) => pickDate(k, v));
+  mountDateFields('f-dates', 'f', ro, dateFieldModels(t.start, t.due), (k, v) => pickDate(k, v),
+    { value: t.due ? t.time || '' : '', disabled: !parseDue(t.due), onChange: v => { t.time = v; touch(); } });
   wireTagChips(t);
 
   // Every handler below changes the task, so none of them are wired up in a
@@ -1373,6 +1375,7 @@ function openDrawer(id, focusTitle){
   $('#f-urgent').onchange = e => { t.urgent = e.target.checked; touch(); };
   pickDate = (k, v) => {
     t[k] = v;
+    if (k === 'due' && !v) t.time = '';
     touch();
     // The two dates constrain each other, so a change can make the other one
     // wrong. Re-open so the warning appears or clears straight away.
@@ -1745,7 +1748,12 @@ function openSubtaskDrawer(found){
   mountStepFields($('#sbody'));
   mountPickers($('#sbody'));
   let pickSubDate = () => {};
-  mountDateFields('s-dates', 's', ro, dateFieldModels(f.start, inh.due, took('due'), t.start), (k, v) => pickSubDate(k, v));
+  let pickSubTime = () => {};
+  /* A time only means something beside the sub-task's own date, so one that
+     takes its task's due has the input switched off. */
+  mountDateFields('s-dates', 's', ro, dateFieldModels(f.start, inh.due, took('due'), t.start), (k, v) => pickSubDate(k, v),
+    { value: f.due ? f.time || '' : '', disabled: !parseDue(f.due),
+      onChange: v => pickSubTime(v) });
   if (!ro) {
     /* One edit: read the line as it is now, change what changed, write it back.
        Read again every time, since another edit may have rewritten it. */
@@ -1793,9 +1801,10 @@ function openSubtaskDrawer(found){
        the drawer by state.openTask, which is this sub-task's id. */
     const dates = {
       get start(){ return readSub(t, line).start; }, set start(v){ edit(cur => { cur.start = v; }); },
-      get due(){ return inh.due; }, set due(v){ edit(cur => { cur.due = v; }); }
+      get due(){ return inh.due; }, set due(v){ edit(cur => { cur.due = v; if (!v) cur.time = ''; }); }
     };
     pickSubDate = (k, v) => { dates[k] = v; openDrawer(state.openTask); };
+    pickSubTime = v => { edit(cur => { cur.time = v; }); };
     $('#s-urgent').onchange = e => { edit(cur => { cur.urgent = e.target.checked; }); again(); };
     $('#s-week').onchange = e => { edit(cur => { cur.week = e.target.checked; }); again(); };
     const note = $('#s-note');
