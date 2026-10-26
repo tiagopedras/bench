@@ -433,8 +433,7 @@ A column is a `### Name` heading, and like a bucket it has no id: it is whicheve
 name a heading uses, read the same everywhere that name turns up.
 
 Five of them are read that way outside the board too. Backlog, To do, Doing,
-Reviewing and Done are matched by their exact text by the companion, the
-planning agent, `core/todo.py` and the board's own recurring-task roll, so
+Reviewing and Done are matched by their exact text by the planning agent, `core/todo.py` and the board's own recurring-task roll, so
 renaming one for real would leave a second, empty column of the old name behind.
 Typing a new name over one of those five sets a **label** instead: the heading in
 `todo.md` stays exactly as it was, the board draws the word you typed, and the
@@ -444,7 +443,7 @@ confused. Labels live in `data/<dataset>/column-names.json`, for the same reason
 preference about looking at the list, not a fact the list carries, and `todo.md`
 has exactly one writer. Typing the real heading back clears the label. Nothing
 outside the board reads that file, so a renamed column is still "To do" to the
-companion and in every plan; that is the price of the rename costing nothing.
+planning agent and in every plan; that is the price of the rename costing nothing.
 
 Not every bucket carries every heading, but the
 board draws all of them on every bucket's view regardless, empty wherever that
@@ -683,17 +682,20 @@ than about the list. Both only show when an agent can run on this machine, so no
 or `agents-engine`.
 
 Three things here run on a clock rather than when you ask them to: the nightly
-agent's twelve launchd wakes, the companion's morning briefing, and the weekly
+agent's twelve launchd wakes, the desktop banners thread, and the weekly
 backup thread inside `server.py`. Before this they were three places to go and
 look, and "did the nightly job actually run" had no answer short of reading a log.
 
 It reads two sources, and they are not alternatives. **Live** — `launchctl print`,
-the plist's own wake times, the companion's lock file — says whether a job is
-armed and when it fires next, which no log can know, since a log will happily
-describe a job that was unloaded a week ago. **The ledger** — `plans/plan-agent.log`,
-`companion.json`, the backup listing — says what it actually did, which
+the plist's own wake times, whether the server's banner thread is alive — says
+whether a job is armed and when it fires next, which no log can know, since a
+log will happily describe a job that was unloaded a week ago. **The ledger** —
+`plans/plan-agent.log`, the backup listing — says what it actually did, which
 `launchctl` cannot. A job that is not installed says so and gives the command to
-install it.
+install it. The banners job is a thread in this server, so it has no schedule to
+read and no ledger: it says whether it is running, and when it is not, why
+(`BENCH_NOTIFY=0`, not a Mac, or no `terminal-notifier`). What it has sent is in
+each list's `notify-state.json`.
 
 The second card is the usage windows, which had no home outside running
 `core/windows.py --history` at a terminal. The last 30 days, one row a window,

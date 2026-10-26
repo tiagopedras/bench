@@ -1,4 +1,5 @@
 #!/bin/bash
+# RETIRED since 26 Oct 2026: desktop banners now come from the board server (core/notify_due.py). This still works but nothing needs it.
 #
 # Double-click this to bundle the current version of the companion as a real
 # macOS .app — something Finder, Spotlight and the Dock all treat as an app,

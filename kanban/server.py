@@ -1417,6 +1417,15 @@ def _banners_job():
         hint = "install terminal-notifier (brew install terminal-notifier)"
     else:
         hint = "not started on this server"
+    last = notify_due.STATUS["last_tick"]
+    nxt = ""
+    if on and todo is not None:
+        import owner_profile
+        regions = owner_profile.holiday_regions(DATA_ROOT)
+        nxt = notify_due.next_banner(
+            DATA_ROOT, list_datasets(everyone=True), datetime.datetime.now(),
+            lambda d: todo.is_working_day(d, regions),
+            lambda p: _steady_read(p)[0]).isoformat(timespec="minutes")
     return {
         "id": "banners",
         "name": "Desktop banners",
@@ -1424,8 +1433,8 @@ def _banners_job():
         "schedule": "every minute while the board is running",
         "armed": on,
         "state": "running" if on else "not running",
-        "next": "",
-        "last": "",
+        "next": nxt,
+        "last": "checked at %s" % last.strftime("%H:%M") if last else "has not checked yet",
         "recent": [],
         "hint": hint,
         "lock": False,

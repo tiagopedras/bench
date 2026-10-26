@@ -1,4 +1,5 @@
 #!/bin/bash
+# RETIRED since 26 Oct 2026: desktop banners now come from the board server (core/notify_due.py). This still works but nothing needs it.
 #
 # Double-click this to run the companion in dev mode: hot reload on every
 # save, instead of the build-once-and-launch that run.command does.

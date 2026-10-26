@@ -127,6 +127,19 @@ check("catch-up: a late start sends what was owed earlier today, in order, and n
       [x["title"] for x in banners(c, at(MON, "13:00"))], ["Morning", "Noon"])
 check("catch-up: nothing from earlier days is replayed", banners(o, at(D(2026, 10, 28), "13:00")), [])
 
+# next_banner: what the schedule page shows.
+with tempfile.TemporaryDirectory() as root:
+    os.makedirs(os.path.join(root, "b"))
+    with open(os.path.join(root, "b", "todo.md"), "w") as fh:
+        fh.write(doc("- [ ] **Soon** [due:: 2026-10-26] [time:: 15:00]", "- [ ] **Sooner** [due:: 2026-10-26] [time:: 12:00]",
+                     "- [ ] **Earlier** [due:: 2026-10-26] [time:: 08:00]"))
+    nb = lambda now, **k: notify_due.next_banner(root, ["b"], now, working, **k)
+    check("next banner: the earliest still to come today", nb(at(MON, "10:00")), at(MON, "12:00"))
+    check("next banner: skips what has gone out already",
+          nb(at(MON, "13:00")), at(MON, "15:00"))
+    check("next banner: nothing left today, so 09:00 on the next working day", nb(at(MON, "16:00")), at(TUE, "09:00"))
+    check("next banner: the day before a holiday weekend skips to a working day", notify_due.next_banner(root, ["b"], at(FRI, "20:00"), working), at(D(2026, 11, 3), "09:00"))
+
 # Restart: state on disk, no double-fire.
 with tempfile.TemporaryDirectory() as root:
     bdir = os.path.join(root, "work-and-career")

@@ -280,6 +280,29 @@ def queue_remove(board_dir, entries):
 
 RETRY_AFTER = dt.timedelta(minutes=10)
 
+# When the thread last finished a tick, for the schedule page.
+STATUS = {"last_tick": None}
+
+
+def next_banner(data_root, boards, now, is_working, read_text=None):
+    """When the next due banner goes out: the earliest one still to come today
+    across `boards`, else 09:00 on the next working day (the first moment a
+    banner can come out of a new day). A datetime."""
+    read_text = read_text or read_plain
+    end = dt.datetime.combine(now.date(), dt.time(23, 59, 59))
+    soonest = None
+    for board in boards:
+        board_dir = os.path.join(data_root, board)
+        text = read_text(os.path.join(board_dir, "todo.md"))
+        if text is None:
+            continue
+        for b in due_banners(todo.parse_doc(text), end, is_working, read_state(board_dir), ""):
+            if b["at"] > now and (soonest is None or b["at"] < soonest):
+                soonest = b["at"]
+    if soonest:
+        return soonest
+    return dt.datetime.combine(_next_working_day(now.date(), is_working), DEFAULT_TIME)
+
 
 def read_plain(path):
     try:
@@ -383,6 +406,7 @@ def start(data_root, list_boards, regions_for, base_url, log=print, read_text=re
         while True:
             try:
                 regions = regions_for()
+                STATUS["last_tick"] = dt.datetime.now()
                 run_tick(data_root, list_boards(), dt.datetime.now(),
                          lambda d: todo.is_working_day(d, regions), poster,
                          read_text, retries, log)
