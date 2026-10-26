@@ -72,11 +72,17 @@ async function loadDatasets(){
    own path, which reloads onto the same hash minus the board) or, when the name
    is the current board, unknown or hidden from this person, the link carries on
    as if it had never named one. Returns true when it is switching. */
-function followBoardLink(board, task){
-  const hash = location.hash.replace(/!board=[^!]*/, '') || '#';
-  history.replaceState(null, '', hash);
+function followBoardLink(board, task, atBoot){
+  /* Built from what the link said rather than read back off the address: the
+     first render of the list being left rewrites the address to match itself,
+     which loses the card, and it can land before this runs. */
+  const hash = task ? '#!task=' + encodeTaskKey(task) : '#';
+  history.replaceState(null, '', location.hash.replace(/!board=[^!]*/, '') || '#');
   if (board && board !== state.dataset && state.datasetNames.indexOf(board) > -1) {
-    if (state.dirty) {
+    /* At boot the only unsaved changes are the load's own tidy-ups (rolled
+       dates, stamped ids), which the next load makes again. Asking about them
+       would put an alert in front of every banner click that lands mid-load. */
+    if (state.dirty && !atBoot) {
       alert('You have unsaved changes on this list.\n\nSave or discard them first, then open that link again.');
       return false;
     }
@@ -91,7 +97,7 @@ function resolvePendingBoard(){
   const board = state.pendingBoard, task = state.pendingBoardTask;
   if (!board) return;
   state.pendingBoard = state.pendingBoardTask = '';
-  if (followBoardLink(board, task)) return;
+  if (followBoardLink(board, task, true)) return;
   if (task) {
     state.pendingTask = task;
     if (state.doc) applyPendingTask();
@@ -99,6 +105,7 @@ function resolvePendingBoard(){
 }
 
 async function switchDataset(name, hashAfter){
+  state.switching = true;
   try {
     await postJSON('/dataset/select', { name });
     /* A render while the request was out will have rewritten the address to
@@ -106,6 +113,7 @@ async function switchDataset(name, hashAfter){
     if (hashAfter) history.replaceState(null, '', hashAfter);
     location.reload();
   } catch (err) {
+    state.switching = false;
     alert('Could not switch lists.\n\n' + (err.message || err));
     loadDatasets();
   }
@@ -754,7 +762,9 @@ if ($('#closeFolder')) $('#closeFolder').onclick = closeFolder;
 async function saveFile(auto, forceBackup){
   // The one guard that actually matters: state.doc can hold an old backup while
   // locked, and this must never let that overwrite the live todo.md.
-  if (state.locked || !state.doc || !state.dirty) return;
+  // And never while the server is being pointed at another list: the text here
+  // belongs to the one being left, and would be written into the new one.
+  if (state.locked || state.switching || !state.doc || !state.dirty) return;
   // A folder opened on the hosted page: written by the page itself.
   if (listFolder) return saveToFolder(auto);
   const text = serializeDoc(state.doc);

@@ -182,6 +182,9 @@ const state = {
   pendingTask: '',
   /* The board a link named, and the card it named there, until the board list
      has answered. */
+  /* True from the moment a list switch is asked for until the page reloads onto
+     it. saveFile() refuses meanwhile: this tab's text belongs to the old list. */
+  switching: false,
   pendingBoard: '',
   pendingBoardTask: '',
   datasetNames: [],

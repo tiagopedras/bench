@@ -68,17 +68,30 @@ const ws = new WebSocket(await page())
 await new Promise(r => (ws.onopen = r))
 let id = 0
 const pending = new Map()
+const dialogs = []
 ws.onmessage = e => {
   const m = JSON.parse(e.data)
   if (pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id) }
+  /* An alert freezes the page and every evaluate with it. Say it was there and
+     close it, so a refusal shows up as a failed check rather than a hang. */
+  if (m.method === 'Page.javascriptDialogOpening') {
+    dialogs.push(m.params.message)
+    ws.send(JSON.stringify({ id: ++id, method: 'Page.handleJavaScriptDialog', params: { accept: true } }))
+  }
 }
 const send = (method, params) => new Promise(res => {
   const n = ++id
   pending.set(n, res)
   ws.send(JSON.stringify({ id: n, method, params }))
 })
-async function evalJS (expr) {
-  const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true })
+/* A navigation destroys the page's context mid-call, and Runtime.evaluate then
+   never answers. Every call is bounded, so a poll that lands in that gap fails
+   and tries again instead of hanging the suite. */
+async function evalJS (expr, ms = 3000) {
+  const r = await Promise.race([
+    send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true }),
+    new Promise((resolve, reject) => setTimeout(() => reject(new Error('evaluate timed out')), ms))
+  ])
   if (r.result?.exceptionDetails) throw new Error(JSON.stringify(r.result.exceptionDetails).slice(0, 400))
   return r.result?.result?.value
 }
@@ -87,11 +100,12 @@ const go = async url => {
   await send('Page.navigate', { url: 'about:blank' })
   await new Promise(r => setTimeout(r, 300))
   await send('Page.navigate', { url })
-  await until(() => evalJS(`!!window.state && !!state.doc`))
+  await until(() => evalJS(`typeof state !== 'undefined' && !!state.doc`))
 }
 const OPEN = `(state.openTask ? (locate(state.openTask)?.task.title || '') : '')`
 const link = frag => `${BASE}/kanban/index.html${frag}`
 
+await send('Page.enable', {})
 try {
   check('the second list exists with its card', saved.ok && (await (await fetch(`${BASE}/datasets.json`)).json()).datasets.includes('elsewhere'))
 
@@ -102,14 +116,15 @@ try {
   check('and the board segment is gone from the address', await evalJS(`!location.hash.includes('board=')`), await evalJS('location.hash'))
   await send('Page.reload', {})
   await new Promise(r => setTimeout(r, 800))
-  await until(() => evalJS(`!!window.state && !!state.doc`))
+  await until(() => evalJS(`typeof state !== 'undefined' && !!state.doc`))
   check('a reload stays on that list rather than switching again', await evalJS(`state.dataset`) === 'elsewhere')
 
   /* The same card by its id and by its title with spaces, as a banner's link
      carries them, loaded fresh the way `open <url>` lands in a new tab. */
   await post('/dataset/select', { name: '_test' })
   await go(link('#!board=elsewhere!task=zz9y8x'))
-  check('a fresh load by the task id switches and opens the card', await until(async () => (await evalJS(OPEN)) === 'Only on the other list'))
+  check('a fresh load by the task id switches and opens the card', await until(async () => (await evalJS(OPEN)) === 'Only on the other list'),
+    await evalJS(`JSON.stringify({ ds: state.dataset, names: state.datasetNames, hash: location.hash, open: state.openTask, pb: state.pendingBoard, pt: state.pendingTask, sw: state.switching, dialogs: ${JSON.stringify(dialogs)} })`).catch(e => String(e)))
   await post('/dataset/select', { name: '_test' })
   await go(link('#!board=elsewhere!task=Only%20on%20the%20other%20list'))
   check('and by its title, %20 and all', await until(async () => (await evalJS(OPEN)) === 'Only on the other list') && await evalJS(`state.dataset`) === 'elsewhere')
@@ -126,9 +141,13 @@ try {
   await go(link('#!task=' + encodeURIComponent(known)))
   check('a link with no board behaves as before', await until(async () => (await evalJS(OPEN)) === known))
 
+  /* An open tab has long since heard the list of boards; wait for that here, or
+     the link arrives before there is a board to switch to. */
+  await until(() => evalJS(`state.datasetNames.length > 1 && !state.dirty`))
   await evalJS(`closeDrawer()`)
   await evalJS(`location.hash = '#!board=elsewhere!task=only-there'`)
-  check('a link arriving at a tab that is already open switches too', await until(() => evalJS(`state.dataset === 'elsewhere'`)))
+  check('a link arriving at a tab that is already open switches too', await until(() => evalJS(`state.dataset === 'elsewhere'`)) && !dialogs.length,
+    await evalJS(`JSON.stringify({ ds: state.dataset, names: state.datasetNames, hash: location.hash, dirty: state.dirty })`))
 } catch (err) {
   check('the suite ran to the end', false, String(err.message || err))
 } finally {
