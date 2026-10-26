@@ -56,8 +56,8 @@ QUEUE_UNTIL = dt.time(20, 0)
 QUEUE_BATCH = 3
 IMMEDIATE_BOARDS = ("content",)
 TICK_SECONDS = 60
-NOTIFIER_DIRS = ("/opt/homebrew/bin", "/usr/local/bin",
-                 "/Users/tiagopedras/.rvm/gems/ruby-3.0.0/bin")
+NOTIFIER_DIRS = ("/opt/homebrew/bin", "/usr/local/bin")
+RVM_NOTIFIER_DIR = "/Users/tiagopedras/.rvm/gems/ruby-3.0.0/bin"
 
 
 def board_label(name):
@@ -368,8 +368,12 @@ def run_tick(data_root, boards, now, is_working, post, read_text=read_plain, ret
 def find_notifier():
     """terminal-notifier's path, or None. The server can be started by the app
     without the user's PATH, so the usual install folders are tried too."""
-    path = os.pathsep.join([os.environ.get("PATH", "")] + list(NOTIFIER_DIRS))
-    return shutil.which("terminal-notifier", path=path)
+    # Homebrew first: the old Intel-only Ruby copy on PATH makes macOS warn about Intel-based apps.
+    for folder in NOTIFIER_DIRS:
+        found = shutil.which("terminal-notifier", path=folder)
+        if found:
+            return found
+    return shutil.which("terminal-notifier") or shutil.which("terminal-notifier", path=RVM_NOTIFIER_DIR)
 
 
 def enabled():
