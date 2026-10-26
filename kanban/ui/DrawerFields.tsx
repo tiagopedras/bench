@@ -115,6 +115,8 @@ export function DateFields({ idPrefix, fields, disabled, today, onPick, time }: 
   const [open, setOpen] = useState<string | null>(null)
   const active = fields.find(f => f.key === open)
   const [at, setAt] = useState(time?.value ?? '')
+  const given = time?.value ?? ''
+  useEffect(() => { setAt(given) }, [given])
   return (
     <>
       <div className="grid2">
@@ -137,6 +139,7 @@ export function DateFields({ idPrefix, fields, disabled, today, onPick, time }: 
             <input
               type="time"
               id={idPrefix + '-time'}
+              aria-label="Due time"
               value={at}
               disabled={disabled || time.disabled}
               onChange={e => { setAt(e.target.value); time.onChange(e.target.value) }}
