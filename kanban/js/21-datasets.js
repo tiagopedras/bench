@@ -53,6 +53,7 @@ async function loadDatasets(){
         '<span class="dstick" aria-hidden="true"></span>+ New list…</button>';
     state.datasets = true;
     state.dataset = data.current || '';
+    state.datasetNames = data.datasets || [];
     setDataMenuLabel(data.current);
     if (!state.locked) $('#datasetMenu').classList.remove('hidden');
   } catch (err) {
@@ -62,13 +63,82 @@ async function loadDatasets(){
     setDataMenuLabel(listFolder ? listFolder.name : '');
     $('#datasetMenu').classList.add('hidden');
   }
+  resolvePendingBoard();
 }
 
-async function switchDataset(name){
+/* A banner's link names its board: #!board=<name>!task=<key>. That segment is
+   used once. It comes off the address first, so a reload does not switch again,
+   and then either the board is switched through switchDataset (the dropdown's
+   own path, which reloads onto the same hash minus the board) or, when the name
+   is the current board, unknown or hidden from this person, the link carries on
+   as if it had never named one. Returns true when it is switching. */
+function followBoardLink(board, task, atBoot){
+  /* Built from what the link said rather than read back off the address: the
+     first render of the list being left rewrites the address to match itself,
+     which loses the card, and it can land before this runs. */
+  const hash = task ? '#!task=' + encodeTaskKey(task) : '#';
+  history.replaceState(null, '', location.hash.replace(/!board=[^!]*/, '') || '#');
+  if (board && board !== state.dataset && state.datasetNames.indexOf(board) > -1) {
+    /* Until the person has touched the page, the only unsaved changes are the
+       load's own tidy-ups (rolled dates, stamped ids), which the next load
+       makes again; asking about them would put an alert in front of every
+       banner click that lands mid-load. Once they have typed or clicked, the
+       changes may be theirs, and it asks like the list menu does. */
+    if (state.dirty && !(atBoot && !state.touched)) {
+      alert('You have unsaved changes on this list.\n\nSave or discard them first, then open that link again.');
+      return false;
+    }
+    /* Dropped on purpose, and cleared so the reload does not ask to leave. */
+    state.dirty = false;
+    switchDataset(board, hash);
+    return true;
+  }
+  return false;
+}
+/* Boot: the board list is in, so the held-back card can be opened or the
+   board switched. */
+function resolvePendingBoard(){
+  const board = state.pendingBoard, task = state.pendingBoardTask;
+  if (!board) return;
+  state.pendingBoard = state.pendingBoardTask = '';
+  if (followBoardLink(board, task, true)) return;
+  if (task) {
+    state.pendingTask = task;
+    if (state.doc) applyPendingTask();
+  }
+}
+
+/* Whether the person has typed or clicked since the page loaded. */
+['keydown', 'input', 'pointerdown'].forEach(type =>
+  window.addEventListener(type, () => { state.touched = true; }, { capture: true, passive: true }));
+
+const SWITCH_GRACE_MS = 3000;
+function reloadPage(){ location.reload(); }
+
+async function switchDataset(name, hashAfter){
+  const from = state.dataset;
+  state.switching = true;
   try {
     await postJSON('/dataset/select', { name });
-    location.reload();
+    /* A render while the request was out will have rewritten the address to
+       match the list being left, which has no such card. */
+    if (hashAfter) history.replaceState(null, '', hashAfter);
+    reloadPage();
+    /* A page still here a moment later may only be a slow reload, which must
+       be left alone: the server is on the new list, and so is the page about
+       to load. Only a reload the leave-site prompt was raised for can have
+       been cancelled (the beforeunload handler in 25-archiving.js says so). In
+       that case point the server back at the list this tab holds and let saves
+       resume on it. */
+    setTimeout(async () => {
+      if (!state.switching || !state.leavePrompted) return;
+      try { if (from) await postJSON('/dataset/select', { name: from }); } catch (err) { /* nothing more to do */ }
+      state.switching = false;
+      state.leavePrompted = false;
+      $('#status').textContent = 'staying on this list; the switch was cancelled';
+    }, SWITCH_GRACE_MS);
   } catch (err) {
+    state.switching = false;
     alert('Could not switch lists.\n\n' + (err.message || err));
     loadDatasets();
   }
@@ -717,6 +787,12 @@ if ($('#closeFolder')) $('#closeFolder').onclick = closeFolder;
 async function saveFile(auto, forceBackup){
   // The one guard that actually matters: state.doc can hold an old backup while
   // locked, and this must never let that overwrite the live todo.md.
+  // And never while the server is being pointed at another list: the text here
+  // belongs to the one being left, and would be written into the new one.
+  if (state.switching && state.doc && state.dirty) {
+    $('#status').textContent = 'not saved yet: switching lists';
+    return;
+  }
   if (state.locked || !state.doc || !state.dirty) return;
   // A folder opened on the hosted page: written by the page itself.
   if (listFolder) return saveToFolder(auto);

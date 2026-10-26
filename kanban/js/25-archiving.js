@@ -492,7 +492,14 @@ function handleMsgClick(e){ handleAsk(e); handleCopy(e); handleDismiss(e); handl
 $('#lists').onclick = handleMsgClick;
 $('#dbody').onclick = handleMsgClick;
 
-window.addEventListener('beforeunload', e => { if (state.dirty) { e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('beforeunload', e => {
+  if (!state.dirty) return;
+  /* Asking the browser to prompt is the one way a list switch's reload can be
+     cancelled; switchDataset() reads this to tell a cancelled reload from a
+     slow one. */
+  if (state.switching) state.leavePrompted = true;
+  e.preventDefault(); e.returnValue = '';
+});
 
 /* Back/forward and hand-edited URLs come through here rather than the tab
    clicks above, which drive the switch straight off state.view instead. Same
@@ -501,6 +508,10 @@ window.addEventListener('beforeunload', e => { if (state.dirty) { e.preventDefau
    click, for instance) carry no opinion about the bucket at all. */
 window.addEventListener('hashchange', () => {
   const h = parseHash();
+  /* A link that names a board is acted on before anything else, because the
+     rest of this is about the board that is up. Switching reloads the page onto
+     the same hash; any other answer drops the segment and carries on below. */
+  if (h.board && followBoardLink(h.board, h.task)) return;
   let changed = false;
   /* Everything below is putting the board back where Back asked for it, and
      opening a card or switching a view pushes an entry of its own — so the one

@@ -1,5 +1,6 @@
 # Your lists and everything derived from them
 data/
+/data
 
 # Obsidian
 .obsidian/

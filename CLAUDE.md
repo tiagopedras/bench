@@ -29,17 +29,13 @@ Write to `data/<dataset>/reports/` (the current dataset, named by
 version: never lists individual to-dos, says what moved and what it means, in
 the owner's voice, kept short.
 
-## The desktop companion
+## Desktop banners
 
-`companion/` is the menu bar app that notifies each working morning, by default at 09:00, one notification per board (every data/<name>/ with a todo.md, each told once a day in its own companion.json; "N due today, M overdue", quiet when nothing is owed). Clicking one opens the board's front page, since the board cannot be named in a link without moving data/.current. The tray, List submenu and meeting pop-ups
-watch one list, picked from the List submenu in its tray menu (personal, work-and-career; personal by default), saved in data/companion-list.json and independent of data/.current. Format knowledge lives in
-`core/todo.py`, not the companion, and so does the working calendar (generates
-UK and Portuguese public holidays by default; change them for your own calendar). Run
-`python3 core/test_todo.py --online` after touching calendar rules — it checks
-against gov.uk and Nager.Date. The companion's card link is
-`#!task=<key>`, a fragment rather than a query string, so it lands in the tab
-already open — keep it a fragment, a second tab on one list is two autosaves on
-one file.
+The board server puts up the banners, through `terminal-notifier`, from a thread that ticks every minute across every board (`core/notify_due.py`, started in `kanban/server.py`). Every task and sub-task with a due date of its own that is not done gets one banner: on the due date at its `[time:: HH:MM]` (or the time in its `repeat:` rule), or at 09:00 when it has none. One more goes out at 09:00 on the next working day if it is still open, then it is silent. A weekend or public holiday stays quiet, and anything due on one goes out once on the next working day. A server that starts late sends what was owed earlier that day. What has been sent lives per board in `data/<board>/notify-state.json`, so a restart repeats nothing.
+
+Agents ask for a banner with `companion/notify.py`, which appends to `data/<board>/notify-queue.json` under a lock the server's drain shares; the server posts the lines between 08:30 and 20:00, three a tick (the `content` board has no window). Every link names its board, `#!board=<name>!task=<key>`, and the board switches to it, so keep it a fragment: a second tab on one list is two autosaves on one file.
+
+Mac only, and only with `terminal-notifier` installed. `BENCH_NOTIFY=0` switches it off, and a throwaway data root (`TODOS_DATA_ROOT`, the test runner's) never starts it. Banners go out only while the board is running. `companion/` (the Electron tray app) is retired and stays on disk for `notify.py` and `digest.py`; do not launch it. Format knowledge and the working calendar live in `core/todo.py` (UK and Portuguese public holidays by default). Run `python3 core/test_todo.py --online` after touching calendar rules, and `python3 core/test_notify_due.py` after touching the banners.
 
 ## Where the format lives
 

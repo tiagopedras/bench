@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Ask the companion to say something on screen.
+"""Ask the board server to say something on screen.
 
-The companion is the only thing in this repo that can put a desktop notification
-up. The planning agent has no UI at all, the board is a browser tab that is
-usually shut, and a skill is a conversation that has already ended by the time
-its result matters. So rather than each growing its own way to speak, they all
-append here and the companion drains the queue on its next tick.
+Since 26 Oct 2026 the thing that puts a desktop banner up is the board server
+(core/notify_due.py, through terminal-notifier); the Electron companion that
+used to is retired. The planning agent has no UI at all, the board is a browser
+tab that is usually shut, and a skill is a conversation that has already ended
+by the time its result matters. So rather than each growing its own way to
+speak, they all append here and the server drains the queue on its next tick,
+a minute at most, while the board is running.
 
     python3 companion/notify.py "Plan agent" "3 plans written, 2 skipped"
     python3 companion/notify.py --view plans "Plan agent" "3 plans waiting"
@@ -25,18 +27,20 @@ give neither and it opens the board's front page. Sending someone to a banner
 they cannot follow up is most of what makes a notification annoying, so name
 one wherever there is an obvious one to name.
 
-Appending is all this does. It never posts anything itself and it never blocks,
-so it is safe to call from a script running at two in the morning with nobody
-logged in — and safe when the companion is not running at all, since the queue
-simply waits.
+Appending is all this does. It never posts anything itself and it takes the
+queue's lock only for the moment of the write, so it is safe to call from a
+script running at two in the morning with nobody logged in — and safe when the
+board is not running at all, since the queue simply waits. The lock is
+`notify-queue.lock` beside the queue file, taken with flock, and the server's
+drain takes the same one, so an append and a drain never overlap.
 
-What the companion will not do with what you queue, however loudly you ask:
+What the server will not do with what you queue, however loudly you ask:
 
   - Post outside 08:30 to 20:00. A line queued at 02:00 waits for the morning.
   - Post more than three at once.
 
-The one exception is the `content` list: its queue is drained on every tick
-with no time window, so a notice from the 11pm run shows at once.
+The one exception is the `content` list: its queue is drained with no time
+window, so a notice from the 11pm run shows at once.
 
 Weekends and public holidays are *not* excluded, unlike the morning briefing.
 That briefing is a scheduled interruption about a working day, so a Saturday
@@ -48,10 +52,16 @@ So this is for things worth a banner, not for progress. A run that wrote three
 plans is one line at the end, not one line a plan.
 """
 
+import contextlib
 import datetime as dt
 import json
 import os
 import sys
+
+try:
+    import fcntl
+except ImportError:          # no flock off a Unix; appends then rely on os.replace alone
+    fcntl = None
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MAX_QUEUED = 20
@@ -63,6 +73,30 @@ def queue_path(dataset=None):
         import dataset as _dataset
         dataset = _dataset.current(os.path.join(ROOT, "data"))
     return os.path.join(ROOT, "data", dataset, "notify-queue.json")
+
+
+@contextlib.contextmanager
+def queue_lock(path):
+    """An exclusive lock on `notify-queue.lock` beside the queue file, shared
+    with the board server's drain (core/notify_due.py), so an append and a drain
+    take turns. Never raises: a lock that cannot be had is no reason to lose the
+    line, so the append goes ahead without it."""
+    fh = None
+    if fcntl is not None:
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            fh = open(os.path.splitext(path)[0] + ".lock", "a")
+            fcntl.flock(fh, fcntl.LOCK_EX)
+        except OSError:
+            if fh:
+                fh.close()
+            fh = None
+    try:
+        yield
+    finally:
+        if fh:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+            fh.close()
 
 
 def queue(title, body, dataset=None, task=None, view=None, path=None):
@@ -80,37 +114,38 @@ def queue(title, body, dataset=None, task=None, view=None, path=None):
     so a failure here must not take down whatever was actually being done.
     """
     path = path or queue_path(dataset)
-    try:
-        with open(path, encoding="utf-8") as fh:
-            items = json.load(fh)
-        if not isinstance(items, list):
+    with queue_lock(path):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                items = json.load(fh)
+            if not isinstance(items, list):
+                items = []
+        except (OSError, ValueError):
             items = []
-    except (OSError, ValueError):
-        items = []
 
-    entry = {
-        "title": str(title)[:120],
-        "body": str(body)[:400],
-        "queued": dt.datetime.now().isoformat(timespec="seconds"),
-    }
-    if task:
-        entry["task"] = str(task)[:200]
-    if view:
-        entry["view"] = str(view)[:40]
-    items.append(entry)
-    # A queue nobody drains is a companion that is not running. Cap it so that
-    # comes back as the last few lines when it starts, rather than as a month of
-    # backlog fired at once.
-    items = items[-MAX_QUEUED:]
+        entry = {
+            "title": str(title)[:120],
+            "body": str(body)[:400],
+            "queued": dt.datetime.now().isoformat(timespec="seconds"),
+        }
+        if task:
+            entry["task"] = str(task)[:200]
+        if view:
+            entry["view"] = str(view)[:40]
+        items.append(entry)
+        # A queue nobody drains is a companion that is not running. Cap it so that
+        # comes back as the last few lines when it starts, rather than as a month of
+        # backlog fired at once.
+        items = items[-MAX_QUEUED:]
 
-    try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        tmp = path + ".tmp"
-        with open(tmp, "w", encoding="utf-8", newline="") as fh:
-            json.dump(items, fh, indent=2)
-        os.replace(tmp, path)
-    except OSError:
-        return None
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            tmp = path + ".tmp"
+            with open(tmp, "w", encoding="utf-8", newline="") as fh:
+                json.dump(items, fh, indent=2)
+            os.replace(tmp, path)
+        except OSError:
+            return None
     return path
 
 
@@ -128,8 +163,8 @@ def main(argv):
     if not path:
         print("could not write the queue", file=sys.stderr)
         return 1
-    print("queued — the companion posts it on its next tick, within the "
-          "morning window")
+    print("queued — the board server posts it within a minute, in the "
+          "08:30 to 20:00 window, while the board is running")
     return 0
 
 

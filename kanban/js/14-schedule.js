@@ -4,7 +4,7 @@
    4b2c. What runs on a clock, and what the usage windows are doing.
 
    Three things around this app run on a schedule rather than on demand: the
-   Plan agent's wakes, the companion's morning briefing, and the weekly backup
+   Plan agent's wakes, the desktop banners, and the weekly backup
    thread inside this server. Both halves live behind one button in the Data
    menu, Spend and schedules — renderSched() draws the jobs into their own card and
    renderUsage() draws the token chart, both inside the modal openRefCards()

@@ -105,13 +105,18 @@ export interface DateFieldsProps {
   /** Today as YYYY-MM-DD, so the page's own clock decides what today is. */
   today: string
   onPick: (key: string, value: string) => void
+  /** The time of day beside Due, HH:MM or empty. Left out where there is none. */
+  time?: { value: string; disabled: boolean; onChange: (value: string) => void }
 }
 
 /** Can start and Due: two date buttons side by side, and one calendar that
- *  opens in the flow under whichever was pressed. */
-export function DateFields({ idPrefix, fields, disabled, today, onPick }: DateFieldsProps) {
+ *  opens in the flow under whichever was pressed. A due time sits after them. */
+export function DateFields({ idPrefix, fields, disabled, today, onPick, time }: DateFieldsProps) {
   const [open, setOpen] = useState<string | null>(null)
   const active = fields.find(f => f.key === open)
+  const [at, setAt] = useState(time?.value ?? '')
+  const given = time?.value ?? ''
+  useEffect(() => { setAt(given) }, [given])
   return (
     <>
       <div className="grid2">
@@ -128,6 +133,19 @@ export function DateFields({ idPrefix, fields, disabled, today, onPick }: DateFi
             {f.inherited && <span className="help">{f.hint ? f.hint : 'From the task. Pick one here to give this its own.'}</span>}
           </div>
         ))}
+        {time && (
+          <div className="field">
+            <span>Due time</span>
+            <input
+              type="time"
+              id={idPrefix + '-time'}
+              aria-label="Due time"
+              value={at}
+              disabled={disabled || time.disabled}
+              onChange={e => { setAt(e.target.value); time.onChange(e.target.value) }}
+            />
+          </div>
+        )}
       </div>
       {active && !disabled && (
         <Calendar

@@ -1397,46 +1397,47 @@ def _tail(path, n=12):
         return []
 
 
-def _companion_job():
-    """The menu bar app. Not launchd — an app with a timer inside it."""
-    lock = os.path.join(dataset_dir(current_dataset()), "companion.lock")
-    running = "todocompanion" in _launchctl(["list"]).lower()
-    state = {}
-    try:
-        with open(os.path.join(dataset_dir(current_dataset()), "companion.json"),
-                  encoding="utf-8") as fh:
-            state = json.load(fh)
-    except (OSError, ValueError):
-        pass
+# The thread notify_due.start() returned, or None when banners are off here.
+NOTIFIER = {"thread": None}
 
-    # 08:30 on the next working day, from the same calendar the companion uses.
+
+def _banners_job():
+    """Desktop banners for due tasks: a thread inside this server (core/
+    notify_due.py), so armed means the server is up on a Mac with
+    terminal-notifier. The Electron companion that did this is retired."""
+    import notify_due
+    on = NOTIFIER["thread"] is not None and NOTIFIER["thread"].is_alive()
+    if on:
+        hint = ""
+    elif os.environ.get("BENCH_NOTIFY") == "0":
+        hint = "switched off by BENCH_NOTIFY=0"
+    elif sys.platform != "darwin":
+        hint = "banners are Mac only"
+    elif not notify_due.find_notifier():
+        hint = "install terminal-notifier (brew install terminal-notifier)"
+    else:
+        hint = "not started on this server"
+    last = notify_due.STATUS["last_tick"]
     nxt = ""
-    if todo:
-        day = datetime.date.today()
-        if state.get("notified") == day.isoformat() or datetime.datetime.now().hour >= 20:
-            day += datetime.timedelta(days=1)
+    if on and todo is not None:
         import owner_profile
         regions = owner_profile.holiday_regions(DATA_ROOT)
-        for _ in range(14):
-            if todo.is_working_day(day, regions):
-                break
-            day += datetime.timedelta(days=1)
-        nxt = datetime.datetime.combine(day, datetime.time(8, 30)).isoformat(timespec="minutes")
-
-    last = state.get("notified", "")
+        nxt = notify_due.next_banner(
+            DATA_ROOT, list_datasets(everyone=True), datetime.datetime.now(),
+            lambda d: todo.is_working_day(d, regions),
+            lambda p: _steady_read(p)[0]).isoformat(timespec="minutes")
     return {
-        "id": "companion",
-        "name": "Desktop companion",
-        "what": "One briefing each working morning, and the messages waiting to go out.",
-        "schedule": "08:30 on a working day",
-        "armed": running,
-        "state": "running" if running else "not running",
-        "next": nxt if running else "",
-        "last": ("notified %s at %s" % (last, state.get("notified_at", "?"))
-                 if last else "has not spoken yet"),
+        "id": "banners",
+        "name": "Desktop banners",
+        "what": "A banner when a task or sub-task falls due, one the next working day if it is still open, and the lines agents queue.",
+        "schedule": "every minute while the board is running",
+        "armed": on,
+        "state": "running" if on else "not running",
+        "next": nxt,
+        "last": "checked at %s" % last.strftime("%H:%M") if last else "has not checked yet",
         "recent": [],
-        "hint": "" if running else "open To-Do Companion.app",
-        "lock": os.path.exists(lock),
+        "hint": hint,
+        "lock": False,
     }
 
 
@@ -1460,7 +1461,7 @@ def _weekly_job():
 
 def schedule_listing():
     out = []
-    for fn in (_companion_job, _weekly_job):
+    for fn in (_banners_job, _weekly_job):
         try:
             out.append(fn())
         except Exception as exc:                     # noqa: BLE001
@@ -3922,6 +3923,19 @@ def main():
     if first_weekly:
         print("weekly backup: %s/%s/backups/%s" % (DATA, ds, first_weekly))
     threading.Thread(target=weekly_backup_watcher, daemon=True).start()
+    # Desktop banners for due tasks and the agents' queue. Mac only, and only
+    # with terminal-notifier; the Linux server never starts it, and nor does a
+    # throwaway copy under TODOS_DATA_ROOT (the test runner), which holds demo data.
+    import notify_due
+    import owner_profile
+    if todo is not None and not SCRATCH:
+        NOTIFIER["thread"] = notify_due.start(
+            DATA_ROOT, lambda: list_datasets(everyone=True),
+            lambda: owner_profile.holiday_regions(DATA_ROOT),
+            "http://127.0.0.1:%d/%s" % (PORT, PAGE),
+            read_text=lambda p: _steady_read(p)[0])
+        if NOTIFIER["thread"]:
+            print("Desktop banners for due tasks are on.")
 
     url = "http://127.0.0.1:%d/%s" % (PORT, PAGE)
     print("To-do board running at %s" % url)
