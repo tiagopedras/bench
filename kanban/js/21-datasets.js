@@ -124,13 +124,17 @@ async function switchDataset(name, hashAfter){
        match the list being left, which has no such card. */
     if (hashAfter) history.replaceState(null, '', hashAfter);
     reloadPage();
-    /* A page that is still here a moment later was kept by the browser (the
-       leave-site prompt, cancelled). The server has been pointed at the new
-       list, so point it back, and let saves resume on the list this tab holds. */
+    /* A page still here a moment later may only be a slow reload, which must
+       be left alone: the server is on the new list, and so is the page about
+       to load. Only a reload the leave-site prompt was raised for can have
+       been cancelled (the beforeunload handler in 25-archiving.js says so). In
+       that case point the server back at the list this tab holds and let saves
+       resume on it. */
     setTimeout(async () => {
-      if (!state.switching) return;
+      if (!state.switching || !state.leavePrompted) return;
       try { if (from) await postJSON('/dataset/select', { name: from }); } catch (err) { /* nothing more to do */ }
       state.switching = false;
+      state.leavePrompted = false;
       $('#status').textContent = 'staying on this list; the switch was cancelled';
     }, SWITCH_GRACE_MS);
   } catch (err) {

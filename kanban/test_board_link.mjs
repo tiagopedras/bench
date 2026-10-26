@@ -145,13 +145,29 @@ try {
      must give saving back, and point the server at this list again. */
   await post('/dataset/select', { name: '_test' })
   await go(link(''))
-  await evalJS(`window.reloadPage = () => {}; markDirty(); switchDataset('elsewhere')`)
+  /* A slow reload first: nothing was prompted, so nothing is posted back. */
+  await evalJS(`window.reloadPage = () => {}; switchDataset('elsewhere')`)
+  await until(async () => (await (await fetch(`${BASE}/datasets.json`)).json()).current === 'elsewhere')
+  await new Promise(r => setTimeout(r, 3800))
+  check('a slow reload is not mistaken for a cancelled one: the server stays on the new list',
+    (await (await fetch(`${BASE}/datasets.json`)).json()).current === 'elsewhere' && await evalJS(`state.switching`))
+  await post('/dataset/select', { name: '_test' })
+  await evalJS(`state.switching = false`)
+  /* Now one the leave-site prompt was raised for. */
+  await evalJS(`window.reloadPage = () => { state.leavePrompted = true; }; markDirty(); switchDataset('elsewhere')`)
   await until(async () => (await (await fetch(`${BASE}/datasets.json`)).json()).current === 'elsewhere')
   check('while a switch is under way a save is refused, out loud', await evalJS(`(saveFile(true), state.switching && /switching lists/.test($('#status').textContent))`))
   await new Promise(r => setTimeout(r, 3800))
   check('a switch the page survives clears itself', await evalJS(`!state.switching`))
   check('and the server is pointed back at this list', (await (await fetch(`${BASE}/datasets.json`)).json()).current === '_test')
-  check('and the board can save again', await evalJS(`(async () => { await saveFile(true); return !state.dirty })()`))
+  check('and the board can save again: the save goes out', await evalJS(`(async () => {
+    const real = window.fetch; let puts = 0;
+    window.fetch = (u, o) => { if (o && o.method === 'PUT') puts++; return real(u, o); };
+    state.dirty = true;
+    await saveFile(true);
+    window.fetch = real;
+    return puts === 1;
+  })()`))
 
   /* Typing before the board list has answered: the changes may be the person's,
      so the link asks instead of switching. The answer is held back to make the

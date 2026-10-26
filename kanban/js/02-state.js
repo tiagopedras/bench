@@ -185,6 +185,8 @@ const state = {
   /* True from the moment a list switch is asked for until the page reloads onto
      it. saveFile() refuses meanwhile: this tab's text belongs to the old list. */
   switching: false,
+  /* The leave-site prompt was raised during a switch: see switchDataset(). */
+  leavePrompted: false,
   /* Set by the first key, input or press after load; see followBoardLink(). */
   touched: false,
   pendingBoard: '',
