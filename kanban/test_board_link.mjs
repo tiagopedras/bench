@@ -141,8 +141,37 @@ try {
   await go(link('#!task=' + encodeURIComponent(known)))
   check('a link with no board behaves as before', await until(async () => (await evalJS(OPEN)) === known))
 
+  /* A switch the browser keeps the tab through (the leave-site prompt, cancelled)
+     must give saving back, and point the server at this list again. */
+  await post('/dataset/select', { name: '_test' })
+  await go(link(''))
+  await evalJS(`window.reloadPage = () => {}; markDirty(); switchDataset('elsewhere')`)
+  await until(async () => (await (await fetch(`${BASE}/datasets.json`)).json()).current === 'elsewhere')
+  check('while a switch is under way a save is refused, out loud', await evalJS(`(saveFile(true), state.switching && /switching lists/.test($('#status').textContent))`))
+  await new Promise(r => setTimeout(r, 3800))
+  check('a switch the page survives clears itself', await evalJS(`!state.switching`))
+  check('and the server is pointed back at this list', (await (await fetch(`${BASE}/datasets.json`)).json()).current === '_test')
+  check('and the board can save again', await evalJS(`(async () => { await saveFile(true); return !state.dirty })()`))
+
+  /* Typing before the board list has answered: the changes may be the person's,
+     so the link asks instead of switching. The answer is held back to make the
+     order certain. */
+  const hold = await send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => {
+    const real = window.fetch;
+    window.fetch = (u, o) => String(u).includes('datasets.json')
+      ? new Promise(r => setTimeout(() => r(real(u, o)), 1500)) : real(u, o);
+  })()` })
+  dialogs.length = 0
+  await go(link('#!board=elsewhere!task=zz9y8x'))
+  await evalJS(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true })); applyDirty()`)
+  await new Promise(r => setTimeout(r, 2500))
+  check('typing before the board list arrives blocks the switch', await evalJS(`state.dataset === '_test'`) && dialogs.length === 1, JSON.stringify(dialogs))
+  check('and the board segment still comes off the address', await evalJS(`!location.hash.includes('board=')`))
+  await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: hold.result.identifier })
+
   /* An open tab has long since heard the list of boards; wait for that here, or
      the link arrives before there is a board to switch to. */
+  dialogs.length = 0
   await until(() => evalJS(`state.datasetNames.length > 1 && !state.dirty`))
   await evalJS(`closeDrawer()`)
   await evalJS(`location.hash = '#!board=elsewhere!task=only-there'`)
