@@ -9,11 +9,11 @@ own that is not done:
 
   - It fires on the due date at the item's time (`effective_time`), or at 09:00
     when it has none. A repeat task is read through `effective_due`.
-  - On a weekend or public holiday it stays quiet and fires on the next working
-    day at 09:00 instead. That one reads "Overdue since ...", since the date has
-    already gone by.
-  - One more banner, "Overdue since ...", goes out at 09:00 on the next working
-    day after the one it fired on. After that it is silent.
+  - On a weekend or public holiday it stays quiet and fires once on the next
+    working day at 09:00 instead. That one reads "Overdue since ...", since the
+    date has already gone by, and nothing follows it.
+  - Due on a working day, one more banner, "Overdue since ...", goes out at
+    09:00 on the next working day. After that it is silent.
   - A banner only goes out on its own day. A server that starts late sends what
     was owed earlier that day on its first tick, and nothing from before.
 
@@ -134,7 +134,9 @@ def due_banners(tasks, now, is_working, fired, label):
             else:
                 body = "Due today"
             plans.append(("due", at, body))
-        if today == overdue_day:
+        # A quiet-day item has had its one banner, and that one already says it is
+        # overdue, so only an item due on a working day gets a second.
+        if today == overdue_day and fire_day == due:
             plans.append(("overdue", DEFAULT_TIME, "Overdue since %s" % _fmt_day(due)))
         for kind, when, body in plans:
             key = "%s|%s|%s" % (today.isoformat(), ident, kind)
@@ -176,62 +178,129 @@ def write_state(board_dir, fired, today):
 
 # ---- the agents' queue ------------------------------------------------------------
 
-def drain_queue(board_dir, board, now):
-    """The queued lines to post now, as (title, body, task, view). Posted lines
-    come off the file; the rest stay for the next tick."""
-    path = os.path.join(board_dir, QUEUE_FILE)
+# companion/notify.py appends by reading the file, adding a line and replacing it
+# whole, with no lock. Nothing here can make it wait, so this module keeps its
+# own window small instead: a line comes off the file only after it has been
+# posted, by re-reading the file just before an atomic replace.
+_queue_lock = threading.Lock()
+
+
+def _read_queue(path):
     try:
         with open(path, encoding="utf-8") as fh:
             queued = json.load(fh)
     except (OSError, ValueError):
         return []
-    if not isinstance(queued, list) or not queued:
-        return []
+    return queued if isinstance(queued, list) else []
+
+
+def _write_queue(path, items):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="") as fh:
+        json.dump(items, fh, indent=2)
+    os.replace(tmp, path)
+
+
+def queue_batch(board_dir, board, now, skip=()):
+    """The next lines to post, as (raw entry, (title, body, task, view)), at most
+    QUEUE_BATCH of them, none of them in `skip`. Nothing comes off the file here.
+    A line with no body comes back with None for its message, to be dropped."""
     if board not in IMMEDIATE_BOARDS and not QUEUE_FROM <= now.time() <= QUEUE_UNTIL:
         return []
     out = []
-    for entry in queued[:QUEUE_BATCH]:
-        if not isinstance(entry, dict):
+    for entry in _read_queue(os.path.join(board_dir, QUEUE_FILE)):
+        if len(out) == QUEUE_BATCH:
+            break
+        if not isinstance(entry, dict) or json.dumps(entry, sort_keys=True) in skip:
             continue
         body = str(entry.get("body") or "")[:400]
+        msg = None
         if body:
-            out.append((str(entry.get("title") or "To-do")[:120], body,
-                        str(entry["task"])[:200] if entry.get("task") else None,
-                        str(entry["view"])[:40] if entry.get("view") else None))
-    try:
-        with open(path, "w", encoding="utf-8") as fh:
-            json.dump(queued[QUEUE_BATCH:], fh, indent=2)
-    except OSError:
-        pass
+            msg = (str(entry.get("title") or "To-do")[:120], body,
+                   str(entry["task"])[:200] if entry.get("task") else None,
+                   str(entry["view"])[:40] if entry.get("view") else None)
+        out.append((entry, msg))
     return out
+
+
+def queue_remove(board_dir, entries):
+    """Take `entries` off the file, each once, re-reading it first so a line
+    appended meanwhile is kept. Written atomically."""
+    if not entries:
+        return
+    path = os.path.join(board_dir, QUEUE_FILE)
+    with _queue_lock:
+        items = _read_queue(path)
+        for e in entries:
+            if e in items:
+                items.remove(e)
+        try:
+            _write_queue(path, items)
+        except OSError:
+            pass
 
 
 # ---- one tick -----------------------------------------------------------------------
 
-def run_tick(data_root, boards, now, is_working, post):
+RETRY_AFTER = dt.timedelta(minutes=10)
+
+
+def read_plain(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return fh.read()
+    except OSError:
+        return None
+
+
+def run_tick(data_root, boards, now, is_working, post, read_text=read_plain, retries=None, log=print):
     """Post everything owed across `boards`. `post(title, body, task, view,
-    group)` returns True when the banner went out; a due banner that did not is
-    tried again next tick. Returns how many went out."""
+    group)` returns (ok, detail). A banner that fails is tried again after
+    RETRY_AFTER, and only its first failure of the day is logged; `retries` is
+    that memory and the caller keeps it between ticks. `read_text(path)` returns
+    the file's text, or None when it cannot be trusted this tick (the server
+    passes a read that refuses a half-written file). Returns how many went out."""
+    retries = {} if retries is None else retries
     sent = 0
+
+    def attempt(key, args):
+        nonlocal sent
+        last = retries.get(key)
+        if last and now - last < RETRY_AFTER:
+            return False
+        ok, detail = post(*args)
+        if ok:
+            retries.pop(key, None)
+            sent += 1
+            return True
+        if last is None:
+            log("notify: %s failed: %s" % (args[0], detail))
+        retries[key] = now
+        return False
+
+    for stale in [k for k in retries if k.split("|", 1)[0] < now.date().isoformat()]:
+        del retries[stale]
     for board in boards:
         board_dir = os.path.join(data_root, board)
-        try:
-            with open(os.path.join(board_dir, "todo.md"), encoding="utf-8") as fh:
-                tasks = todo.parse_doc(fh.read())
-        except OSError:
-            tasks = []
+        text = read_text(os.path.join(board_dir, "todo.md"))
+        tasks = todo.parse_doc(text) if text is not None else []
         fired = read_state(board_dir)
         changed = False
         for b in due_banners(tasks, now, is_working, fired, board_label(board)):
-            if post(b["title"], b["body"], b["task"], None, b["group"]):
+            if attempt(b["key"], (b["title"], b["body"], b["task"], None, b["group"])):
                 fired.add(b["key"])
                 changed = True
-                sent += 1
         if changed:
             write_state(board_dir, fired, now.date())
-        for title, body, task, view in drain_queue(board_dir, board, now):
-            if post(title, body, task, view, None):
-                sent += 1
+        waiting = {k.split("|q|", 1)[1] for k, t in retries.items() if "|q|" in k and now - t < RETRY_AFTER}
+        batch = queue_batch(board_dir, board, now, skip=waiting)
+        done = []
+        for entry, msg in batch:
+            if msg is None:
+                done.append(entry)
+            elif attempt("%s|q|%s" % (now.date().isoformat(), json.dumps(entry, sort_keys=True)), msg + (None,)):
+                done.append(entry)
+        queue_remove(board_dir, done)
     return sent
 
 
@@ -255,13 +324,13 @@ def post(notifier, base_url, title, body, task=None, view=None, group=None, log=
     try:
         rc = subprocess.run(args, capture_output=True, timeout=15).returncode
     except (OSError, subprocess.SubprocessError) as err:
-        log("notify: could not run terminal-notifier: %s" % err)
-        return False
-    log("notify: %r exit %d" % (title, rc))
-    return rc == 0
+        return False, "could not run terminal-notifier: %s" % err
+    if rc == 0:
+        log("notify: %r exit 0" % title)
+    return rc == 0, "exit %d" % rc
 
 
-def start(data_root, list_boards, regions_for, base_url, log=print):
+def start(data_root, list_boards, regions_for, base_url, log=print, read_text=read_plain):
     """Start the daemon thread that ticks every minute. Returns it, or None
     when this machine should stay quiet (not a Mac, no terminal-notifier, or
     BENCH_NOTIFY=0)."""
@@ -274,11 +343,13 @@ def start(data_root, list_boards, regions_for, base_url, log=print):
 
     def loop():
         stop = threading.Event()
+        retries = {}
         while True:
             try:
                 regions = regions_for()
                 run_tick(data_root, list_boards(), dt.datetime.now(),
-                         lambda d: todo.is_working_day(d, regions), poster)
+                         lambda d: todo.is_working_day(d, regions), poster,
+                         read_text, retries, log)
             except Exception as err:   # a bad tick must not end the thread
                 log("notify: tick failed: %r" % err)
             if stop.wait(TICK_SECONDS):

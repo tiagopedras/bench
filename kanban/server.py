@@ -3930,7 +3930,8 @@ def main():
     if todo is not None and not SCRATCH and notify_due.start(
             DATA_ROOT, lambda: list_datasets(everyone=True),
             lambda: owner_profile.holiday_regions(DATA_ROOT),
-            "http://127.0.0.1:%d/%s" % (PORT, PAGE)):
+            "http://127.0.0.1:%d/%s" % (PORT, PAGE),
+            read_text=lambda p: _steady_read(p)[0]):
         print("Desktop banners for due tasks are on.")
 
     url = "http://127.0.0.1:%d/%s" % (PORT, PAGE)

@@ -95,7 +95,8 @@ check("Friday due: fires Friday", len(banners(f, at(FRI, "09:00"))), 1)
 check("Friday due: quiet on Saturday and Sunday",
       [banners(f, at(SAT, "10:00")), banners(f, at(D(2026, 11, 1), "10:00"))], [[], []])
 check("Friday due: overdue lands on Tuesday when Monday is a holiday",
-      [len(banners(f, at(D(2026, 11, 2), "10:00"))), len(banners(f, at(D(2026, 11, 3), "09:00")))], [0, 1])
+      [len(banners(f, at(D(2026, 11, 2), "10:00"))), summary(banners(f, at(D(2026, 11, 3), "09:00")))],
+      [0, [("Friday job", "Overdue since Fri 30 Oct \u00b7 Work")]])
 
 w = doc("- [ ] **Weekend job** [due:: 2026-10-31] [time:: 15:00]")
 check("due on a Saturday: quiet that day", banners(w, at(SAT, "15:00")), [])
@@ -103,10 +104,21 @@ check("due on a Saturday: Monday 09:00 (not its own time)", banners(w, at(D(2026
 check("due on a Saturday with a holiday Monday: Tuesday 09:00, as an overdue",
       summary(banners(w, at(D(2026, 11, 3), "09:00"))), [("Weekend job", "Overdue since Sat 31 Oct · Work")])
 check("due on a Saturday: once", banners(w, at(D(2026, 11, 3), "09:30"), {banners(w, at(D(2026, 11, 3), "09:00"))[0]["key"]}), [])
+sat = doc("- [ ] **Plain Saturday** [due:: 2026-10-24]")
+check("plain Saturday: quiet on the Saturday and Sunday",
+      [banners(sat, at(D(2026, 10, 24), "12:00")), banners(sat, at(D(2026, 10, 25), "12:00"))], [[], []])
+mon = banners(sat, at(MON, "09:00"))
+check("plain Saturday: one banner on the Monday, already saying overdue",
+      summary(mon), [("Plain Saturday", "Overdue since Sat 24 Oct \u00b7 Work")])
+check("plain Saturday: nothing further on the Tuesday, fired or not",
+      [banners(sat, at(TUE, "09:00"), {mon[0]["key"]}), banners(sat, at(TUE, "12:00"))], [[], []])
 
 h = doc("- [ ] **Bank holiday job** [due:: 2026-11-02]")
-check("due on a holiday: quiet on it, out the next working day",
-      [len(banners(h, at(D(2026, 11, 2), "12:00"))), len(banners(h, at(D(2026, 11, 3), "09:00")))], [0, 1])
+check("due on a holiday: quiet on it, out the next working day as overdue",
+      [len(banners(h, at(D(2026, 11, 2), "12:00"))), summary(banners(h, at(D(2026, 11, 3), "09:00")))],
+      [0, [("Bank holiday job", "Overdue since Mon 2 Nov \u00b7 Work")]])
+check("due on a holiday: nothing the day after that",
+      banners(h, at(D(2026, 11, 4), "09:00")), [])
 
 c = doc("- [ ] **Morning** [due:: 2026-10-26] [time:: 09:30]", "- [ ] **Noon** [due:: 2026-10-26] [time:: 12:00]",
         "- [ ] **Later** [due:: 2026-10-26] [time:: 17:00]")
@@ -121,41 +133,87 @@ with tempfile.TemporaryDirectory() as root:
     with open(os.path.join(bdir, "todo.md"), "w") as fh:
         fh.write(t)
     posted = []
+    logs = []
 
     def post(title, body, task, view, group):
         posted.append((title, body, task, view, group))
-        return True
+        return True, "exit 0"
 
-    n = notify_due.run_tick(root, ["work-and-career"], at(MON, "15:01"), working, post)
-    check("tick: one banner, labelled with the board", (n, posted[0][:3]), (1, ("Call Ana", "Due 15:00 · Work and career", "Call Ana")))
+    def tick(now, poster=post, retries=None):
+        return notify_due.run_tick(root, ["work-and-career"], now, working, poster, retries=retries, log=logs.append)
+
+    n = tick(at(MON, "15:01"))
+    check("tick: one banner, labelled with the board", (n, posted[0][:3]), (1, ("Call Ana", "Due 15:00 \u00b7 Work and career", "Call Ana")))
     check("tick: its group is its fired key", posted[0][4], "2026-10-26|Call Ana|due")
-    n = notify_due.run_tick(root, ["work-and-career"], at(MON, "15:02"), working, post)
-    check("tick: not again", n, 0)
-    n = notify_due.run_tick(root, ["work-and-career"], at(MON, "16:00"), working, post)
-    check("restart: state read back from the file, still not again", n, 0)
+    check("tick: not again", tick(at(MON, "15:02")), 0)
+    check("restart: state read back from the file, still not again", tick(at(MON, "16:00")), 0)
     check("state file keeps the key", json.load(open(os.path.join(bdir, "notify-state.json")))["fired"], ["2026-10-26|Call Ana|due"])
 
-    failed = []
-    n = notify_due.run_tick(root, ["work-and-career"], at(TUE, "09:00"), working, lambda *a: failed.append(a) and False)
-    check("a banner that fails to post is tried again", (n, len(failed)), (0, 1))
+    # Failed posts: retried every 10 minutes at most, first failure per key logged.
+    os.remove(os.path.join(bdir, "notify-state.json"))
+    calls, retries = [], {}
+
+    def failing(*a):
+        calls.append(a)
+        return False, "exit 1"
+
+    tick(at(MON, "15:01"), failing, retries)
+    tick(at(MON, "15:02"), failing, retries)
+    tick(at(MON, "15:10"), failing, retries)
+    check("failed post: not retried inside 10 minutes", len(calls), 1)
+    tick(at(MON, "15:11"), failing, retries)
+    tick(at(MON, "15:25"), failing, retries)
+    check("failed post: retried after 10 minutes", len(calls), 3)
+    check("failed post: only the first failure is logged", logs, ["notify: Call Ana failed: exit 1"])
+    check("failed post: succeeds later, then never again",
+          (tick(at(MON, "15:40"), post, retries), tick(at(MON, "15:50"), post, retries)), (1, 0))
 
     old = {"2026-10-01|x|due", "2026-10-20|y|due"}
     check("prune: entries older than 14 days go", sorted(notify_due.prune(old, MON)), ["2026-10-20|y|due"])
 
-    # Queue drain.
+    # Queue.
     q = os.path.join(bdir, "notify-queue.json")
     lines = [{"title": "Plan agent", "body": "3 plans", "view": "plans"}, {"title": "A", "body": "", "task": "x"},
              {"title": "B", "body": "b", "task": "slug"}, {"body": "no title"}, {"title": "Z", "body": "left"}]
     json.dump(lines, open(q, "w"))
-    got = notify_due.drain_queue(bdir, "work-and-career", at(MON, "07:00"))
-    check("queue: held before 08:30", (got, len(json.load(open(q)))), ([], 5))
-    got = notify_due.drain_queue(bdir, "work-and-career", at(MON, "10:00"))
-    check("queue: three taken, an empty body dropped", got, [("Plan agent", "3 plans", None, "plans"), ("B", "b", "slug", None)])
+    check("queue: held before 08:30", (notify_due.queue_batch(bdir, "work-and-career", at(MON, "07:00")), len(json.load(open(q)))), ([], 5))
+    posted.clear()
+    tick(at(MON, "10:00"))
+    check("queue: three taken, an empty body dropped",
+          [p[:4] for p in posted if p[0] != "Call Ana"], [("Plan agent", "3 plans", None, "plans"), ("B", "b", "slug", None)])
     check("queue: the rest stays", [e.get("title") for e in json.load(open(q))], [None, "Z"])
-    got = notify_due.drain_queue(bdir, "work-and-career", at(MON, "10:01"))
-    check("queue: next tick takes the rest, title defaulted", got, [("To-do", "no title", None, None), ("Z", "left", None, None)])
+    posted.clear()
+    tick(at(MON, "10:01"))
+    check("queue: next tick takes the rest, title defaulted",
+          [p[:4] for p in posted], [("To-do", "no title", None, None), ("Z", "left", None, None)])
+
+    # A line comes off only once it has posted.
+    json.dump([{"title": "K", "body": "keep"}, {"title": "G", "body": "go"}], open(q, "w"))
+    only_g = lambda title, body, task, view, group: (title == "G", "exit 1")
+    retries = {}
+    tick(at(MON, "11:00"), only_g, retries)
+    check("queue: a line that failed to post stays, the one that posted goes",
+          [e["title"] for e in json.load(open(q))], ["K"])
+    seen = []
+    tick(at(MON, "11:05"), lambda *a: seen.append(a[0]) or (True, ""), retries)
+    check("queue: a failed line waits out its 10 minutes", seen, [])
+    tick(at(MON, "11:11"), lambda *a: seen.append(a[0]) or (True, ""), retries)
+    check("queue: then goes", (seen, json.load(open(q))), (["K"], []))
+
+    # A line appended while one is being posted survives the removal.
+    json.dump([{"title": "First", "body": "1"}], open(q, "w"))
+
+    def appends_meanwhile(title, body, task, view, group):
+        cur = json.load(open(q))
+        cur.append({"title": "Arrived", "body": "mid-post"})
+        json.dump(cur, open(q, "w"))
+        return True, ""
+
+    tick(at(MON, "12:00"), appends_meanwhile)
+    check("queue: a line appended during a post is kept", [e["title"] for e in json.load(open(q))], ["Arrived"])
+    check("queue: removal is atomic, no temp file left", os.path.exists(q + ".tmp"), False)
     json.dump([{"title": "N", "body": "night"}], open(q, "w"))
-    check("queue: the content board has no window", len(notify_due.drain_queue(bdir, "content", at(MON, "02:00"))), 1)
+    check("queue: the content board has no window", len(notify_due.queue_batch(bdir, "content", at(MON, "02:00"))), 1)
 
 check("url: card", notify_due.board_url("http://h/k", "My task!"), "http://h/k#!task=My%20task%21")
 check("url: view and card", notify_due.board_url("http://h/k", "s", "plans"), "http://h/k#plans!task=s")
