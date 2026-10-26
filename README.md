@@ -1181,264 +1181,79 @@ a copy without a server falls back to `kanban/jira.demo.json` — the same trick
 `demo.md`, so a public page can show the feature without a real site being
 committed to a public repo.
 
-## The desktop companion
+## Desktop banners
 
-The board only says anything while a tab is open on it, which means a day it is
-never opened is a day nothing is said. **To-Do Companion.app** is the answer to
-that: a tray icon and a small portrait window that read the list off disk and
-tell you once each working morning what is due and what is overdue, and what the planning agent worked out while nobody was watching, because a
-plan is several minutes of reading and a menu was the wrong place to hold that.
+The board only says anything while a tab is open on it, so a day it is never
+opened is a day nothing is said. The board server fixes that without a second
+app: while it is running on a Mac with `terminal-notifier` installed, a thread
+inside it (`core/notify_due.py`) wakes every minute, reads every list off disk
+and puts a banner up for whatever has fallen due. This replaced the Electron
+tray app, To-Do Companion, on 26 Oct 2026. That one only watched a single list,
+only spoke once a morning, and needed a second process to be running beside the
+board. Banners now come from the process that is already there, and stop when
+it stops.
 
-Click the tray icon to open the window, click it again (or close the window) to
-put it away — the icon stays either way, since the icon is the process and the
-window is only ever its surface. Right-click the icon for Open the board and
-Quit. It is a tray app and nothing else — no Dock icon, no app switcher entry.
-The icon carries a count of what is owed next to it, and turns into a warning
-triangle when something is overdue.
+**What gets a banner.** Every task and every sub-task with a due date of its own
+that is not done. It goes out on the due date at the item's time, or at 09:00
+when it has none. A time is written beside the date, `[due:: 2026-11-02]
+[time:: 15:00]`, set from the Due time field in the task or sub-task drawer
+(clearing the date clears the time, and a time with no date is dropped on the next
+save). A recurring task whose rule carries a time, `repeat:wed-9:15`, uses that.
+A sub-task does not borrow its task's date or time; only one with a date of its
+own is announced, and its banner opens its task. Each item gets its own banner,
+grouped with nothing.
 
-It reads like a phone rather than a page, which is what the shape of the window
-asks for. The first screen is **the one thing** if there is one, then four
-cards, each a section with a count on it: **the night's plans** still unread or
-read (not yet agreed, sent back, or acted on), **overdue**, **due today**, and
-**messages to send**. Pressing one slides that section's list in from the
-right, with Back at the top left; a section with nothing in it doesn't open.
-Open the board and Check again sit as small buttons above the header, so the
-day itself is the first thing the window says rather than the second.
+**Overdue, once.** If an item due on a working day is still open on the next
+working day, one more banner goes out at 09:00 saying "Overdue since Fri 23 Oct".
+After that it is silent, since a banner a day for a week is how banners get
+ignored.
 
-The lists are the board's own cards — same shape, same bucket colour down the
-left edge, same chips — because they are the board's own CSS, lifted into
-`board-ui.css` (see *How it is built*). A plan carries the red top edge and the
-accent-coloured date the board's Plans tab gives it, so an unread one reads the
-same in both places. Clicking a plan opens the board's Plans tab; clicking a
-task opens the board on that card, with its panel already up. Reading and doing
-something about it stay two different places on purpose: there is no ticking
-off in the window, because a tick is a write to `todo.md` and the companion
-never writes to it. It opens `todo.md` read-only and that is the whole of its
-access, so it cannot race the board's autosave or damage a list.
+**Quiet days.** Weekends and public holidays, from the same working calendar the
+rest of Bench reads (`core/todo.py`: UK and Portugal by default), stay quiet.
+Something due on one goes out once on the next working day at 09:00, already
+saying it is overdue, and gets no second banner. Starting the server late in the
+day sends whatever was owed earlier that day on its first tick, and nothing from
+before today.
 
-**Messages to send** is the section the app earns its place with: every
-suggested message on a live contact step, ready to copy. What stalls one of
-those steps for days is writing the opening line, and a message already written
-turns it into a click. The person's name tops the card and the message fills
-it.
+**Once only.** What has been sent is kept per list in
+`data/<list>/notify-state.json`, keyed by day, item and kind, and pruned after
+14 days, so restarting the server repeats nothing. A banner that fails to post is
+retried every ten minutes and only its first failure is written to the log.
 
-Clicking a message copies it. The × in its corner **dismisses** it — hides it
-here and nowhere else, since the message stays on the card and a dismissal is a
-statement about this window rather than about the work, and this process still
-never writes to `todo.md`. Dismissals are keyed on the message's own text, so
-rewording one deliberately brings it back: a changed message is a different
-message and is worth seeing again. What the companion cannot do is the board's
-delete-on-send, for the same reason it cannot tick a task off.
+**Agents' messages.** `companion/notify.py` is still how an agent asks for a
+banner, from Python or the command line, and its interface did not change. It
+appends to `data/<list>/notify-queue.json`, and the server posts the lines
+between 08:30 and 20:00, three a minute at most (the `content` list has no
+window, because its 11pm run is the reason it exists). A line comes off the file
+only once it has posted. An append and a drain take turns through a lock file
+beside the queue, `notify-queue.lock`, so a line appended mid-drain is not lost.
 
-The morning notification goes out at the first check at or after 08:30 on a
-working day, once a day. Starting the app later in the day still gets you the
-briefing — opening the laptop at four having missed the morning is exactly when
-it is wanted — but not after 20:00, by which time the day is over. A working day
-means a weekday that is not a public holiday in the UK **or** Portugal: the owner takes
-the Portuguese ones and the team takes the UK ones, and a briefing is worth
-little on a morning either side is away. The window's status line names the
-holiday and which country it belongs to — "Quiet — Dia de Portugal (PT)" — so a
-silent Monday reads as the day off it is instead of as an app that has stopped.
-Only the notification is suppressed; the icon and the window are live as usual,
-so a day off that turns out to be a working day costs nothing. Nothing is
-recorded on a quiet day, so the next working morning goes out as normal.
+**Pressing a banner.** Each one opens the board on the card, through a link that
+names its list, `#!board=<list>!task=<key>`. If that list is not the one showing,
+the board switches to it the way its list menu does and then opens the card;
+a list that does not exist or that the person cannot see is ignored and the card
+opens where it is. The board segment comes off the address once used, so a
+reload does not switch again. It is a fragment rather than a query string for the
+same reason as every other link into the board: a link differing only after the
+`#` brings the tab that is already open to the front, where a `?` would open a
+second tab on one list, and two tabs autosaving one `todo.md` is the failure the
+board is written to avoid.
 
-**What it counts as owed.** The same three exclusions Quick wins already makes,
-because two views of one list disagreeing about what is actionable is worse than
-either answer on its own. Reviewing is out, since the next
-move belongs to somebody else. A task whose `blocked-by:` names something
-unticked is out, since the blocker is the real task. Sub-steps are out, since a
-step has no state of its own. Whatever is left out is counted in a line at the
-bottom of the window, so nothing disappears silently.
+**Where it runs.** On a Mac, with `terminal-notifier` found in `PATH`,
+`/opt/homebrew/bin`, `/usr/local/bin` or the rvm gems folder (the server can
+start without the user's `PATH`). The Linux server never starts it, a throwaway
+data root such as the test runner's never starts it, and `BENCH_NOTIFY=0`
+switches it off anywhere. The schedule page lists it as Desktop banners and says
+why when it is off. Banners go out only while the board is running; there is no
+longer anything else to launch.
 
-Recurring tasks are rolled forward in memory. The board rewrites a passed
-`repeat:` date into the file when it loads; the companion works out the same
-date and keeps it to itself, which is what lets it run all day on a day the
-board is never opened without ever touching the file.
-
-It watches the list picked in its tray menu by name rather than following `data/.current`.
-Switching the board to another list for ten minutes should not quietly change
-what gets notified tomorrow morning. One list, until there is a reason for a
-second.
-
-### How it is built
-
-`companion/digest.py` decides what is owed and can be run on its own at a
-terminal — `python3 companion/digest.py`, or with a date to see what a future
-day looks like, or `--json` for the one-line machine-readable form the tray
-app actually polls. The tray app itself is Electron — `companion/src/main/`,
-`preload/` and `renderer/`, built and run with `npm run dev`/`dev.command` and
-packaged with `package.command`.
-
-Rather than port digest.py's policy — effective due dates, `blocked-by`,
-message extraction, the UK/PT holiday calendar — into a second copy in
-JavaScript, the Electron main process shells out to `python3 digest.py --json`
-once a tick (`companion/src/main/digest.ts`) and reads the answer back. That
-policy is deliberately not duplicated anywhere else — see `core/todo.js`'s own
-note on the holiday calendar below — so a short-lived Python process once a
-minute buys reusing it as-is instead of a third implementation to keep in
-step. Everything else the window shows — the planning agent's plans, the
-notification queue, its own dismissed-messages state, the board's bucket
-colours — is read straight off disk in TypeScript (`plans.ts`,
-`notifyQueue.ts`, `state.ts`, `buckets.ts`), since that's plain frontmatter and
-JSON with no format of its own to duplicate.
-
-`src/renderer/src/board-ui.css` is the board's own stylesheet, in the part
-that matters here: the `.card` block and `.btn`, taken out of
-`kanban/board.css`. It carried a hand-written copy of that file's token block
-too, until both windows moved onto Tenon. The companion installs it itself and imports it in
-`main.tsx`, rather than reaching for the board's copy: it is its own npm
-package with its own build, and a second consumer of the same tag is exactly
-what a pinned git dependency is for. Copied rather than imported, because that file is
-2,400 lines whose `body`, `header` and layout rules are written for a
-full-page board and would quietly restyle a 380px window. If a card changes
-shape over there, that file is the one place to bring it across. The cards
-also need to know which colour a bucket takes, which is why `digest.py`'s
-JSON carries the buckets in the order the file declares them, and `buckets.ts`
-reads the board's own `bucket-colors.json` when there is one — the same
-fallback-to-position rule `bucketColor()` in `kanban/js/02-state.js` applies.
-
-Neither of them knows the todo.md file format. That lives in `core/todo.py`, which
-belongs to no one app: a Python port of the parsing, the suggested messages and
-the `repeat:` maths in `core/todo.js`, read-only, so anything outside a browser
-tab that needs to know what is due asks one shared reader rather than inventing a
-second one. It lives in `core/` because the companion, the planning agent and the
-PA's checker all depend on it, and the JavaScript copy sits beside it so the two
-copies of one grammar can be read side by side. `core/README.md` says what
-belongs there and what does not.
-
-Where the two disagree the board is right and `todo.py` is the bug, and
-`core/fixtures/` is what proves they do not. Three JSON tables, generated by
-running the board's own functions: thirty `repeat:` forms against 2,400 dates,
-the suggested-message notes, and a task line carrying every tag. Both suites read
-them — `python3 core/test_todo.py` and `node core/test_todo.mjs` — so a change to
-either copy that breaks the agreement fails loudly in both languages rather than
-quietly rolling a meeting to the wrong day. Run both after touching either.
-
-Writing the third of those tables found three places the two had already drifted,
-none of which anything would ever have hit: a title of nothing but asterisks, a
-`rank:` with characters after the number, and a numbered bucket written below the
-Context section. Small, but they are the shape of the problem — a disagreement
-about junk input is invisible until the day something writes junk.
-
-`todo.py` also carries the working calendar: weekends, England-and-Wales bank
-holidays, and Portugal's national public holidays. Two countries because the work
-spans two. That is not file format and it sits there on sufferance, but three
-things need the same answer — the companion staying quiet on a day off, the
-the PA's checker flagging a deadline that lands on one, and the board's own
-idea of a working day — and the alternative is a second holiday list, which is a
-second list to go stale. Every function there takes a narrower set of regions if
-a caller only cares about one of them.
-
-The dates are worked out from the rules rather than kept as a table. A table has
-to be extended a year at a time by somebody who remembers to, and the year it
-runs out is the year it quietly starts calling every day a working day. The rules
-are stable: Easter drives seven of the entries, the UK's weekend substitution
-rule handles the rest, and Portugal does not substitute at all, which is why 2027
-is a thin year there. What no rule can produce goes in `UK_EXTRA` and `PT_EXTRA`,
-where a name adds a holiday and `None` removes one — that is how the VE Day move,
-the Platinum Jubilee, the State Funeral and the Coronation are represented, and
-how the next one will be. Portugal's municipal days and the Azores and Madeira
-sets are deliberately not included; add the relevant one to `PT_EXTRA` if it
-starts mattering.
-
-`core/test_todo.py` pins all of it against the published dates for 2026 and
-2027, and `--online` re-checks the generated calendar against the sources:
-gov.uk's own JSON feed for England and Wales, and Nager.Date for Portugal, which
-has no official feed. Every England-and-Wales date from 2019 to 2028 agrees, and
-both Portuguese years agree exactly. The offline tables are what run by default,
-because a test that needs the network is a test that fails on a train.
-
-**Opening a card from outside the board.** A task or a plan in the companion
-links to `#!task=<key>`, where the key is the task's `#slug` if it has one and its
-title if it does not — the board mints a fresh id for every task on every parse,
-so an id is no use to anything outside the tab. The fragment carries the view and
-the card at once, `#<view>!task=<key>`, and the two do not compete: the view
-segment sets the view exactly as it always did, the task segment opens a drawer
-over whatever is showing, and an empty view segment means leave the view alone.
-The board writes the view back on its next draw, which is what drops the task
-again — an instruction that has been carried out should not survive a refresh.
-
-It is the fragment rather than a query string on purpose. A link differing only
-after the `#` is a same-document navigation, so the browser raises the tab that
-is already open and fires `hashchange`; a `?task=` would be a different URL and
-would give a second tab on one list, and two tabs both autosaving one `todo.md`
-is the failure this whole app is written to stay clear of. When the board is not
-running at all the companion launches it and waits for the port before sending
-the link, so the server's own tab is the one that gets it.
-
-The bundle is gitignored, like the board's Dock launcher, and
-`companion/package.command` builds it: `electron-packager` bundles the whole
-`companion/` project — including `digest.py` and `notify.py`, which the
-packaged app still runs and appends to at runtime — into `companion/dist/`,
-and the script leaves a symlink named `To-Do Companion.app` at the repo root,
-where `kanban/server.py`'s own hint expects to find it. Re-running the script
-after a change repoints the symlink; nothing else has to move. Being a real,
-ad-hoc-signed `.app` rather than a hand-launched Python script is what fixes
-the one thing the old app could never do: register with macOS's own
-`UNUserNotificationCenter`, so notifications finally carry the right name and
-icon without a copied interpreter stub standing in for one.
-
-A packaged `.app` is a frozen copy of the project, cut off from the live repo
-it was built from — so `companion/src/main/index.ts`'s `findRepoRoot()`
-doesn't trust its own location once packaged. It guesses the relative path
-first (right when running from source, wrong inside `Contents/Resources/app`)
-and falls back to the one machine this has ever run on when that guess finds
-no `data/` folder next to it — the identical fallback
-`companion/build-app.command`'s old launcher script used to carry.
-
-The log is at `~/Library/Logs/To-Do Companion.log`, which is the only place a
-tray app has to say anything. It records each start, which route every
-notification took, and where each banner that was clicked went.
-
-**A notification goes somewhere when you press it.** Every banner is built
-with the task or view it should open, and clicking it calls the same
-`openBoard()` the window's own rows call, so a banner and a row behave
-identically and neither can give you a second tab. The morning briefing points
-at the one thing when there is one, and at the board itself when the line
-names several tasks, since picking one of three to open would be a guess.
-
-### Asking the companion to say something
-
-The companion is the only thing here that can put a desktop notification on
-screen. The planning agent has no interface at all, the board is a browser tab
-that is usually shut, and a skill is a conversation that has already ended by the
-time its result matters. So rather than each growing its own way to speak, they
-append to one file and the companion drains it on its next tick:
-
-```
-python3 companion/notify.py --view plans "Plan agent" "3 plans waiting"
-python3 companion/notify.py --task ds-audit "Due today" "The audit is owed"
-```
-
-`data/<dataset>/notify-queue.json`, the same shape as `attach-queue.json`: a JSON
-array anything may append to, drained and cleared by the one process that can act
-on it. `companion/notify.py` is the writer, it never raises, and it caps the queue
-so a companion that has been shut for a fortnight comes back with the last few
-lines rather than the whole backlog at once.
-
-`--task` and `--view` are where the banner goes when it is pressed, and both are
-optional — a task is a card's `#slug` or its title, a view is one of the board's
-own tabs. Name one wherever there is an obvious one to name: a banner that says
-three plans are waiting and then leaves you to go and find them has to be acted
-on twice.
-
-What the queue does not get to override: nothing is posted outside 08:30 to
-20:00, and no more than three at a time. A line queued at 02:00 waits for the
-morning, which is the whole point — the planning agent finishes in the middle of
-the night and there is no version of being woken by it that is useful.
-
-Weekends and public holidays are the one rule the queue does **not** inherit from
-the morning briefing, and the difference is deliberate. The briefing is a
-scheduled interruption about a working day, so a Saturday rightly gets none. A
-queued line is the opposite: it answers something that has just happened, put
-there by something you set running yourself. Running the planning agent on a
-Saturday and hearing about it on Monday helps nobody. The time window is the
-guard that matters, because that one is about not being woken, and it applies
-every day.
-
-So it is for things worth a banner, not for progress. A run that wrote three
-plans is one line at the end, not one line a plan.
+**The retired app.** `companion/` stays on disk, because `notify.py` and
+`digest.py` are still called from there, but the Electron tray app is not part of
+the setup any more: `run.command` starts only the board, nothing launches the
+tray app, and its packaged `To-Do Companion.app` can be deleted. Its suite,
+`python3 companion/test_companion.py`, still covers `notify.py` and `digest.py`.
+The board's own tests for this are `core/test_notify_due.py` and
+`kanban/test_board_link.mjs`.
 
 ## The skills
 

@@ -11,6 +11,7 @@ import json
 import os
 import sys
 import tempfile
+import threading
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import notify_due
@@ -212,6 +213,27 @@ with tempfile.TemporaryDirectory() as root:
     tick(at(MON, "12:00"), appends_meanwhile)
     check("queue: a line appended during a post is kept", [e["title"] for e in json.load(open(q))], ["Arrived"])
     check("queue: removal is atomic, no temp file left", os.path.exists(q + ".tmp"), False)
+    # notify.py's append, landing in the middle of a drain, waits for it and survives.
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "companion"))
+    import notify as notify_py
+    json.dump([{"title": "Old", "body": "o"}], open(q, "w"))
+    appended = threading.Event()
+    waited = []
+
+    def append_line():
+        notify_py.queue("Mid-drain", "arrives while the drain holds the lock", path=q)
+        appended.set()
+
+    with notify_due.queue_lock(q):
+        items = notify_due._read_queue(q)
+        threading.Thread(target=append_line).start()
+        waited.append(appended.wait(0.5))
+        notify_due._write_queue(q, [e for e in items if e["title"] != "Old"])
+    appended.wait(5)
+    check("lock: an append during a drain waits for it", waited, [False])
+    check("lock: and is not lost", [e["title"] for e in json.load(open(q))], ["Mid-drain"])
+    check("lock: the lock file sits beside the queue", os.path.exists(os.path.join(bdir, "notify-queue.lock")), True)
+
     json.dump([{"title": "N", "body": "night"}], open(q, "w"))
     check("queue: the content board has no window", len(notify_due.queue_batch(bdir, "content", at(MON, "02:00"))), 1)
 

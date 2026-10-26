@@ -127,11 +127,13 @@ node core/test_todo.mjs            # the same fixtures, the other language
 python3 core/test_reports.py       # aggregate.py, render.py, archive.py — no JS counterpart
 node kanban/ui/test_primitives.mjs # the React primitives against colHTML/cardShellHTML
 python3 agents/plan-agent/test_planning_agent.py    # the schedule, the picker, the runner
-python3 companion/test_companion.py
+python3 companion/test_companion.py   # notify.py and digest.py; the Electron app is retired
+python3 core/test_notify_due.py    # desktop banners: the rules, the state file, the queue and its lock
 python3 kanban/test_bucket_brief.py # the brief routes — no board, no browser
 python3 kanban/test_board_access.py # signed-in mode and board access — starts its own servers
 # the ones below need the board: scripts/test-board.sh --all runs every one
 node kanban/test_schedule.mjs
+node kanban/test_board_link.mjs   # a banner's link naming its board
 node kanban/test_one_board.mjs     # handing a task over, the two reviews, whose move it is
 node kanban/test_signed_in.mjs     # signed in: the name, the Mac-only parts gone, sharing a list
 node kanban/test_subtasks.mjs      # sub-tasks in the drawer, and the agents' tick queue

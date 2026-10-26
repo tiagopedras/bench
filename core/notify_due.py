@@ -2,7 +2,8 @@
 
 The board server runs this on a minute tick (kanban/server.py) and posts what it
 returns through terminal-notifier. It replaces the Electron companion's
-notifier, which only spoke for one list at a time and only once a morning.
+notifier, which only spoke for one list at a time and only once a morning
+(companion/ stays on disk, retired).
 
 The rules for a due banner, one per task or sub-task with a due date of its
 own that is not done:
@@ -29,6 +30,7 @@ Everything that needs a clock or a calendar takes it as an argument, so the
 tests run on a fake one. Only `post` and `start` touch the machine.
 """
 
+import contextlib
 import datetime as dt
 import json
 import os
@@ -37,6 +39,11 @@ import subprocess
 import sys
 import threading
 import urllib.parse
+
+try:
+    import fcntl
+except ImportError:          # no flock off a Unix
+    fcntl = None
 
 import todo
 
@@ -183,10 +190,35 @@ def write_state(board_dir, fired, today):
 # ---- the agents' queue ------------------------------------------------------------
 
 # companion/notify.py appends by reading the file, adding a line and replacing it
-# whole, with no lock. Nothing here can make it wait, so this module keeps its
-# own window small instead: a line comes off the file only after it has been
-# posted, by re-reading the file just before an atomic replace.
+# whole. Both sides take an exclusive flock on `notify-queue.lock` beside the
+# queue file around that read-and-replace, so a line appended while this
+# removes the ones it posted is neither lost nor overwritten. A line comes off
+# the file only after it has been posted.
 _queue_lock = threading.Lock()
+
+
+@contextlib.contextmanager
+def queue_lock(path):
+    """The queue's cross-process lock, the same file and call as notify.py's.
+    The thread lock keeps this module's own threads in line; flock does the
+    rest. A lock that cannot be had lets the work go ahead without it."""
+    with _queue_lock:
+        fh = None
+        if fcntl is not None:
+            try:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                fh = open(os.path.splitext(path)[0] + ".lock", "a")
+                fcntl.flock(fh, fcntl.LOCK_EX)
+            except OSError:
+                if fh:
+                    fh.close()
+                fh = None
+        try:
+            yield
+        finally:
+            if fh:
+                fcntl.flock(fh, fcntl.LOCK_UN)
+                fh.close()
 
 
 def _read_queue(path):
@@ -233,7 +265,7 @@ def queue_remove(board_dir, entries):
     if not entries:
         return
     path = os.path.join(board_dir, QUEUE_FILE)
-    with _queue_lock:
+    with queue_lock(path):
         items = _read_queue(path)
         for e in entries:
             if e in items:
