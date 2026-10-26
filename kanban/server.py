@@ -3922,6 +3922,16 @@ def main():
     if first_weekly:
         print("weekly backup: %s/%s/backups/%s" % (DATA, ds, first_weekly))
     threading.Thread(target=weekly_backup_watcher, daemon=True).start()
+    # Desktop banners for due tasks and the agents' queue. Mac only, and only
+    # with terminal-notifier; the Linux server never starts it, and nor does a
+    # throwaway copy under TODOS_DATA_ROOT (the test runner), which holds demo data.
+    import notify_due
+    import owner_profile
+    if todo is not None and not SCRATCH and notify_due.start(
+            DATA_ROOT, lambda: list_datasets(everyone=True),
+            lambda: owner_profile.holiday_regions(DATA_ROOT),
+            "http://127.0.0.1:%d/%s" % (PORT, PAGE)):
+        print("Desktop banners for due tasks are on.")
 
     url = "http://127.0.0.1:%d/%s" % (PORT, PAGE)
     print("To-do board running at %s" % url)
