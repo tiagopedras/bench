@@ -54,6 +54,11 @@ has the one writer.
 - `skills/pa/scripts/log_sitting.py` — logs how long a sitting took and which
   buckets it touched, into `data/<dataset>/pa-time.json`. Every `pa-*` skill
   calls it; see PA.md.
+- `skills/pa/scripts/pa_save.py` — the only way `pa` writes a list: it pulls
+  `todo.md` from the board server into a copy and pushes the edited copy back
+  as `{text, base}`, so the server merges it with any save made meanwhile. The
+  same script reaches the shared board over HTTPS with a token from the macOS
+  Keychain. `test_pa_save.py` beside it runs it against a throwaway server.
 - `skills/pa/scripts/pa_working.py` — names the tasks `pa` is about to
   change in `data/<dataset>/pa-working.json`, and removes it after, so an open
   board can glow those cards and animate the change.

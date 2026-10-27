@@ -34,6 +34,23 @@ board's people are known: its owner and named people from access.json, and
 everyone who has signed in as a member of one of its teams (board_people()).
 Somebody in a board's team who has never signed in is not offered, because
 Bench has never been told they exist.
+
+The PA reaches a shared board as an identity of its own, through
+agents/pa_agent/skills/pa/scripts/pa_save.py. The sign-in service checks its
+token, which is good for one board, and nginx passes a fourth header:
+
+    X-Offdesk-Board   the one board this request is held to
+
+kanban/server.py then serves that board whatever the identity's current board
+is, and refuses anything but reading and saving its list (pinned_board()).
+The header narrows and never widens: the identity still has to be able to see
+the board. Its teams header is empty, so that means being named in the board's
+`people`. A board from before sign-in has no access.json and is visible to
+nobody, the PA identity included, so scripts/set-board-access.py gives it one
+before the identity is added:
+
+    scripts/set-board-access.py offdesk --owner tiagopedras+claude@gmail.com --team offdesk
+    scripts/set-board-access.py offdesk --person pa-tiago@offdesk.invalid
 """
 
 import hashlib

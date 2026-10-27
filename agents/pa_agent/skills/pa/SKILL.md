@@ -13,7 +13,7 @@ This skill owns the to-do list. Everything that changes the file happens here, w
 
 ## The one writer
 
-`todo.md` has one writer and this is it. The board holds the whole document in the browser and writes all of it back when it saves, within seconds of anything marking the document dirty. So a second thing editing the file underneath an open tab is overwritten silently, and it has taken the real list twice.
+`todo.md` has one writer and this is it. The board holds the whole document in the browser and writes all of it back when it saves, within seconds of anything marking the document dirty. So a second thing editing the file underneath an open tab is overwritten silently, and it has taken the real list twice. That is why you never write the file yourself either: every change goes through the board server's own save, `scripts/pa_save.py`, which merges your edit with any save a tab made while you worked (see Applying a change).
 
 Every other part of this system is arranged around that. The companion reads and never writes. The planning agent writes plans and a queue file. `pa-attach` writes a queue file the board drains. `implement-agent` carries out an agreed plan and asks for the list change in its report rather than making it. The other `pa-*` skills hold the conversation and hand the outcome here.
 
@@ -31,7 +31,7 @@ When something in a handover cannot be expressed in the conventions, say so rath
 
 ## From a board chat
 
-A message that ends "(Sent from the to-do board's PA chat…)" came from the board's PA panel. That chat runs in Ask mode and cannot write `todo.md`, and must not try: the board holds the file and autosaves it. Instead, end the reply with the changes as one fenced `pa-changes` block, and the board applies them itself as a single undo step. Write nothing to the file, don't run the checker, and don't tell the owner to Reload. Every other session keeps editing `todo.md` directly, as the rest of this skill says.
+A message that ends "(Sent from the to-do board's PA chat…)" came from the board's PA panel. That chat runs in Ask mode and cannot write `todo.md`, and must not try: the board holds the file and autosaves it. Instead, end the reply with the changes as one fenced `pa-changes` block, and the board applies them itself as a single undo step. Write nothing to the file, don't run the checker, and don't tell the owner to Reload. Every other session writes `todo.md` through `pa_save.py`, as the rest of this skill says.
 
 The block is a JSON list. `task` is the task's `id:` (preferred) or its exact title. Ten kinds:
 
@@ -145,7 +145,22 @@ Keep them out of the reply. They are pending topics: count them on the last line
 
 ## Applying a change
 
-Use `Edit` on the specific lines. Rewriting the whole file for a two-line change risks losing notes and burns tokens for no gain. Reserve a full rewrite for a genuine restructure, like adding a bucket or moving most of a section between states.
+**Write only through `pa_save.py`, never with `Edit` on `data/<dataset>/todo.md`.** An edit straight to the file loses any save a tab made between your read and your write. The script reads the list from the board server into a copy, you edit the copy, and it saves the copy the way a tab does, so the server merges the two. It takes the board's name, works whether or not that board is the one on screen, and never switches it.
+
+```bash
+S="${BENCH_ROOT:-$HOME/Code/bench}"/agents/pa_agent/skills/pa/scripts
+python3 "$S"/pa_save.py pull <dataset>     # prints the copy's path
+# Edit the copy, run the checker on it (Verify and deliver)
+python3 "$S"/pa_save.py push <dataset>
+```
+
+- **Pull at the start of each batch**, not once a session, so the copy is the list as it is now. A pull refuses to go over an edit that was never pushed; push it, or `pull --discard` if it should go.
+- **Exit 0 is saved.** "merged" means somebody saved while you worked and both changes are in.
+- **Exit 1 is a conflict:** somebody changed the same thing. The task and field are printed, nothing was written, and their version sits beside the copy as `theirs.md`. Tell the owner which, then `pull --discard` and redo the change on what is there now.
+- **Exit 2 is a refusal**, printed as the server worded it: the board is not running, the board does not exist, or a save the server would not take. Say what it said and stop. Never fall back to editing the file.
+- **The shared board** at `bench.offdesk.io` is the same script with `--url https://bench.offdesk.io --keychain-service <service> --keychain-account <account>`, or the `PA_SAVE_URL`, `PA_SAVE_KEYCHAIN_SERVICE` and `PA_SAVE_KEYCHAIN_ACCOUNT` variables. The token is read from the macOS Keychain on each run and is good for one board only, so naming any other gets a refusal. Never ask the owner for the token, print it, or write it anywhere.
+
+Use `Edit` on the specific lines of the copy. Rewriting the whole copy for a two-line change risks losing notes and burns tokens for no gain. Reserve a full rewrite for a genuine restructure, like adding a bucket or moving most of a section between states.
 
 **Tell the board before the first edit, and again when the last one is done.** An open board glows the cards you name while you work, holds its reload until you finish, then slides each card into its new place. Before the first `Edit`, name every task you are about to change, by title or `id:`, leaving out tasks you are about to add:
 
@@ -153,7 +168,7 @@ Use `Edit` on the specific lines. Rewriting the whole file for a two-line change
 python3 "${BENCH_ROOT:-$HOME/Code/bench}"/agents/pa_agent/skills/pa/scripts/pa_working.py start "${BENCH_ROOT:-$HOME/Code/bench}"/data/<dataset>/pa-working.json "Task title" ab12cd
 ```
 
-After the last edit and the checker, run the same script with `done` and the same path. Run `done` even when the edit failed or you stopped to ask, since the board holds its reload until the file goes or is ten minutes old. If you stop to ask mid-batch, run `done` first and `start` again when you resume.
+After the push, run the same script with `done` and the same path. Run `done` even when the edit failed or you stopped to ask, since the board holds its reload until the file goes or is ten minutes old. If you stop to ask mid-batch, run `done` first and `start` again when you resume. `pa-working.json` is a file on the Mac, so on the shared board there is nothing to tell and you skip both.
 
 **There are no sections to rebuild.** The file is four buckets and nothing else. This week, Quick wins, Big rocks, Dependency chain and Delegate to Claude are worked out by the board every time it renders. Never add them back as text: a section in the file is a copy, and a copy has to be maintained by hand every session or it starts describing a file that has moved on.
 
@@ -294,19 +309,19 @@ Only ever propose one. Offering three candidates hands the decision back to the 
 
 ## Verify and deliver
 
-Run the checker before delivering, every time there was a write:
+Run the checker on the copy before you push, every time there was a write:
 
 ```bash
-python3 "${BENCH_ROOT:-$HOME/Code/bench}"/agents/pa_agent/skills/pa/scripts/check_todo.py "${BENCH_ROOT:-$HOME/Code/bench}"/data/<dataset>/todo.md
+python3 "${BENCH_ROOT:-$HOME/Code/bench}"/agents/pa_agent/skills/pa/scripts/check_todo.py <the path pull printed>
 ```
 
 Fix anything it flags, since handing over a file with a Saturday deadline in it wastes the owner's time and undermines the point of the list. Do not report a flag that was already there when you arrived unless the owner asked; flags matter when your own edit caused one.
 
 `references/audit-checklist.md` is what to check by hand that the script cannot, mostly dependency and state logic. Read it before delivering after a large restructure.
 
-**The file is edited in place, on the owner's disk.** Use `Edit` and it is already saved; there is nothing to upload, attach or commit.
+**A push that says saved is saved.** There is nothing to upload, attach or commit.
 
-**Do not ask whether the board is open.** Start reading and editing straight away. The owner knows the board is there and asking every session costs a turn to be told yes or no. What the risk actually needs is the closing line: the board holds the owner's edits in the browser until it saves and writes the whole file when it does, so a save from a stale board overwrites your work.
+**Do not ask whether the board is open.** Start reading and editing straight away. The owner knows the board is there and asking every session costs a turn to be told yes or no. The board server has to be running for a pull, and a refusal says so when it is not. What the open tab needs is the closing line, so it shows your change.
 
 Always end by telling the owner to press **Reload** on the board, without asking whether it is open. `change-report.md` carries that line, so it comes out on its own; do not write a second one. If the owner says mid-session that they have unsaved work on the board, stop and let them Save first.
 
@@ -367,6 +382,7 @@ template that tried to would be a second copy of them.
 - `references/audit-checklist.md` — what to check by hand that the script cannot, mostly dependency and state logic.
 - `references/templates.md` — the report template syntax and every field available, shared by every skill that renders one.
 - `scripts/check_todo.py` — the mechanical checker. Run it before delivering.
+- `scripts/pa_save.py` — the only way this skill writes a list, through the board server's save. Its copies sit in `data/.pa-save/<host>/<dataset>/` between a pull and a push.
 - `data/<dataset>/backups/todo-backup-*.md` — written by the board, one per run, before its first save. Useful if something is clobbered.
 - `data/<dataset>/backups/done-archive.md` — finished work the board has lifted out of `todo.md` once it had been ticked off for more than 30 days. Append-only and never pruned. **A task missing from the list is not necessarily a task that never existed — look here before concluding anything was lost, and never re-add something from here to todo.md unless the owner asks.**
 - `data/<dataset>/briefings.json` — a generated briefing per task (direction, what's done, what's still needed), written overnight by `agents/plan-agent/brief.py` and read by `newChat()` and by this skill. Never write this file by hand; refresh one entry with `python3 "${BENCH_ROOT:-$HOME/Code/bench}"/agents/plan-agent/brief.py --task "<title>"` after a groom that changes what a task is actually asking for — worth doing so the next chat or plan on it starts from what you just settled rather than what the overnight pass last saw.
