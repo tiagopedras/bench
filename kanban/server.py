@@ -151,6 +151,19 @@ def requester():
     return getattr(_request, "who", None)
 
 
+def pinned_board():
+    """The board this request is held to by X-Offdesk-Board, or None.
+
+    The PA's save route (agents/pa_agent/skills/pa/scripts/pa_save.py) names
+    its board this way, because a PUT names none and goes to the saver's
+    current board. Signed in, nginx sets the header from the sign-in
+    service's token check, so the board is the token's and a browser cannot
+    send its own. On the Mac pa_save.py sends it itself, so the PA can save a
+    board that is not the one on screen without switching it. Either way the
+    request may only read and write that board's list (pinned_refusal())."""
+    return getattr(_request, "board", None)
+
+
 # ---- Data sets --------------------------------------------------------------
 #
 # A dataset is nothing but a folder directly under data/ that has a todo.md in
@@ -201,6 +214,9 @@ def _pointer():
 
 
 def current_dataset():
+    pin = pinned_board()
+    if pin:
+        return pin if pin in list_datasets() else None
     who = requester()
     if AUTH and who:
         name = board_access.read_current(DATA_ROOT, who["email"])
@@ -2443,6 +2459,16 @@ def shared_refusal(method, path):
     return None
 
 
+def pinned_refusal(method, path):
+    """(status, body) for anything a request held to one board may not do,
+    else None. It reads and writes that board's list, and asks who it is."""
+    if path.lstrip("/") == TARGET and method in ("GET", "HEAD", "PUT"):
+        return None
+    if path == "/whoami" and method == "GET":
+        return None
+    return (403, {"error": "a request held to one board only reads and writes its list"})
+
+
 # What a signed-in person with no board yet can still ask for: the page, who
 # they are, the list of boards (empty) and the route that makes one.
 BOARDLESS_GET = ("/datasets.json", "/settings.json", "/profile-basics.json",
@@ -2545,25 +2571,34 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         to remember to check. So is a route the shared board does not offer,
         and a POST without X-Board: from a public address the board's cookie
         travels with a form on any site, and that header is what a form cannot
-        send.
+        send. A request held to one board by X-Offdesk-Board (pinned_board())
+        may only read and write that board's list, signed in or not.
         """
         if not super().parse_request():
             return False
         _request.who = None
-        if not AUTH:
-            return True
-        who = self._signed_in()
+        _request.board = (self.headers.get("X-Offdesk-Board") or "").strip() or None
+        route = self.path.split("?")[0]
         refusal = None
-        if not who:
-            refusal = (401, {"error": "sign in first"})
+        if not AUTH:
+            if _request.board:
+                refusal = pinned_refusal(self.command, route)
+                if not refusal and current_dataset() is None:
+                    refusal = (404, {"error": "no list called “%s”" % _request.board})
         else:
-            _request.who = who
-            seen_person(who)
-            refusal = shared_refusal(self.command, self.path.split("?")[0])
-            if not refusal and self.command == "POST" and self.headers.get("X-Board") != "1":
-                refusal = (403, {"error": "not from the board"})
-            if not refusal and current_dataset() is None and needs_board(self.command, self.path.split("?")[0]):
-                refusal = (404, {"error": "no list you can see"})
+            who = self._signed_in()
+            if not who:
+                refusal = (401, {"error": "sign in first"})
+            else:
+                _request.who = who
+                seen_person(who)
+                refusal = shared_refusal(self.command, route)
+                if not refusal and _request.board:
+                    refusal = pinned_refusal(self.command, route)
+                if not refusal and self.command == "POST" and self.headers.get("X-Board") != "1":
+                    refusal = (403, {"error": "not from the board"})
+                if not refusal and current_dataset() is None and needs_board(self.command, route):
+                    refusal = (404, {"error": "no list you can see"})
         if refusal:
             # The body, if any, is never read, so the connection cannot be
             # reused for a next request.
@@ -2649,6 +2684,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             digest = file_hash(todo_path())
             if digest:
                 self.send_header("X-Todo-Hash", digest)
+                # Which list this is, so pa_save.py can check it has the board
+                # it named before it builds an edit on it.
+                self.send_header("X-Bench-Board", current_dataset())
         super().end_headers()
 
     def translate_path(self, path):
@@ -3853,8 +3891,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # land after somebody else's save and hand it a version its document
         # was never built on. A merged save also carries the text written, so
         # the tab can show what the other side changed.
-        append_activity(ds, changes)
-        reply = {"ok": True, "bytes": size, "backup": backup_name, "weekly": weekly_name,
+        # On the Mac nobody signs in, and the one sender that holds a request
+        # to a board is pa_save.py, so the save is the PA's, as it was when
+        # the PA wrote the file and notice_outside_edit() found it.
+        if not AUTH and pinned_board():
+            append_activity(ds, changes, who="pa", name="pa")
+        else:
+            append_activity(ds, changes)
+        reply = {"ok": True, "board": ds, "bytes": size, "backup": backup_name, "weekly": weekly_name,
                  "hash": file_hash(path), "disk": self.date_time_string(os.stat(path).st_mtime)}
         # The text as written, whenever it is not what the tab sent: merged
         # with somebody else's save, or carrying who wrote what.
