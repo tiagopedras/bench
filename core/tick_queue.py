@@ -58,13 +58,13 @@ lands while the board is draining is not written over.
 
 import argparse
 import datetime as dt
-import fcntl
 import json
 import os
 import sys
 import uuid
 
 import dataset as _dataset
+from platform_calls import Locked as _Locked
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # $TODOS_DATA_ROOT moves the datasets, as it does for kanban/server.py.
@@ -78,22 +78,6 @@ def current_dataset():
 def queue_path(dataset=None):
     return os.path.join(DATA_ROOT, dataset or current_dataset(), "tick-queue.json")
 
-
-class _Locked:
-    """Holds an exclusive lock beside the queue for as long as it is open."""
-
-    def __init__(self, path):
-        self.path = path
-
-    def __enter__(self):
-        os.makedirs(os.path.dirname(self.path), exist_ok=True)
-        self.fh = open(self.path + ".lock", "w")
-        fcntl.flock(self.fh, fcntl.LOCK_EX)
-        return self
-
-    def __exit__(self, *exc):
-        fcntl.flock(self.fh, fcntl.LOCK_UN)
-        self.fh.close()
 
 
 def read(path=None):

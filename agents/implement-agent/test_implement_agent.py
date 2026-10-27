@@ -344,7 +344,7 @@ def test_off():
         return
     conf = settings.load(os.path.join(TMP, "state"), hooks, "t")
     check("a list it has no settings for is off, with no hours", (conf["on"], conf["hours"]), (False, []))
-    spec = json.load(open(os.path.join(HERE, "agent.json")))
+    spec = json.load(open(os.path.join(HERE, "agent.json"), encoding="utf-8"))
     check("agent.json points every command at run.py",
           all(v[1] == "run.py" for k, v in spec.items() if isinstance(v, list)), True)
 

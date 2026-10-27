@@ -181,7 +181,7 @@ def run_report_agent(defn, period, today, dry=False):
         return None, 0.0, None
     try:
         proc = subprocess.run(cmd, cwd=ROOT, capture_output=True,
-                              text=True, timeout=TASK_TIMEOUT)
+                              text=True, encoding="utf-8", timeout=TASK_TIMEOUT)
     except subprocess.TimeoutExpired:
         return None, 0.0, "timed out after %d minutes" % (TASK_TIMEOUT // 60)
     except OSError as exc:

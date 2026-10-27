@@ -93,7 +93,7 @@ def main():
     a = ap.parse_args()
 
     if a.cmd == "boards":
-        cur = open(os.path.join(DATA, ".current")).read().strip()
+        cur = open(os.path.join(DATA, ".current"), encoding="utf-8").read().strip()
         for b in boards():
             print(b + ("  (current)" if b == cur else ""))
         return
