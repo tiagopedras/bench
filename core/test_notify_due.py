@@ -270,5 +270,15 @@ check("url: neither", notify_due.board_url("http://h/k"), "http://h/k")
 os.environ["BENCH_NOTIFY"] = "0"
 check("BENCH_NOTIFY=0 keeps it off", notify_due.start("/x", list, tuple, "u"), None)
 
+saved = os.environ.pop("BENCH_NOTIFY_SOUND", None)
+check("sound: unset is the default sound", notify_due.notify_sound(), "default")
+os.environ["BENCH_NOTIFY_SOUND"] = "Glass"
+check("sound: a name is that sound", notify_due.notify_sound(), "Glass")
+os.environ["BENCH_NOTIFY_SOUND"] = "0"
+check("sound: 0 mutes it", notify_due.notify_sound(), None)
+os.environ.pop("BENCH_NOTIFY_SOUND", None)
+if saved is not None:
+    os.environ["BENCH_NOTIFY_SOUND"] = saved
+
 print("notify_due — %s" % ("all agree" if not failures else "%d failed" % failures))
 raise SystemExit(1 if failures else 0)
