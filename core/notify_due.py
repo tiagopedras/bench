@@ -382,10 +382,22 @@ def enabled():
     return sys.platform == "darwin" and os.environ.get("BENCH_NOTIFY") != "0" and bool(find_notifier())
 
 
+def notify_sound():
+    """The macOS sound for a banner: "default" unless BENCH_NOTIFY_SOUND names
+    another, or "0" to play none (None)."""
+    name = os.environ.get("BENCH_NOTIFY_SOUND", "")
+    if name == "0":
+        return None
+    return name or "default"
+
+
 def post(notifier, base_url, title, body, task=None, view=None, group=None, log=print, board=None):
     args = [notifier, "-title", title, "-message", body, "-open", board_url(base_url, task, view, board)]
     if group:
         args += ["-group", group]
+    sound = notify_sound()
+    if sound:
+        args += ["-sound", sound]
     try:
         rc = subprocess.run(args, capture_output=True, timeout=15).returncode
     except (OSError, subprocess.SubprocessError) as err:
@@ -398,7 +410,8 @@ def post(notifier, base_url, title, body, task=None, view=None, group=None, log=
 def start(data_root, list_boards, regions_for, base_url, log=print, read_text=read_plain):
     """Start the daemon thread that ticks every minute. Returns it, or None
     when this machine should stay quiet (not a Mac, no terminal-notifier, or
-    BENCH_NOTIFY=0)."""
+    BENCH_NOTIFY=0). Banners play a sound unless BENCH_NOTIFY_SOUND says
+    otherwise (see notify_sound)."""
     if not enabled():
         return None
     notifier = find_notifier()
