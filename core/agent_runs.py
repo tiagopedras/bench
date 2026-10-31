@@ -43,12 +43,12 @@ Implement agent and the board never overwrite each other's rows.
 
 import argparse
 import datetime as dt
-import fcntl
 import json
 import os
 import sys
 
 import dataset as _dataset
+from platform_calls import Locked as _Locked
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_ROOT = os.environ.get("TODOS_DATA_ROOT") or os.path.join(ROOT, "data")
@@ -71,20 +71,6 @@ def runs_path(dataset=None):
 def _now(now=None):
     return (now or dt.datetime.now()).replace(microsecond=0).isoformat()
 
-
-class _Locked:
-    def __init__(self, path):
-        self.path = path
-
-    def __enter__(self):
-        os.makedirs(os.path.dirname(self.path), exist_ok=True)
-        self.fh = open(self.path + ".lock", "w")
-        fcntl.flock(self.fh, fcntl.LOCK_EX)
-        return self
-
-    def __exit__(self, *exc):
-        fcntl.flock(self.fh, fcntl.LOCK_UN)
-        self.fh.close()
 
 
 def read(path=None):
