@@ -172,7 +172,25 @@ def test_a_tag_with_no_handover_says_the_plan_agent_will_hand_it_over():
           "The board gives it an id" in text.get(11, ""), True)
 
 
+def test_pushing_code_is_not_contacting_anyone():
+    """`push \\w+ to` is for nudging a person ("Push Ana to sign off"). A step
+    that pushes code somewhere is not a message to anyone, and flagging it
+    asked for a suggested message nobody could write."""
+    contact = lambda s: bool(check_todo.CONTACT_STEP.search(s))
+    check("pushing a person to act is contact",
+          contact("Push Ana to sign off the tokens"), True)
+    check("pushing it to a branch is not",
+          contact("Push it to a branch, merged with main, and open a PR"), False)
+    check("pushing the fix to main is not",
+          contact("Push the fix to main"), False)
+    check("pushing changes to GitHub is not",
+          contact("Push changes to GitHub"), False)
+    check("asking someone is still contact",
+          contact("Ask Tiago whose work it is"), True)
+
+
 def main():
+    test_pushing_code_is_not_contacting_anyone()
     test_a_tag_with_no_handover_says_the_plan_agent_will_hand_it_over()
     test_blocked_by_an_archived_slug_is_not_dangling()
     test_missing_archive_reads_as_empty_not_an_error()
